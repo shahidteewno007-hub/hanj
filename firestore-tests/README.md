@@ -24,6 +24,24 @@ export PATH="/c/Program Files/Android/Android Studio/jbr/bin:$PATH"
 npm test
 ```
 
+Java 17 also works today — the suite passes on the Gradle JDK — but `firebase-tools`
+prints a deprecation warning and will stop supporting it in v15, so prefer the JBR.
+
+### Read the test counts, not the exit code
+
+`npm test` sometimes exits **2 even when every test passed**: `firebase-tools` can throw
+`An unexpected error has occurred` while shutting the emulator down, *after* the script
+itself has finished. The line that matters is
+
+```
++  Script exited successfully (code 0)
+ℹ pass 20
+ℹ fail 0
+```
+
+If you see a non-zero exit, check those before concluding the rules are broken. Observed
+on JBR 21; the same suite exited 0 on Java 17 in the same session.
+
 `firebase-tools` is installed locally rather than used from the global `firebase.cmd`.
 The global CLI is a bundled-Node build whose first-run wizard crashes intermittently
 (`SyntaxError: Unexpected end of JSON input` in `firepit/welcome.js`), which made test
