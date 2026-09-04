@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -54,7 +55,10 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
   DateTime? _nextAiringAt;
   int?      _nextEpisodeNum;
   Timer?    _countdownTimer;
-  Duration  _timeUntilAiring = Duration.zero;
+  // Ticks once a second. Held in a ValueNotifier rather than plain state so the
+  // per-second update rebuilds only the countdown card, not this whole screen.
+  final ValueNotifier<Duration> _timeUntilAiring =
+      ValueNotifier<Duration>(Duration.zero);
 
   @override
   void initState() {
@@ -98,6 +102,7 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
   @override
   void dispose() {
     _countdownTimer?.cancel();
+    _timeUntilAiring.dispose();
     super.dispose();
   }
 
@@ -156,13 +161,13 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
         setState(() {
           _nextAiringAt   = dt;
           _nextEpisodeNum = episode;
-          _timeUntilAiring = dt.difference(DateTime.now());
         });
+        _timeUntilAiring.value = dt.difference(DateTime.now());
         // Tick every second
         _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
           if (!mounted) return;
           final diff = dt.difference(DateTime.now());
-          setState(() => _timeUntilAiring = diff.isNegative ? Duration.zero : diff);
+          _timeUntilAiring.value = diff.isNegative ? Duration.zero : diff;
         });
       }
     } catch (_) {}
@@ -820,7 +825,7 @@ class _OverviewTab extends StatelessWidget {
   final int? currentEpisode;
   final DateTime? nextAiringAt;
   final int? nextEpisodeNum;
-  final Duration timeUntilAiring;
+  final ValueListenable<Duration> timeUntilAiring;
   final List<String> characterImages;
 
   const _OverviewTab({
@@ -831,7 +836,7 @@ class _OverviewTab extends StatelessWidget {
     required this.currentEpisode,
     this.nextAiringAt,
     this.nextEpisodeNum,
-    this.timeUntilAiring = Duration.zero,
+    required this.timeUntilAiring,
     this.characterImages = const [],
   });
 
@@ -1539,7 +1544,7 @@ class _TabContent extends StatelessWidget {
   final bool isLoadingRelated;
   final DateTime? nextAiringAt;
   final int? nextEpisodeNum;
-  final Duration timeUntilAiring;
+  final ValueListenable<Duration> timeUntilAiring;
   final List<String> characterImages;
 
   const _TabContent({
@@ -1553,7 +1558,7 @@ class _TabContent extends StatelessWidget {
     required this.isLoadingRelated,
     this.nextAiringAt,
     this.nextEpisodeNum,
-    this.timeUntilAiring = Duration.zero,
+    required this.timeUntilAiring,
     this.characterImages = const [],
   });
 
@@ -1686,7 +1691,7 @@ class _NextEpisodeCountdown extends StatefulWidget {
   final String animeId;
   final int episode;
   final DateTime airingAt;
-  final Duration timeUntil;
+  final ValueListenable<Duration> timeUntil;
 
   const _NextEpisodeCountdown({
     required this.animeId,
@@ -1766,11 +1771,20 @@ class _NextEpisodeCountdownState extends State<_NextEpisodeCountdown> {
 
   @override
   Widget build(BuildContext context) {
-    final d = widget.timeUntil.inDays;
-    final h = widget.timeUntil.inHours % 24;
-    final m = widget.timeUntil.inMinutes % 60;
-    final s = widget.timeUntil.inSeconds % 60;
-    final isImminent = widget.timeUntil.inHours < 1;
+    // Only this card rebuilds on each tick. Previously the parent screen called
+    // setState every second, rebuilding the whole 2,190-line detail screen.
+    return ValueListenableBuilder<Duration>(
+      valueListenable: widget.timeUntil,
+      builder: (context, timeUntil, _) => _buildCard(context, timeUntil),
+    );
+  }
+
+  Widget _buildCard(BuildContext context, Duration timeUntil) {
+    final d = timeUntil.inDays;
+    final h = timeUntil.inHours % 24;
+    final m = timeUntil.inMinutes % 60;
+    final s = timeUntil.inSeconds % 60;
+    final isImminent = timeUntil.inHours < 1;
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -1867,7 +1881,7 @@ class _NextEpisodeCountdownState extends State<_NextEpisodeCountdown> {
               ),
               const Spacer(),
               // Countdown clock
-              if (!widget.timeUntil.isNegative)
+              if (!timeUntil.isNegative)
                 Row(
                   children: [
                     if (d > 0) ...[
