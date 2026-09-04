@@ -254,6 +254,7 @@ class _HomeScreenState extends State<HomeScreen> {
           slivers: [
             // ── Header ──────────────────────────────────────
             SliverToBoxAdapter(
+              key: const ValueKey('home-header'),
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
                 child: Column(
@@ -328,6 +329,7 @@ class _HomeScreenState extends State<HomeScreen> {
             // ── Import Pending Banner ────────────────────────
             if (_importPending)
               SliverToBoxAdapter(
+                key: const ValueKey('home-import-banner'),
                 child: _ImportPendingBanner(
                   onDismiss: () async {
                     await _firestoreService.dismissImportBanner();
@@ -339,6 +341,7 @@ class _HomeScreenState extends State<HomeScreen> {
             // ── Tonight's Drop / Anime of Day ────────────────
             if (_animeOfDay != null)
               SliverToBoxAdapter(
+                key: const ValueKey('home-anime-of-day'),
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
                   child: _TonightCard(anime: _animeOfDay!),
@@ -347,6 +350,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
             // ── Tonight's Watch ──────────────────────────────
             const SliverToBoxAdapter(
+              key: ValueKey('home-tonight-watch'),
               child: Padding(
                 padding: EdgeInsets.fromLTRB(0, 16, 0, 0),
                 child: TonightWatchCard(),
@@ -356,6 +360,7 @@ class _HomeScreenState extends State<HomeScreen> {
             // ── Continue Watching ────────────────────────────
             if (_continueWatching.isNotEmpty) ...[
               SliverToBoxAdapter(
+                key: const ValueKey('home-continue-header'),
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
                   child: Row(
@@ -384,6 +389,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
               SliverToBoxAdapter(
+                key: const ValueKey('home-continue-row'),
                 child: SizedBox(
                   height: 310,
                   child: ListView.builder(
@@ -391,7 +397,18 @@ class _HomeScreenState extends State<HomeScreen> {
                     padding: const EdgeInsets.symmetric(horizontal: 20),
                     physics: const BouncingScrollPhysics(),
                     itemCount: _continueWatching.length,
+                    // Keyed by animeId, not index. This list is sorted by
+                    // lastWatched, so bumping an episode reorders it — and
+                    // _ContinueCardState holds _current, the episode number.
+                    // Index-matched, the element keeps its old _current while
+                    // receiving a different anime's data, and
+                    // didUpdateWidget only resyncs when the incoming value
+                    // differs from the *previous widget's* value, so two shows
+                    // on the same episode leave the stale number on screen.
                     itemBuilder: (context, index) => _ContinueCard(
+                      key: ValueKey(
+                          _continueWatching[index]['animeId']?.toString() ??
+                              'continue-$index'),
                       data: _continueWatching[index],
                       firestoreService: _firestoreService,
                       onUpdated: _loadData,
@@ -404,6 +421,7 @@ class _HomeScreenState extends State<HomeScreen> {
             // ── Plan to Watch ────────────────────────────────
             if (_planToWatch.isNotEmpty) ...[
               SliverToBoxAdapter(
+                key: const ValueKey('home-plan-header'),
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
                   child: Row(
@@ -432,6 +450,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
               SliverToBoxAdapter(
+                key: const ValueKey('home-plan-row'),
                 child: SizedBox(
                   height: 260,
                   child: ListView.builder(
@@ -451,6 +470,7 @@ class _HomeScreenState extends State<HomeScreen> {
             // ── Trending ─────────────────────────────────────
             if (_trendingAnime.isNotEmpty) ...[
               SliverToBoxAdapter(
+                key: const ValueKey('home-trending-header'),
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
                   child: Row(
@@ -480,6 +500,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
               SliverList(
+                key: const ValueKey('home-trending-list'),
                 delegate: SliverChildBuilderDelegate(
                   (context, index) {
                     if (index >= _trendingAnime.length) return null;
@@ -495,6 +516,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
             // ── Coming Up ─────────────────────────────────────
             SliverToBoxAdapter(
+              key: const ValueKey('home-section-a'),
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(20, 32, 20, 16),
                 child: Row(
@@ -529,6 +551,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
             SliverToBoxAdapter(
+              key: const ValueKey('home-section-b'),
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
                 child: _ComingUpSection(
@@ -549,6 +572,7 @@ class _HomeScreenState extends State<HomeScreen> {
             // ── Recommendations ──────────────────────────────
             for (final row in _recommendationRows) ...[
               SliverToBoxAdapter(
+                key: ValueKey('rec-header-${row['genre']}'),
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(20, 44, 20, 16),
                   child: Column(
@@ -574,6 +598,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
               SliverToBoxAdapter(
+                key: ValueKey('rec-row-${row['genre']}'),
                 child: SizedBox(
                   height: 260,
                   child: ListView.builder(
@@ -582,6 +607,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     physics: const BouncingScrollPhysics(),
                     itemCount: (row['anime'] as List<Anime>).length,
                     itemBuilder: (context, index) => _TrendingCard(
+                      key: ValueKey(
+                          'rec-${row['genre']}-${(row['anime'] as List<Anime>)[index].id}'),
                       anime: (row['anime'] as List<Anime>)[index],
                       rank: index + 1,
                     ),
@@ -1171,6 +1198,7 @@ class _ContinueCard extends StatefulWidget {
   final VoidCallback onUpdated;
 
   const _ContinueCard({
+    super.key,
     required this.data,
     required this.firestoreService,
     required this.onUpdated,
@@ -1409,7 +1437,7 @@ class _ContinueCardState extends State<_ContinueCard> {
 class _TrendingCard extends StatefulWidget {
   final Anime anime;
   final int? rank;
-  const _TrendingCard({required this.anime, this.rank});
+  const _TrendingCard({super.key, required this.anime, this.rank});
 
   @override
   State<_TrendingCard> createState() => _TrendingCardState();
