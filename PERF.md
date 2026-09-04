@@ -269,19 +269,38 @@ follows the identical pattern.
 
 There is no TTL and no in-flight de-duplication anywhere in this layer.
 
-**There is also a duplicate.** `UpcomingAnimeRow._loadAnime` calls
-`getSeasonal(currentSeason, year)` ([:96](lib/features/home/upcoming_anime.dart#L96)) and
-the widget at [:499](lib/features/home/upcoming_anime.dart#L499) calls
-`getSeasonal(currentSeason, year)` with **identical arguments** on the same screen.
-`AnilistService` has **no cache of its own**, so both hit the network. One of Home's three
-requests is redundant on every single mount.
+> ### ⚠️ Correction (2026-09-04) — the "duplicate `getSeasonal`" claim was wrong
+>
+> An earlier revision of this section claimed that two widgets on the Home screen call
+> `getSeasonal(currentSeason, year)` with identical arguments, so one of Home's three
+> requests was pure waste. **That is not true, and I got it wrong by reading two
+> same-named widgets in one file as if both were on Home.**
+>
+> `lib/features/home/upcoming_anime.dart` contains **two** widgets:
+> `UpcomingAnimeScreen` (line 15, whose `getSeasonal` calls are at
+> [:96](lib/features/home/upcoming_anime.dart#L96) and
+> [:117](lib/features/home/upcoming_anime.dart#L117)) and
+> `UpcomingAnimeRow` (line 460, calling `getSeasonal` at
+> [:500](lib/features/home/upcoming_anime.dart#L500)).
+>
+> Home mounts only `UpcomingAnimeRow` ([home_screen.dart:597](lib/features/home/home_screen.dart#L597)).
+> **`UpcomingAnimeScreen` is referenced from nowhere in `lib/`** — it is one of the
+> recovery orphans, so its two calls never execute in the running app. There is exactly
+> **one** `getSeasonal` call on a Home mount and **nothing to deduplicate**.
+>
+> What still stands, unchanged: the measured counts (3 requests on first mount, 3 again on
+> returning to the tab) and the display-cache-not-request-cache mechanism above. What is
+> now unknown is the precise attribution of those 3 requests. Static reading gives
+> `getTrending` (on a cache miss) + `_loadRecommendations` + `UpcomingAnimeRow` = 3, which
+> matches the first-mount count — but it does not explain why the tab return also cost 3,
+> since `OfflineCacheService._memCache` is static and should have served trending for free
+> the second time. **Re-measure with per-call-site labels before acting on this item.**
 
 **Proposed fix:** give `AnilistService` a small keyed in-memory cache with a TTL —
 one `Map<String, (DateTime, List<Anime>)>` in front of `_post`, keyed on the query +
-variables. This fixes the duplicate, the tab-return refetch, and every other caller at
-once, without touching the throttle, the backoff, or any screen. **Expected: Home's 3
-requests per mount → 0 on any mount within the TTL; the identical-argument duplicate
-eliminated permanently.** Effort: ~30 lines in one file.
+variables. This addresses the tab-return refetch and every other caller at once, without
+touching the throttle, the backoff, or any screen. **Expected: Home's 3 requests per mount
+→ 0 on any mount within the TTL.** Effort: ~30 lines in one file.
 
 Do **not** fix this by deleting the fetches — the stale-while-revalidate behaviour is
 deliberate and it is what keeps the screens populated when AniList rate-limits. Add the
@@ -546,6 +565,39 @@ then migrate per screen as you touch each one.
   (Pulse, Discover, Social, Soulmatch ×4, Taste Profile, Edit Profile).
   **Proposed:** anything under 18 px that is not a heading should be DM Sans. Playfair
   earns its place at 18 px and up.
+
+  The full list, so the shape of it is visible (share/card canvases excluded — those
+  rasterise at 3.2× and their small values are legitimate):
+
+  | px | site |
+  |---|---|
+  | 13 | [anime_detail_screen.dart:774](lib/features/anime_detail/anime_detail_screen.dart#L774) |
+  | 13 | [home_screen.dart:2021](lib/features/home/home_screen.dart#L2021) |
+  | 15 | [tonight_watch.dart:458](lib/features/home/tonight_watch.dart#L458) |
+  | 15 | [arcs_screen.dart:780](lib/features/social/arcs_screen.dart#L780) |
+  | 16 | [discovery_screen.dart:1100](lib/features/discovery/discovery_screen.dart#L1100) |
+  | 16 | [home_screen.dart:1054](lib/features/home/home_screen.dart#L1054) |
+  | 16 | [edit_profile_screen.dart:275](lib/features/profile/edit_profile_screen.dart#L275) |
+  | 16 | [taste_profile.dart:869](lib/features/profile/taste_profile.dart#L869) |
+  | 16 | [pulse_screen.dart:282](lib/features/pulse/pulse_screen.dart#L282) |
+  | 16 | [arcs_screen.dart:339](lib/features/social/arcs_screen.dart#L339) |
+  | 16 | [arcs_screen.dart:987](lib/features/social/arcs_screen.dart#L987) |
+  | 16 | [social_screen.dart:245](lib/features/social/social_screen.dart#L245) |
+  | 16 | [soulmatch_screen.dart:444](lib/features/social/soulmatch_screen.dart#L444) |
+  | 16 | [soulmatch_screen.dart:472](lib/features/social/soulmatch_screen.dart#L472) |
+  | 16 | [soulmatch_screen.dart:518](lib/features/social/soulmatch_screen.dart#L518) |
+  | 16 | [soulmatch_screen.dart:542](lib/features/social/soulmatch_screen.dart#L542) |
+  | 17 | [emotional_categories.dart:264](lib/features/discovery/emotional_categories.dart#L264) |
+  | 17 | [tonight_watch.dart:88](lib/features/home/tonight_watch.dart#L88) |
+  | 17 | [tonight_watch.dart:673](lib/features/home/tonight_watch.dart#L673) |
+  | 17 | [pulse_screen.dart:350](lib/features/pulse/pulse_screen.dart#L350) |
+
+  Shape of it: **16 of the 20 sit at 15–17 px**, i.e. just under the threshold, and four
+  files (`soulmatch_screen`, `arcs_screen`, `tonight_watch`, `pulse_screen`) hold half of
+  them. Only the two 13 px sites are badly wrong. So this is not 20 scattered judgement
+  calls — it is mostly one repeated habit of setting a card/section title in Playfair at
+  16, and it would fall out naturally from adopting the `title` (Playfair 20) and
+  `subtitle` (DM Sans 16) tokens in §6-2 rather than needing 20 separate decisions.
 - **Body text below 14 px: 174 live-UI sites** — 1 at 9 px, 12 at 10 px, 23 at 11 px,
   61 at 12 px, 68 at 13 px. The 12–13 px band is defensible for metadata; **the 9–11 px
   band (36 sites) is too small for anything a user needs to read** on a phone.
@@ -617,7 +669,7 @@ attached.
 | **P2** | 🔴 **~1.0 s of a 1.9 s startup** | `NotificationService.init()` awaited before `runApp()` | 989 ms / 1,106 ms across two runs; 53–84% of pre-`runApp` time | [main.dart:63](lib/main.dart#L63) | ~10 ln |
 | **P3** | 🟠 **26 over-budget raster frames per scroll** | Card grid re-blurs every cell; no `RepaintBoundary` for paint isolation | 183 frames >8 ms, worst raster 20.4 ms, **0** build frames over budget | [card_collection_screen.dart:295](lib/features/cards/card_collection_screen.dart#L295), [hanj_card.dart:895](lib/features/cards/hanj_card.dart#L895) | ~5 ln |
 | **P4** | 🟠 **Worst single frame in the app, 40.1 ms** | Profile renders a live blurred `HanjCard`, unisolated | 5 raster frames over budget on open | [profile_screen.dart:469-479](lib/features/profile/profile_screen.dart#L469-L479) | ~3 ln |
-| **P5** | 🟠 **3 redundant AniList requests per Home mount** | Static caches seed display but never suppress the fetch; one request is an exact duplicate | 3 on first mount, **3 again on tab return**; 0 needed | [upcoming_anime.dart:52, 96, 499](lib/features/home/upcoming_anime.dart#L52), [anilist_service.dart](lib/services/anilist_service.dart) | ~30 ln |
+| **P5** | 🟠 **3 redundant AniList requests per Home mount** | Static caches seed display but never suppress the fetch (the "exact duplicate" part of this claim was **wrong** — see the correction in §3-1) | 3 on first mount, **3 again on tab return**; attribution needs a labelled re-measure | [upcoming_anime.dart:487-500](lib/features/home/upcoming_anime.dart#L487-L500), [anilist_service.dart](lib/services/anilist_service.dart) | ~30 ln |
 | **P6** | 🟡 **1 unthrottled request per detail open** | `_fetchAiringHttp` bypasses the throttle (= `AUDIT.md` S2-3) | 2 requests measured on open, 1 outside the queue | [anime_detail_screen.dart:174](lib/features/anime_detail/anime_detail_screen.dart#L174) | 2 ln |
 | **P7** | 🟡 **Repeated mount cost + repeated fetches** | `MainScreen` rebuilds tab roots instead of `IndexedStack` | Home return: 28.7 ms build + 3 requests | [main_screen.dart:36](lib/features/main_screen.dart#L36) | ~5 ln |
 | **P8** | 🟡 **Design-system drift** | `AppTheme.sans` + whole `TextTheme` use Inter, not DM Sans; 6 families ship | 35 Inter sites, 224 `AppTheme.sans` calls, 6 families counted | [app_theme.dart:68-122](lib/core/theme/app_theme.dart#L68-L122) | ~7 ln |
