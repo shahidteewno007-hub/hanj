@@ -541,15 +541,25 @@ config-validation time — before it ever looks at `functions/index.js`. That wo
 deployment of *all ten* functions, not just this one, which is consistent with a function
 that was "written but never deployed" despite being finished.
 
-This is a hypothesis I can't confirm without running a deploy, which the brief forbids
-— and I have not run one. You can confirm it in one non-mutating command:
+> **✅ CONFIRMED (2026-09-04)** — `firebase.cmd deploy --only functions --dry-run` reports
+> *"could not deploy functions because the 'aruku' directory was not found"*, and it does so
+> **after** the `default` codebase has loaded and analysed cleanly. So `functions/index.js`
+> is fine and the stale `aruku` block is the sole blocker. All ten functions, including
+> `episodeReminderPrecise`, have been undeployable for this reason.
+>
+> **Firestore rules deploys are unaffected** — the failure is scoped to the functions
+> target, so rules can ship independently of any of this.
+>
+> The same dry run surfaced two further problems, both on a hard deadline — see
+> [§5-F](#5-f--the-deploy-deadline-2026-10-30) below.
 
-```
-firebase.cmd deploy --only functions --dry-run
-```
+The fix is to remove the stale `aruku` block from `firebase.json` (or restore the
+directory). **Not yet applied** — you are first comparing the deployed function list in the
+console against `functions/index.js`, in case `aruku` left functions running in production
+that have no counterpart in our source. That check has to come first: removing the block
+and deploying would be the moment any such orphan gets noticed, or silently stranded.
 
-If that reproduces the codebase error, the fix is to remove the stale `aruku` block from
-`firebase.json` (or restore the directory). **Two caveats before you deploy anything:**
+**Two further caveats before you deploy anything:**
 `episodeReminderPrecise` reads **every user document plus each one's `alerts`
 subcollection, 144 times a day** — at 1,000 users that is ~288k document reads/day from
 this function alone, and it scales linearly. Consider a `collectionGroup('alerts')` query
@@ -557,6 +567,44 @@ or a denormalised index of alerted anime ids before turning it on. And deploying
 immediately start sending notifications through
 [`_handlePayload`](lib/services/notification_service.dart#L100), which crashes on tap —
 **fix S2-1 first.**
+
+### F · The deploy deadline — 2026-10-30
+
+The `--only functions --dry-run` above surfaced two further problems. Unlike everything else
+in this file, these are **scheduled**: they have a date attached, and after it passes the
+options get worse rather than staying still.
+
+| | Deadline | What happens |
+|---|---|---|
+| **Node.js 20 runtime decommissioned** | **2026-10-30** | Cloud Functions on Node 20 **can no longer be deployed at all** after this date |
+| **`firebase-functions` outdated** | — | Upgrading is required and carries **breaking changes** |
+
+**Why this compounds.** Right now functions cannot be deployed because of `aruku` (§5-E).
+That is a ten-line config fix. But it means **no deploy path has been exercised in this
+project for months**, so the first successful deploy will be the one that also has to absorb
+a runtime bump and a breaking library upgrade. Three untested changes landing together, on
+a codebase whose ten functions have never run against production data.
+
+**As of 2026-09-04 there are roughly eight weeks.** The order that keeps them separable:
+
+1. **Now — resolve `aruku`.** Gated on your console-vs-source comparison of the deployed
+   function list. Nothing else can be verified until a deploy can run at all.
+2. **Then — one deploy of the current code, unchanged**, to prove the path works and to see
+   the ten functions behave. Fix **S2-1** first: deploying the reminders starts sending
+   notifications whose taps crash the app.
+3. **Then — the `firebase-functions` upgrade** on its own, with the breaking changes read
+   and applied deliberately. `functions/package.json` currently pins `^5.0.0`.
+4. **Then — the Node 20 → newer runtime bump**, alone, well before 2026-10-30.
+
+**If the deadline passes first**, the sequence inverts into the bad case: you cannot deploy
+*anything* — including a security fix — until the runtime bump and the library upgrade are
+both done and working, with no ability to deploy incrementally to test either. Several items
+in this file need a deploy to fix: the Loki owner gate (S1-1), the founder claim moving
+server-side (S1-3 / R2), and `episodeReminderPrecise` ever running.
+
+**Not a code change, and nothing here is applied.** `pubspec.yaml` and
+`functions/package.json` versions are off-limits per the standing rules; this is a schedule,
+for you to sequence.
 
 ---
 
@@ -1107,7 +1155,9 @@ brief's 200-line batch limit.
 | **S2-2** | 🟠 High | **Duplicate FCM handlers** — `main.dart` and `NotificationService.init()` both register `onMessageOpenedApp` + `getInitialMessage`; card-unlock opens the collection screen twice | [main.dart:157-176](lib/main.dart#L157-L176), [notification_service.dart:65](lib/services/notification_service.dart#L65) | ~20 | Pick one owner. Fix with S2-1 |
 | **S2-3** | 🟠 High | **`_fetchAiringHttp` bypasses the AniList throttle** — runs on every detail open | [anime_detail_screen.dart:174](lib/features/anime_detail/anime_detail_screen.dart#L174) | **2** | Best value in the report. Pattern is 40 lines below it |
 | **S2-4** | 🟠 High | **Founder status is self-assignable** — client-side claim; no rule can prevent it | [founder_service.dart:27](lib/services/founder_service.dart#L27) | ~40 | Needs a callable function + deploy |
-| **S2-5** | 🟠 High | **`firebase.json` declares codebase `aruku` with no directory** — likely blocks *all* function deploys, incl. `episodeReminderPrecise` | [firebase.json:14](firebase.json#L14) | ~10 | Confirm with `deploy --dry-run`; **fix S2-1 before deploying reminders** |
+| **S2-5** | 🟠 High | **`firebase.json` declares codebase `aruku` with no directory — CONFIRMED, blocks all ten function deploys** (dry run: "could not deploy functions because the `aruku` directory was not found", after `default` analysed cleanly). Rules deploys unaffected. | [firebase.json:14](firebase.json#L14) | ~10 | **Not applied** — gated on your console-vs-source check for orphaned `aruku` functions. See §5-E |
+| **S5-1** | 🔴 Scheduled | **Node.js 20 runtime decommissioned — functions become undeployable entirely** | `functions/package.json` | — | **Deadline 2026-10-30**, ~8 weeks. Sequence in §5-F |
+| **S5-2** | 🟠 Scheduled | **`firebase-functions` outdated, breaking changes on upgrade** | `functions/package.json` (pins `^5.0.0`) | — | Do it as its own deploy, after `aruku` and before the runtime bump |
 | **S3-1** | 🟡 Med | **18 × `setState` after `await` with no `mounted` guard** → `setState() after dispose`, reported as fatal | 14 files, §3-A | ~18 | Mechanical. Check Crashlytics first to rank it |
 | **S3-2** | 🟡 Med | **Pulse/Discover SafeArea gap** — banner reserves ~33 px permanently + inset applied twice | [connectivity_service.dart:110](lib/services/connectivity_service.dart#L110), pulse/discovery/home | ~15 | Invisible on web; test on device |
 | **S3-3** | 🟡 Med | **Share-card centring** — unbalanced trailing 26 px spacer pushes art ~13 px high | [card_share.dart:388](lib/features/cards/card_share.dart#L388) | **1** | Fully diagnosed; see §5-A |

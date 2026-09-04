@@ -35,6 +35,17 @@ changing, no new dependencies, no edits to `pubspec.yaml` versions, no touching
 Existing analysis lives in `AUDIT.md` (correctness/security) and `PERF.md` (performance,
 device-measured). Check them before re-investigating something.
 
+**Run `git status` at the start of every batch, and flag anything you did not do.**
+Something outside the Claude session has modified the working tree at least once:
+`discovery_screen.dart` was overwritten mid-batch in a way that stripped already-committed
+`ValueKey`s, turned a settable `_PillChip` default into a constructor initialiser, and left
+`_HanjFilterSheet` syntactically invalid (`) : genre = null : format : year;`). It read like
+an automated quick-fix or formatter, not a hand edit. Under investigation.
+
+So: do not assume the tree matches what you last wrote. If you find changes you did not
+make, **preserve a copy and the diff before touching them, then say so** — do not silently
+revert, and do not silently build on top.
+
 ## Commands
 
 ```bash
@@ -53,6 +64,17 @@ flutter build apk --profile --target-platform android-arm64
 ```
 
 - **Profile, not debug, for any measurement** — debug timings are meaningless.
+- **Verify the install landed before trusting any reading.** `flutter run` exits 0 on a
+  build that compiled but never installed (it happens when the phone drops off USB
+  mid-run), and you will then be measuring the *previous* APK. Always check:
+
+  ```bash
+  adb shell dumpsys package com.anitrack.anime_tracker | grep lastUpdateTime
+  ```
+
+  If that timestamp predates the build, the reading is from stale code — rebuild and
+  reinstall before reading anything into it. This has already produced one misleading
+  measurement.
 - `--analyze-size` only works on **release** builds; it errors on profile.
 - Driving the device over adb: the nav bar sits at `y=2978`, tab x-centres are
   144 / 431 / 719 / 1007 / 1295. **Swipes that end low trigger gesture navigation and throw
