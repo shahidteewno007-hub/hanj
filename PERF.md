@@ -704,6 +704,84 @@ only works on release builds — it errors on profile.
 
 ---
 
+## 8b. Phase two — batch 2 results (measured)
+
+Branch `perf/measured-wins`, stacked on `fix/profile-card`. All figures from the
+CPH2573, profile build, 90 Hz (11.1 ms budget). Each item was re-baselined on the branch
+immediately before the change rather than reusing the phase-one numbers.
+
+| # | Change | Metric | Before | After | Verdict |
+|---|---|---|---|---|---|
+| P1 | Countdown rebuild scoped to the countdown card | janky frames in 16 s idle on an ON AIR title | **31** (median build 18.7 ms, max 25.2 ms) | **0** | **kept** |
+| P2 | `NotificationService.init()` no longer awaited before `runApp()` | time to first frame | **1,362 ms** | **402 ms** | **kept** |
+| P2 | — | `runApp()` reached at | 1,241 ms | 287 ms / 218 ms (2 runs) | |
+| P3 | Duplicate `getSeasonal` on Home | AniList requests per cold Home load | **3** | **2** | **kept** |
+| P3 | — | AniList requests on returning to Home tab | 3 | 2 | |
+| P4 | `RepaintBoundary` per card grid tile | frames >8 ms during collection scroll | 194 | 197 / 192 | **reverted** |
+| P4 | — | raster frames over 11.1 ms | **18** | **24 / 22** | |
+| P4 | — | worst raster | 22.6 ms | 21.2 / 24.2 ms | |
+
+### P1 — countdown
+
+Idle jank went to zero. The rebuild still happens every second; it is now too cheap to
+cross the 8 ms logging threshold. Correctness verified rather than assumed: the countdown
+was observed ticking 02d 03h 33m → 02d 03h 32m across 68 s on the fixed build.
+
+One correction to §2 above: the phase-one figure of 15 frames (1/sec) under-counted. The
+re-baseline on the same repro gives **31 frames in 16 s, about 2 per tick**. The screen has
+exactly one `Timer` and no `AnimationController`s, so both frames per tick trace to that
+single `setState`.
+
+### P2 — startup
+
+Time to first frame fell by ~960 ms (70%). Verified on device that `init()` still runs on
+the deferred path — the launch logs still show `[FCM] Permission:
+AuthorizationStatus.authorized` and `[FCM] Token saved`.
+
+### P3 — the duplicate request, and a correction to my correction
+
+The §3-1 correction earlier in this file said there was no duplicate to remove. **The
+correction was right about the evidence and wrong about the conclusion.** Labelled
+instrumentation at `AnilistService._post` showed Home firing two byte-identical
+`getSeasonal(SUMMER, 2026)` requests per load, exactly as the original finding claimed.
+
+The cause was neither of the two candidate widgets being on Home together.
+`UpcomingAnimeScreen` really is an orphan and never mounts — that part of the correction
+holds. Instrumenting `initState` showed **`UpcomingAnimeRow` mounting twice per Home
+load**. The recommendation slivers are inserted directly above it when
+`_loadRecommendations` resolves; every entry in that sliver list is an unkeyed
+`SliverToBoxAdapter`, so `Element.canUpdate()` returns true on runtimeType alone and the
+list is matched positionally. This sliver's element was handed a recommendation row, and
+`UpcomingAnimeRow` unmounted and remounted lower down, re-running `initState` — a second
+`getSeasonal` and a second `alerts` read from Firestore. A `ValueKey` fixes it at the root.
+
+**Still open, deliberately not changed:** the remaining 2 requests refire on every Home
+mount, including tab returns, because the static caches seed display state without
+suppressing the fetch. Bounding that with a TTL is ~6 lines per site and technically small,
+but it is a caching *policy* decision — how stale is acceptable, and `UpcomingAnimeRow` has
+no pull-to-refresh path of its own to force a refresh within the window — so it is written
+up rather than decided here.
+
+### P4 — RepaintBoundary: measured, did not work, reverted
+
+This was my recommendation in §2-2 and **the measurement does not support it.** Two runs
+after the change show raster frames over budget going *up* (18 → 24 and 22) with no
+improvement in worst raster. Reverted per the standing rule.
+
+Why it fails: a `RepaintBoundary` pays off when a cached layer is reused across frames.
+During a fling the tiles are continuously entering the viewport and being painted for the
+first time, so there is no cached layer to reuse — while each boundary adds a layer to
+composite. The cost is the `MaskFilter.blur` glow being painted for each newly-visible
+card, and a boundary cannot avoid a first paint.
+
+**What would actually address it** (not attempted, needs its own measurement): make the
+glow cheap rather than isolated — pre-render the blurred border once per rarity into an
+image or a cached picture and blit it per card, so `MaskFilter.blur` runs six times per
+session rather than once per card per scroll. That is a change to `hanj_card.dart`'s
+painters and wants its own batch.
+
+---
+
 ## 9. A note on phase two
 
 Your two performance rules are the right ones and I want to be explicit that I have
