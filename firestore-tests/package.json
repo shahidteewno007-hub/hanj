@@ -1,0 +1,14 @@
+{
+  "name": "hanj-firestore-tests",
+  "private": true,
+  "type": "module",
+  "description": "Emulator tests for firestore.rules. Not shipped with the app.",
+  "scripts": {
+    "test": "firebase emulators:exec --only firestore --project hanj-rules-test \"node --test\""
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^4.0.1",
+    "firebase": "^11.0.0",
+    "firebase-tools": "^14.27.0"
+  }
+}

@@ -2,7 +2,21 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     match /users/{userId} {
-      allow read: if true;
+      // Signed-in only. This document holds `email` and `fcmToken`, so it was
+      // never safe to serve unauthenticated.
+      //
+      // KNOWN RESIDUAL: this still lets any signed-in user read any other
+      // user's document, including those two fields. It is not owner-only
+      // because soulmatch_screen resolves a friend code by scanning every user
+      // document for `displayName`, and Firestore rules cannot expose one field
+      // while hiding another — read access is all-or-nothing per document.
+      //
+      // The fix is a public/private split (public profile doc for displayName,
+      // avatar, founder badge; email and fcmToken owner-only). That is blocked,
+      // not merely pending: its backfill and the fcmToken relocation both need
+      // a functions deploy, which the phantom `aruku` codebase currently
+      // prevents. See AUDIT.md 6d and 5-F.
+      allow read: if request.auth != null;
       // Owner can write their own doc, but the founderNumber is immutable
       // once set — it can never be changed or removed after assignment.
       allow create: if request.auth != null && request.auth.uid == userId;
