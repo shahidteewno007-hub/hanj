@@ -93,10 +93,29 @@ service cloud.firestore {
     }
 
     // ── Founder counter ───────────────────────────────────────
-    // Anyone signed in may read it (to show "X spots left"). It may only
-    // ever be incremented by exactly 1 and never past 50, which is what
-    // makes client-side founder claiming safe — a tampered client cannot
-    // grant itself an arbitrary number or reset the count.
+    // WHAT THIS ENFORCES: the counter itself is monotonic. Any signed-in user
+    // may read it, and an update must move `count` up by exactly 1 and never
+    // above 50. It cannot be decremented or reset (no delete rule either).
+    //
+    // WHAT THIS DOES NOT ENFORCE — and an earlier version of this comment
+    // claimed it did: **the founder claim is not secured.** Nothing here ties
+    // a badge to the counter. Two holes, both open:
+    //
+    //   1. The badge does not require the counter at all. `founderNumber` is
+    //      frozen by the /users rule only once it exists, so the FIRST write
+    //      is unconstrained: a client can write
+    //      `{ isFounder: true, founderNumber: 1 }` straight to its own user
+    //      document, never touch this counter, and keep the badge forever.
+    //      `isFounder` and `founderJoinedAt` are not constrained at all.
+    //
+    //   2. Incrementing costs nothing. Any signed-in user can run the counter
+    //      from 0 to 50 in fifty writes without becoming a founder, denying
+    //      the programme to everyone else.
+    //
+    // This cannot be closed in rules alone: rules constrain the shape of a
+    // write, not the honesty of the client making it, and the client is the
+    // attacker here. The claim has to move into a callable function using the
+    // Admin SDK. Proposal and migration plan: AUDIT.md §6e (R2).
     match /meta/founders {
       allow read: if request.auth != null;
       allow create: if request.auth != null

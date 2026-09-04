@@ -1145,6 +1145,96 @@ should be tracked as open rather than considered closed by 5a.
 
 ---
 
+## 6e. Batch 5c — securing the founder claim (R2). Proposal, not implemented
+
+Written for your decision per `BATCH-FIVE.md` 5c. **No mechanism change is implemented.**
+The only thing landed in this batch is the corrected comment in `firestore.rules`.
+
+### Is there a rules-only fix? No — and here is the argument
+
+You asked me to argue for one if I saw it. I don't, and the reason is structural rather
+than a gap in the current rules.
+
+A rule can only see the write in front of it: the caller's uid, the document before, the
+document after. It cannot see whether the client did something else first, cannot read one
+document to authorise a write to another *transactionally*, and cannot make two writes
+succeed or fail together. Claiming a founder number is inherently two coupled writes —
+increment `meta/founders`, stamp `users/{uid}` — that must be atomic and must be
+one-per-person. Rules have no way to bind them.
+
+Three approaches that look like they might work, and why each doesn't:
+
+| Approach | Why it fails |
+|---|---|
+| Require `founderNumber == get(/meta/founders).count` on the user write | `get()` sees committed state, not the pending counter write. Two clients reading `count: 7` both write `founderNumber: 8`. Nothing rejects the second. |
+| Make the counter write conditional on the badge, or vice versa | Rules evaluate each document write independently. There is no cross-document "both or neither". A client simply issues one and not the other. |
+| Constrain the badge write harder (`isFounder` must be true, number in 1..50, `founderJoinedAt == request.time`) | Constrains the *shape*, never the *entitlement*. A tampered client writes a perfectly well-shaped claim it isn't entitled to. This is the current failure, just tidier. |
+
+The client is the attacker in this threat model. Every one of these asks the attacker to
+do something honestly. So the claim moves server-side.
+
+### The proposal
+
+**A callable function, `claimFounderNumber`**, doing in one Admin SDK transaction what the
+client currently does in an unprotected one:
+
+1. Reject unauthenticated callers.
+2. Read `users/{uid}`. If `founderNumber` already exists, return it — idempotent, so a
+   retry or a double-tap cannot consume a second slot.
+3. Read `meta/founders`. If `count >= 50`, return "not a founder".
+4. Otherwise write `count + 1` and stamp `{ isFounder: true, founderNumber, founderJoinedAt }`
+   on the user document, in the same transaction.
+
+Server-side this is safe for the reason the client version isn't: the transaction is the
+only writer, it cannot be skipped, and the Admin SDK bypasses rules so the rules can deny
+the client outright.
+
+**Rules change** — deny the client the fields entirely, rather than freezing them after
+first write:
+
+```
+allow update: if request.auth != null && request.auth.uid == userId
+  && !request.resource.data.diff(resource.data).affectedKeys()
+       .hasAny(['isFounder', 'founderNumber', 'founderJoinedAt']);
+```
+
+and remove the `create`/`update` rules on `meta/founders` so no client can touch the
+counter at all. The read rule can stay if you still want "X spots left" in the UI.
+
+**Client change** — small. `FounderService.claimFounderNumber` currently runs the
+transaction locally ([founder_service.dart:27-62](lib/services/founder_service.dart#L27-L62));
+it becomes a `cloud_functions` call returning the number. `getStatus` is unchanged, and so
+is the SharedPreferences cache added in batch 1, which already means a returning founder
+never hits the network for this. Roughly 40 lines replaced by 10.
+
+### What happens to existing founders
+
+Nothing, and this is the part worth checking before you deploy. Existing badges live on
+user documents and the new rule only blocks *changes* to those fields, so current founders
+keep their numbers untouched. But:
+
+- **The counter may already be wrong.** Anyone could have incremented `meta/founders`
+  without claiming, and anyone could have self-assigned a number without incrementing. Read
+  the actual state before deploying: compare `meta/founders.count` against a count of user
+  documents with `isFounder == true`, and check for duplicate `founderNumber` values.
+- **If they disagree**, reconcile deliberately before the function goes live, because
+  afterwards the counter becomes authoritative and any drift is baked in.
+- **A self-assigned badge is indistinguishable from a legitimate one** in the data. If the
+  audit finds numbers that were never counted, deciding who keeps a badge is a judgement
+  call, not something the migration can infer.
+
+Given you are Founder #1 and the app has few users, this is most likely a five-minute
+console check that finds nothing. Worth doing rather than assuming.
+
+### Sequencing
+
+This needs a functions deploy, so it sits behind the `aruku` blocker (§5-E) and inside the
+2026-10-30 window (§5-F). Order: unblock deploys → audit the counter → ship the function →
+tighten the rules once the client no longer needs to write those fields. **The rules change
+must land after the function**, or claiming breaks for everyone until it does.
+
+---
+
 ## 7. Dependencies (`flutter pub outdated`) — flagging only
 
 Direct dependencies with a newer major available. **Per the brief, I propose no upgrades
