@@ -782,6 +782,72 @@ painters and wants its own batch.
 
 ---
 
+## 8c. Phase two — batch 3: Inter → DM Sans, for your decision
+
+Branch `type/dm-sans-body`, **unmerged and staying that way** until you have looked.
+Screenshots captured on the CPH2573, profile build, same content and same scroll position
+in both sets, one build apart.
+
+### What I changed, and why it is more than you asked for
+
+You said "repoint `AppTheme.sans` to DM Sans". `AppTheme.sans` is one call site. I changed
+**all 29 `GoogleFonts.inter` references in `app_theme.dart`** — the `sans()` helper, the
+whole `TextTheme` title/body tier, input decoration, the three button themes, and dialog
+and snackbar content styles, in both the dark and light themes.
+
+A one-line change would have left every button label, text field, dialog and implicitly
+themed `Text` still rendering Inter, and the screenshots would not have shown you what the
+app actually looks like on DM Sans. It is trivially reducible to just `sans()` if you
+prefer. **Inter is now absent from the theme.**
+
+### The two metric differences
+
+1. **DM Sans is slightly narrower** than Inter at the same size. Every line of body text
+   ends 2–14 px earlier.
+2. **DM Sans sets slightly tighter by default.** Invisible on one line, visible where text
+   stacks.
+
+### What that does, concretely
+
+| Screen | Effect |
+|---|---|
+| **Profile** | The founder card is **~10 px shorter** — the three perk rows stack tighter. Knock-on: the COLLECTION card below shifts up, which **reveals a line of the Hanj card's description that was previously clipped** ("Original and remake. You honour / the source." now reads in full; before it was cut off mid-sentence). This is the largest visible change in the whole comparison, and it is an improvement. |
+| **Anime detail — synopsis** | Same six lines, same wrap points. One extra character now fits before the ellipsis: "His last words b…" where Inter gave "His last words ...". No re-wrap. |
+| **Home** | Essentially unchanged. Only "7.9 · Action" and "Curated for tonight" shift, by a few px. |
+| **Card collection** | Essentially unchanged. Card descriptions end 2–5 px earlier. |
+| **Nav bar, eyebrows, numerals, all headings** | **Pixel-identical.** Space Grotesk and Playfair are untouched. |
+
+### What I looked for and did not find
+
+No clipped text. No overflow. No button whose label stopped fitting — the "Continue" and
+"Discover" pills are within 2 px of their old width. No new truncation anywhere; the one
+ellipsis that moved gained a character rather than losing one. No vertical rhythm break
+beyond the founder card getting tighter, which reads as better rather than worse.
+
+### The honest headline
+
+**This changes far less than the 224-call-site figure suggests.** The app leans on Playfair
+for every heading and Space Grotesk for every eyebrow, numeral and nav label. Inter has only
+ever carried small body copy and secondary labels — so switching it is both lower-risk and
+lower-impact than the raw numbers imply. Home and the card collection are almost
+indistinguishable; you have to be looking at the founder card or a synopsis paragraph to
+see it at all.
+
+### One gap you should know about before deciding
+
+**Six `GoogleFonts.inter` call sites remain outside the theme** and are untouched by this
+branch:
+
+- [login_screen.dart:525](lib/features/auth/login_screen.dart#L525)
+- [onboarding_screen.dart:347, 388, 460, 470, 631](lib/features/onboarding/onboarding_screen.dart#L347)
+
+Both are pre-auth screens, so they are not in the five captures. If the goal is to stop
+shipping Inter at all — which matters for the font-bundling question in §6-4, since every
+family you keep is one more to bundle or fetch — these need doing too. Otherwise the app
+still downloads Inter on the login/onboarding path and the family count stays at six.
+
+---
+
 ## 9. A note on phase two
 
 Your two performance rules are the right ones and I want to be explicit that I have
