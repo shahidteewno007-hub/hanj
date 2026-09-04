@@ -1055,6 +1055,96 @@ silently while `flutter run` still reports success.)*
 
 ---
 
+## 6d. Batch 5a — the `users` read rule: shape and cost (2026-09-04)
+
+**Report only. No rule changed yet** — the brief asks for the cost before anything is
+written, and the answer turns on two constraints that were not visible until now.
+
+### Who actually reads a user document
+
+Every `users/{uid}` read in `lib/`, classified:
+
+| Reader | Whose document | Fields used |
+|---|---|---|
+| `main.dart` `_OnboardingGate`, `profile_screen` ×2, `edit_profile_screen`, `card_collection_screen`, `ranking_cards`, `home_screen`, `anime_detail`, `calendar`, `tomo_service`, `firestore_service`, `delete_account_screen` | **own** | various |
+| `arcs_screen` ×3 (`widget.uid`) | **own** — reads its own `displayName` to stamp `authorName` onto a post/reply | `displayName` |
+| **`soulmatch_screen:53`** | **every user document in the collection** | `doc.id` and `displayName` only |
+
+**Exactly one cross-user reader exists**, and it needs exactly two things: the document id
+and `displayName`. Nothing else in the app reads another user's document.
+
+*(Soulmatch's implementation is separately poor and worth its own item: it resolves an
+8-character friend code by downloading **every user document** and deriving each code
+client-side. At 1,000 users that is 1,000 document reads per lookup, and today it pulls
+every user's `email` and `fcmToken` onto the device to do it. `users/{friendUid}/animeList`
+is also read, but that is governed by the `animeList` rule, which 5a does not touch.)*
+
+### Two constraints that decide this
+
+**1. Firestore rules cannot project fields.** Read access is all-or-nothing per document.
+There is no rule that says "any signed-in user may read `displayName` but not `email`". That
+is precisely why the public/private split is the only real answer rather than a nicety — it
+is the *only* mechanism Firestore offers.
+
+**2. `fcmToken` cannot be moved today.** The obvious fix — relocate the token to an
+owner-write / nobody-read subcollection, since only the Admin SDK ever needs to read it — is
+blocked. `functions/index.js:48` reads `doc.data()?.fcmToken` straight off the user
+document and `:56` clears it there. Moving the field means changing the function, which
+means a deploy, which `aruku` currently blocks (§5-E). If the client stopped writing the
+token to the user document before that function shipped, **push notifications would stop
+entirely.**
+
+So the brief's absolute — *"`fcmToken` should never be readable by another user under any
+rule"* — **cannot be fully satisfied until a functions deploy is possible.** That is worth
+stating plainly rather than quietly shipping something that half-meets it.
+
+### The three shapes
+
+| | Rule | Closes unauthenticated leak | `email`/`fcmToken` hidden from other users | Client cost | Ships today |
+|---|---|---|---|---|---|
+| **A** | `if request.auth != null` | ✅ | ❌ still readable by any signed-in user | **none** | ✅ |
+| **B** | `if request.auth.uid == userId` | ✅ | ✅ | **breaks soulmatch** (a reachable feature — [social_screen.dart:185](lib/features/social/social_screen.dart#L185)) | ✅ |
+| **C** | owner-only + public profile split | ✅ | ✅ | moderate — see below | ❌ **blocked** |
+
+**Cost of C**, since the brief asked for it specifically:
+
+- A public document per user (`users/{uid}/public/profile`, or top-level `publicProfiles/{uid}`)
+  carrying `displayName`, avatar fields, founder badge and stats.
+- **Mirror writes at four sites** — `onboarding_screen`, `edit_profile_screen`,
+  `profile_screen` (avatar prefs), and the founder claim — every place that currently writes
+  a field the public document would need.
+- **Rewrite soulmatch's lookup** against the public collection. Worth doing regardless.
+- **A backfill for existing users**, which needs either a Cloud Function or manual console
+  work — and the function route is deploy-blocked.
+- Roughly 100–150 lines across five or six files, *plus* the migration.
+
+C is not large because the code is hard. It is blocked because **two of its parts — the
+backfill and the `fcmToken` relocation — both require a deploy that does not currently
+work.** That is the finding, and it is why C cannot be this batch regardless of appetite.
+
+### Recommendation
+
+**A now, C scheduled behind the deploy path.** The brief pre-authorises this ("if it's
+large, we do the `request.auth != null` fix now… and that's a perfectly good outcome"), and
+it is the right call for a reason the brief could not have known: C is not merely large, it
+is gated on the same blocker as §5-F.
+
+A is a strict improvement with no regression — every reader above keeps working, including
+soulmatch — and it changes the audience for `email` and `fcmToken` from *anyone on the
+internet, unauthenticated* to *someone who has signed up*. That is a real reduction, not a
+cosmetic one.
+
+**B is the honest alternative and is genuinely available**: it satisfies the `fcmToken`
+absolute today, at the cost of breaking one reachable feature until C lands. That is a
+product trade rather than a technical one, so it is not mine to make — but if the leak is
+judged severe enough to accept a broken screen, B ships as readily as A.
+
+**What A leaves open, explicitly:** any signed-up account can still read every user's
+`email` and `fcmToken`. This is a real residual, it contradicts the stated absolute, and it
+should be tracked as open rather than considered closed by 5a.
+
+---
+
 ## 7. Dependencies (`flutter pub outdated`) — flagging only
 
 Direct dependencies with a newer major available. **Per the brief, I propose no upgrades
