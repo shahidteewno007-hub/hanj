@@ -301,6 +301,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
               // ── Profile Hero Card ────────────────────────
               SliverToBoxAdapter(
+                key: const ValueKey('profile-header'),
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
                   child: GestureDetector(
@@ -419,14 +420,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
               // Until status is known, hold the card's footprint so it fills
               // in rather than appearing and pushing everything below it down.
               if (!_founderResolved)
-                const SliverToBoxAdapter(child: FounderCardPlaceholder())
+                const SliverToBoxAdapter(
+                  key: ValueKey('profile-founder'),
+                  child: FounderCardPlaceholder(),
+                )
               else if (_founderStatus.isFounder)
                 SliverToBoxAdapter(
+                  key: const ValueKey('profile-founder'),
                   child: FounderCard(status: _founderStatus),
                 ),
 
               // ── Collection Hero Card ─────────────────────
               SliverToBoxAdapter(
+                key: const ValueKey('profile-collection'),
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
                   child: Container(
@@ -543,6 +549,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
               // ── Stat tiles ───────────────────────────────
               SliverToBoxAdapter(
+                key: const ValueKey('profile-section-a'),
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
                   child: Row(
@@ -571,6 +578,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               ),
               SliverToBoxAdapter(
+                key: const ValueKey('profile-section-b'),
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
                   child: Row(
@@ -601,6 +609,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
               // ── Hanj Cards ───────────────────────────────
               SliverToBoxAdapter(
+                key: const ValueKey('profile-section-c'),
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
                   child: _HanjCardsBanner(
@@ -612,6 +621,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
               // ── Cadre ────────────────────────────────────
               SliverToBoxAdapter(
+                key: const ValueKey('profile-section-d'),
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
                   child: _CadreBanner(
@@ -624,6 +634,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               // ── Anime Taste Profile ──────────────────────
               if (totalAnime > 0)
                 const SliverToBoxAdapter(
+                  key: ValueKey('profile-stats-header'),
                   child: Padding(
                     padding: EdgeInsets.fromLTRB(20, 16, 20, 0),
                     child: TasteProfileCard(),
@@ -633,6 +644,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               // ── By Status bar ────────────────────────────
               if (totalAnime > 0)
                 SliverToBoxAdapter(
+                  key: const ValueKey('profile-stats'),
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
                     child: _StatusBreakdown(
@@ -648,6 +660,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               // ── Top Genres ───────────────────────────────
               if (topGenres.isNotEmpty)
                 SliverToBoxAdapter(
+                  key: const ValueKey('profile-genres'),
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
                     child: Container(

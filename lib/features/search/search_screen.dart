@@ -393,7 +393,10 @@ class _SearchScreenState extends State<SearchScreen>
         mainAxisSpacing: Responsive.isMobile(context) ? 10 : 12,
       ),
       itemCount: _results.length,
-      itemBuilder: (_, i) => _AnimeCard(anime: _results[i]),
+      itemBuilder: (_, i) =>
+          // Keyed by media id: _results is replaced wholesale on every query,
+          // so index matching would leave a card's state on a different anime.
+          _AnimeCard(key: ValueKey(_results[i].id), anime: _results[i]),
     );
   }
 
@@ -799,7 +802,7 @@ class _FilterPill extends StatelessWidget {
 
 class _AnimeCard extends StatelessWidget {
   final Anime anime;
-  const _AnimeCard({required this.anime});
+  const _AnimeCard({super.key, required this.anime});
 
   @override
   Widget build(BuildContext context) {

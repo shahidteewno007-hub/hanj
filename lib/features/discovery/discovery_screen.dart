@@ -415,7 +415,9 @@ class _FilteredAnimeTabState extends State<_FilteredAnimeTab>
                       itemCount: _animeList.length,
                       itemBuilder: (context, index) {
                         // Featured first item spans 2 columns if top rated
-                        return _AnimeCard(anime: _animeList[index]);
+                        return _AnimeCard(
+                            key: ValueKey(_animeList[index].id),
+                            anime: _animeList[index]);
                       },
                     ),
         ),
@@ -823,7 +825,12 @@ class _SeasonalHubState extends State<_SeasonalHub>
             physics: const NeverScrollableScrollPhysics(),
             padding: const EdgeInsets.symmetric(horizontal: 16),
             itemCount: math.min(activeList.length, 10),
+            // Keyed by media id: activeList swaps wholesale when _showNext
+            // toggles between this season and next. _HypeMeterRowState owns an
+            // AnimationController and an _expanded flag, so index matching
+            // leaves a row expanded (and mid-animation) over a different anime.
             itemBuilder: (ctx, i) => _HypeMeterRow(
+              key: ValueKey(activeList[i].id),
               anime: activeList[i],
               rank: i + 1,
               accentColor: _showNext ? accentNxt : accentCur,
@@ -1198,7 +1205,7 @@ class _HypeMeterRow extends StatefulWidget {
   final int rank;
   final Color accentColor;
 
-  const _HypeMeterRow({required this.anime, required this.rank, required this.accentColor});
+  const _HypeMeterRow({super.key, required this.anime, required this.rank, required this.accentColor});
 
   @override
   State<_HypeMeterRow> createState() => _HypeMeterRowState();
@@ -1536,7 +1543,7 @@ class _SeasonalAnime {
 class _AnimeCard extends StatefulWidget {
   final Anime anime;
 
-  const _AnimeCard({required this.anime});
+  const _AnimeCard({super.key, required this.anime});
 
   @override
   State<_AnimeCard> createState() => _AnimeCardState();
