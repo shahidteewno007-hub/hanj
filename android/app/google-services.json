@@ -1,0 +1,55 @@
+{
+  "project_info": {
+    "project_number": "572595796065",
+    "project_id": "anime-tracker-275cc",
+    "storage_bucket": "anime-tracker-275cc.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:572595796065:android:0e7db48b66c03266fd5220",
+        "android_client_info": {
+          "package_name": "com.anitrack.anime_tracker"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "572595796065-e218ld9a6t6hs4k36noigkbj2k5psa0n.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.anitrack.anime_tracker",
+            "certificate_hash": "6880cc5973b5a966575a27d685029da3d14e45fb"
+          }
+        },
+        {
+          "client_id": "572595796065-vpkp5qnnrqm681t8f8vtts0d5h17cese.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.anitrack.anime_tracker",
+            "certificate_hash": "d7782badbad298b02993acc43892bcb9f4bb697e"
+          }
+        },
+        {
+          "client_id": "572595796065-gu6s6tq1hv5s1rhp25bfegqateqlgo6o.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBi_acyTQLUHLj4xvhjuBPlUZZZazXQY1U"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "572595796065-gu6s6tq1hv5s1rhp25bfegqateqlgo6o.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

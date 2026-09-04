@@ -1,0 +1,76 @@
+# ---------------------------------------------------------------
+# Flutter / Dart / Pub
+# ---------------------------------------------------------------
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+/build/
+**/doc/api/
+app.*.symbols
+app.*.map.json
+migrate_working_dir/
+
+# ---------------------------------------------------------------
+# Editors and OS
+# ---------------------------------------------------------------
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.history
+.DS_Store
+Thumbs.db
+*.swp
+*.log
+
+# ---------------------------------------------------------------
+# Android
+# ---------------------------------------------------------------
+/android/app/debug
+/android/app/profile
+/android/app/release
+/android/.gradle/
+/android/local.properties
+/android/key.properties
+
+# ---------------------------------------------------------------
+# Firebase Cloud Functions
+# This is the important one. node_modules holds tens of thousands
+# of files and must never be committed — it is rebuilt from
+# package.json with `npm install`.
+# ---------------------------------------------------------------
+functions/node_modules/
+functions/.env
+functions/*.log
+.firebase/
+firebase-debug.log
+firestore-debug.log
+database-debug.log
+pubsub-debug.log
+ui-debug.log
+
+# ---------------------------------------------------------------
+# Secrets — never commit these, private repo or not
+# ---------------------------------------------------------------
+*.jks
+*.keystore
+**/service-account*.json
+**/*serviceAccount*.json
+*.pem
+.env
+.env.*
+
+# ---------------------------------------------------------------
+# Recovery archive copies
+# These belong outside the project folder entirely, but this is a
+# safety net in case one is still sitting in the tree.
+# ---------------------------------------------------------------
+lib_old/
+lib_broken/
+lib_backup/
+hanj_compiling_version/
+hanj_lib_recovered/
+*.zip
