@@ -463,8 +463,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           GestureDetector(
                             onTap: () => Navigator.push(context,
                                 MaterialPageRoute(builder: (_) => const CardCollectionScreen())),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(6),
+                            // Square corners: HanjCard is square by design
+                            // (_CardShell paints square, HanjCard clips with
+                            // ClipRect). This was the only place one got
+                            // rounded off.
+                            child: ClipRect(
                               child: SizedBox(
                                 width:  hc.HanjCard.kWidth  * 0.52,
                                 height: hc.HanjCard.kHeight * 0.52,
