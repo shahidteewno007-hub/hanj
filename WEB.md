@@ -14,21 +14,22 @@ Phase two (the desktop layout proposal) is not started and awaits your review of
 | | |
 |---|---|
 | **Measured** | Bundle and transfer sizes (release build, raw + gzip); every hardcoded dimension in `lib/`; routing and URL behaviour from source; the Google sign-in failure, **verified against the installed plugin source**; `web/` contents; service worker behaviour; font family count |
-| **Rendered** | Flutter boots and paints in headless Chrome at all five widths — but see below |
-| **Could NOT measure** | Any signed-in screen at any width; real TTI; iOS Safari; browser back; scroll feel |
+| **Observed** | **25 signed-in screenshots** — home, discover, pulse, list, profile at 390 / 768 / 1024 / 1440 / 1920, captured in Chrome DevTools (§1.3–1.5) |
+| **Could NOT measure** | Real TTI; iOS Safari; browser back; scroll feel; any screen outside the five captured |
 
-**Why the width screenshots are not in this report.** I served the release build locally and
-drove headless Chrome at 390 / 768 / 1024 / 1440 / 1920. All five rendered the app
-background `#0D0B09` and nothing else. That is `AuthWrapper`'s waiting branch
-([main.dart:236](lib/main.dart#L236)) — Flutter booted and painted, but the app never left
-the auth-resolution state, because `--virtual-time-budget` fast-forwards timers without
-waiting for the Firebase network round-trip. Raising the budget to 90 s changed nothing
-(byte-identical screenshot).
+**Update, 2026-09-04.** §1.3 and §1.4 were originally *Suspected*, written from layout code
+because headless Chrome could not get past `AuthWrapper`. **They have now been resolved
+against the screenshots** and are marked accordingly: stretch is confirmed and worse than
+predicted, the "broken" category came back empty, and one prediction was wrong. §1.5 records
+what the captures still could not settle. Everything below §2 is unchanged.
 
-**And even with a working headless browser I could not have got further: Google sign-in is
-broken on web (§2.3), and I have no credentials.** So every width finding below is from
-reading layout code, not from seeing it. **Marked *Suspected* throughout.** Confirming them
-needs a signed-in browser session, which is yours to run — commands in §7.
+*For the record on the headless attempt, since it may come up again:* serving the release
+build and driving headless Chrome at all five widths produced only the app background
+`#0D0B09`. That is `AuthWrapper`'s waiting branch ([main.dart:236](lib/main.dart#L236)) —
+Flutter booted and painted, but never left auth resolution, because `--virtual-time-budget`
+fast-forwards timers without waiting for the Firebase network round-trip. A 90 s budget gave
+a byte-identical screenshot. Headless is not a route to signed-in captures here; a real
+browser session is.
 
 **I cannot test iOS Safari at all.** No iOS device, and Safari does not exist on Windows.
 Every iOS statement here is derived from documented platform behaviour and from this
@@ -89,35 +90,87 @@ Two things follow, and both matter for phase two:
   1024**, and `getCardWidth` caps at 160. Adopting it unchanged would make a 1920 px screen a
   slightly wider tablet. The breakpoints are reusable; the values need rethinking.
 
-### 1.3 Stretch — *Suspected*
+### 1.3 Stretch — **CONFIRMED** against screenshots (2026-09-04)
 
-With 8 `MediaQuery` reads and 2 `LayoutBuilder`s across ~25 screens, the app is
-width-unaware by construction. Expected at ≥ 1024 px, in descending confidence:
+Resolved against `screenshots/` — home, discover, pulse, list, profile at 390 / 768 / 1024 /
+1440 / 1920, signed in, captured in Chrome DevTools.
 
-- **Body text spanning full viewport.** The synopsis on the detail screen and every arc post
-  body are unconstrained `Text` in a full-width `Column`. At 1920 px that is a ~1900 px
-  measure — three to four times a readable line length.
-- **Two-column grids becoming two enormous columns.** The card collection grid is
-  `crossAxisCount: 2` with `childAspectRatio: 200/300`
-  ([card_collection_screen.dart:288-292](lib/features/cards/card_collection_screen.dart#L288)).
-  At 1920 px each cell is ~950 px wide, so each card renders ~950 × 1425. The aspect ratio
-  holds; the scale is absurd.
-- **Horizontal rails with 140 px cards** leaving most of the width empty while the rail
-  scrolls.
-- **The 5-tab `NavigationBar`** stretched across the full width with five icons marooned in
-  the middle.
+**Confirmed, and worse than predicted.** Every captured screen stretches. The pattern is
+consistent: a fixed-size element pinned to the left, a control pinned to the right, and
+hundreds of pixels of dead space between them.
 
-### 1.4 Broken — *Suspected, and the least certain section here*
+| Screen | What stretches at 1920 |
+|---|---|
+| **Home** | The `TONIGHT'S DROP` hero: poster stays ~150 px while the card spans ~1,900 px, leaving ~1,700 px empty beside the Continue button. The "Find your next anime" banner: Discover button flung to the far right. **Trending rows: the bookmark icon sits ~1,800 px from the title it belongs to.** |
+| **Discover** | Nine "Hidden Gems / Hype Machine / …" category cards, each full-width with an icon at the far left and a chevron at the far right. **~90% of each card is empty.** The worst case in the set. |
+| **Profile** | Founder card full-width with the `#6` watermark pushed to the far right; Collection card the same; Hanj Cards and Cadre rows the same. |
+| **List** | Search field spans the full width. |
+| **Pulse** | Tab strip and empty state, both anchored left in a full-width column. |
+| **All five** | The 5-tab `NavigationBar` spread across the full width, exactly as predicted. |
 
-I have no rendered evidence of overflow. Flutter overflow errors are runtime and only appear
-when a fixed-height box cannot fit its children — most likely at **390 px and below**, not at
-desktop widths, and most likely where fixed heights meet text that wraps to more lines than
-the author assumed (`height: 196` poster cards with two-line titles; the 62 px fixed name
-block in `card_share.dart`, which `PERF.md` §5-A already flagged as having only 22 px of
-slack in a 604 px canvas).
+**Two-column grid → two enormous columns: CONFIRMED**, though not where I expected. Profile's
+stat tiles (`EPISODES` / `AVG RATING`, `WATCH TIME` / `COMPLETED`) are a real 2-column grid,
+and at 1920 px each tile is **~965 px wide** to hold the number `0`. The card collection grid
+was not captured — it sits behind the Hanj Cards row — so that specific instance stays
+unverified, but the pattern is proven.
 
-**Do not treat this section as findings.** It is a list of where to look first when you run
-the widths yourself.
+**One prediction was wrong.** I expected the dominant failure to be *horizontal rails of
+140 px cards* leaving width empty. On the captured Home viewport there are no rails — the
+content is a **full-width vertical list**. The `width: 140` poster cards are below the fold or
+on other rows. The real failure mode is the full-width row with a fixed thumbnail at one end
+and an icon at the other, which is a different fix: constrain the container, not the card.
+
+**Width does help the content, which is the encouraging part.** At 390 px the trending titles
+truncate ("That Time I Got Reincarn…"); at 768 px most fit; at 1920 px all of them fit. The
+app is not badly designed for width — it is simply unconstrained. A max-width wrapper plus a
+column layout at the top end would fix most of what these screenshots show.
+
+**No breakpoint response, confirmed twice over.** Visually, 390 / 768 / 1920 are structurally
+identical, only wider. In code, four of the five captured screens have **zero** width-aware
+references, and Discover has one:
+
+| Screen | width-aware references |
+|---|---|
+| home_screen | 0 |
+| discovery_screen | 1 |
+| pulse_screen | 0 |
+| my_list_screen | 0 |
+| profile_screen | 0 |
+
+The only `MediaQuery` uses in these five files are `padding.top` and `removePadding` — safe
+area, not width.
+
+### 1.4 Broken — **resolved: nothing found**
+
+**No overflow, no clipped content, no unreachable control on any of the 25 captures**,
+including at 390 px where I thought it most likely. The `height: 196` poster cards and the
+fixed-height rows all hold. This category is empty for these five screens.
+
+One thing that looked like a finding and is not: at 390 px the Pulse tab strip shows
+`UPCOMING` cut off at the viewport edge. That is **by design** — `pulse_screen.dart:100-103`
+sets `isScrollable: true` with `tabAlignment: TabAlignment.start`, so the strip scrolls
+horizontally, the same pattern `CLAUDE.md` records for the card-collection rarity tabs.
+Verified in code before reporting it. Not a bug.
+
+Still unverified, because the screens were not captured: overflow risk in the 62 px fixed name
+block in `card_share.dart` (`PERF.md` §5-A), and on the anime detail screen.
+
+### 1.5 What the screenshots could not resolve
+
+Recorded so this is not mistaken for full coverage.
+
+- **The captures use a different account from the Android device** — "Shahid", Founder #6,
+  **0 titles**, joined 2026-09-04, against Founder #1 with 165 titles on the CPH2573. So List
+  and Profile render empty states. **List-with-content stretch is unverified**, which matters
+  because a populated list is the screen most likely to benefit from a desktop two-pane.
+  Home still shows real content because trending data is global rather than per-user.
+- **Body-text line length is unverified.** The detail-screen synopsis and arc post bodies are
+  the cases I flagged as worst, and neither screen is in the set. The code position is
+  unchanged: both are unconstrained `Text` in a full-width `Column`.
+- **The card collection grid is unverified** (behind the Hanj Cards row).
+- **A rendering artefact, not a bug:** the 390 px and 768 px captures show faint nav icons
+  near the top of the page. That is DevTools compositing the fixed bottom bar into a
+  full-page screenshot, not the app drawing the bar twice.
 
 ---
 
@@ -461,6 +514,12 @@ notification permission can be granted from inside the installed PWA (§4).
    iOS, episode reminders cannot work at all without an install flow that does not exist.
 5. **The responsive layer already exists and is unused** (§1.2). One screen imports it. That
    is the phase-two starting point, though its values cap at tablet width.
+
+**And, from the screenshots (§1.3):** every captured screen stretches, four of the five have
+*zero* width-aware code, and nothing overflows — so this is an additive layout problem, not a
+repair job. The app is not badly built for width; it is unconstrained. A max-width wrapper and
+a column layout at the top end would fix most of what the captures show, which is a better
+starting position than the code alone suggested.
 
 Nothing in this file has been acted on. Phase two — the desktop layout proposal — awaits your
 review.
