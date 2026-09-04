@@ -37,6 +37,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   // Founder status
   FounderStatus _founderStatus = const FounderStatus(isFounder: false);
+  // False until founder status is known (from disk or Firestore). While false
+  // the card's footprint is reserved, so it fills in instead of popping in.
+  bool _founderResolved = false;
   Map<String, dynamic>? _featuredCard;
 
   static const _avatarGradients = [
@@ -86,15 +89,38 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   /// Claims a founder number for the first 50 users (idempotent — only ever
   /// claims once per user) and loads the resulting status for display.
+  ///
+  /// Founder status is immutable once granted, so a cached "is a founder"
+  /// answer is authoritative forever: it paints on the first frame and no
+  /// network work is needed at all. Anyone not yet known to be a founder
+  /// still pays for the claim transaction plus the read, because they may
+  /// still be eligible for one of the remaining slots.
   Future<void> _resolveFounderStatus() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) return;
+    if (uid == null) {
+      if (mounted) setState(() => _founderResolved = true);
+      return;
+    }
 
-    // Attempt to claim (no-op if already a founder or slots are full).
+    // 1. Disk first. A granted status can never change, so this is final.
+    final cached = await FounderService.instance.getCachedStatus();
+    if (cached != null && mounted) {
+      setState(() {
+        _founderStatus   = cached;
+        _founderResolved = true;
+      });
+      if (cached.isFounder) return; // Immutable — nothing left to check.
+    }
+
+    // 2. Not known to be a founder. Attempt the claim (a no-op if they
+    //    already hold a number or slots are full), then re-read.
     await FounderService.instance.claimFounderNumber(uid);
-
     final status = await FounderService.instance.getStatus(uid);
-    if (mounted) setState(() => _founderStatus = status);
+    if (!mounted) return;
+    setState(() {
+      _founderStatus   = status;
+      _founderResolved = true;
+    });
   }
 
   String _formatWatchTime(int totalMinutes) {
@@ -390,7 +416,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
 
               // ── Founder Card (first 50 users only) ───────
-              if (_founderStatus.isFounder)
+              // Until status is known, hold the card's footprint so it fills
+              // in rather than appearing and pushing everything below it down.
+              if (!_founderResolved)
+                const SliverToBoxAdapter(child: FounderCardPlaceholder())
+              else if (_founderStatus.isFounder)
                 SliverToBoxAdapter(
                   child: FounderCard(status: _founderStatus),
                 ),
