@@ -62,11 +62,16 @@ Future<void> main() async {
     debugPrint('Connectivity error: $e');
   }
 
-  try {
-    await NotificationService.instance.init();
-  } catch (e) {
+  // Deliberately NOT awaited. init() opens the OS notification permission
+  // dialog and does an FCM token round trip — measured at ~1.0 s on device,
+  // the single largest phase before runApp() — and the first frame needs none
+  // of it. Starting it here lets it run alongside runApp() instead of in front
+  // of it. The catchError keeps failures handled: an unhandled async error
+  // would be reported to Crashlytics as fatal (see PlatformDispatcher.onError
+  // above), which is exactly what the old try/catch was preventing.
+  NotificationService.instance.init().catchError((Object e) {
     debugPrint('Notification error: $e');
-  }
+  });
 
   FirebaseMessaging.onMessage.listen((message) {
     final type  = message.data['type'] ?? '';

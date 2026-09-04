@@ -154,6 +154,88 @@ class FounderCard extends StatelessWidget {
   }
 }
 
+/// Skeleton shown in the founder card's footprint while founder status is
+/// still being resolved for the first time, so the real card fills in rather
+/// than appearing from nothing and shoving the rest of the profile down.
+///
+/// Mirrors [FounderCard]'s chrome (same margin, radius, gradient) and the
+/// shape of its content rows, so the reserved height lands within a few px of
+/// the real card. It is only ever seen once per install — after the first
+/// successful resolve, [FounderService.getCachedStatus] answers from disk on
+/// the first frame and this never renders again.
+class FounderCardPlaceholder extends StatelessWidget {
+  const FounderCardPlaceholder({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF1A1614), Color(0xFF0E0C0B)],
+        ),
+        border: Border.all(
+          // Dimmer than the real card's 0.45 so it reads as pending, not live.
+          color: AppTheme.primary.withValues(alpha: 0.18),
+          width: 1.2,
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(22),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header row — premium icon, 'FOUNDER', 'No. xx / 50'
+            Row(
+              children: [
+                _block(20, 20, radius: 4),
+                const SizedBox(width: 8),
+                _block(78, 12),
+                const Spacer(),
+                _block(64, 11),
+              ],
+            ),
+            const SizedBox(height: 18),
+            _block(210, 34), // 'Founding Member' — 26px serif
+            const SizedBox(height: 6),
+            _block(240, 17), // 'Among the first fifty members of Hanj.'
+            const SizedBox(height: 4),
+            _block(150, 13), // 'Joined MMM D, YYYY'
+            const SizedBox(height: 20),
+            Divider(color: AppTheme.primary.withValues(alpha: 0.15), height: 1),
+            const SizedBox(height: 16),
+            _perkRow(),
+            const SizedBox(height: 10),
+            _perkRow(),
+            const SizedBox(height: 10),
+            _perkRow(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _perkRow() => Row(
+        children: [
+          _block(16, 16, radius: 4),
+          const SizedBox(width: 10),
+          _block(180, 17),
+        ],
+      );
+
+  static Widget _block(double w, double h, {double radius = 3}) => Container(
+        width: w,
+        height: h,
+        decoration: BoxDecoration(
+          color: AppTheme.textMuted.withValues(alpha: 0.10),
+          borderRadius: BorderRadius.circular(radius),
+        ),
+      );
+}
+
 /// Compact founder badge (a small pill) for showing inline, e.g. next to
 /// the user's name on their profile header.
 class FounderBadge extends StatelessWidget {

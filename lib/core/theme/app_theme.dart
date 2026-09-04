@@ -71,7 +71,7 @@ class AppTheme {
     Color color = textPrimary,
     double? height,
   }) =>
-      GoogleFonts.inter(
+      GoogleFonts.dmSans(
         fontSize: fontSize,
         fontWeight: weight,
         color: color,
@@ -108,17 +108,17 @@ class AppTheme {
         headlineSmall:  GoogleFonts.playfairDisplay(
             color: textPrimary, fontSize: 20, fontWeight: FontWeight.w600),
         // Sans body
-        titleLarge:  GoogleFonts.inter(
+        titleLarge:  GoogleFonts.dmSans(
             color: textPrimary,   fontSize: 17, fontWeight: FontWeight.w600),
-        titleMedium: GoogleFonts.inter(
+        titleMedium: GoogleFonts.dmSans(
             color: textPrimary,   fontSize: 15, fontWeight: FontWeight.w500),
-        titleSmall:  GoogleFonts.inter(
+        titleSmall:  GoogleFonts.dmSans(
             color: textSecondary, fontSize: 13, fontWeight: FontWeight.w500),
-        bodyLarge:   GoogleFonts.inter(
+        bodyLarge:   GoogleFonts.dmSans(
             color: textPrimary,   fontSize: 16, height: 1.6),
-        bodyMedium:  GoogleFonts.inter(
+        bodyMedium:  GoogleFonts.dmSans(
             color: textSecondary, fontSize: 14, height: 1.5),
-        bodySmall:   GoogleFonts.inter(
+        bodySmall:   GoogleFonts.dmSans(
             color: textMuted,     fontSize: 12, height: 1.4),
         // Mono labels
         labelLarge:  GoogleFonts.spaceGrotesk(
@@ -204,8 +204,8 @@ class AppTheme {
           borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: error),
         ),
-        hintStyle: GoogleFonts.inter(color: textMuted, fontSize: 14),
-        labelStyle: GoogleFonts.inter(color: textSecondary),
+        hintStyle: GoogleFonts.dmSans(color: textMuted, fontSize: 14),
+        labelStyle: GoogleFonts.dmSans(color: textSecondary),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
@@ -214,7 +214,7 @@ class AppTheme {
           minimumSize: const Size(double.infinity, 52),
           shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(30)),
-          textStyle: GoogleFonts.inter(
+          textStyle: GoogleFonts.dmSans(
               fontSize: 15, fontWeight: FontWeight.w600),
           elevation: 0,
         ),
@@ -226,21 +226,21 @@ class AppTheme {
           minimumSize: const Size(double.infinity, 52),
           shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(30)),
-          textStyle: GoogleFonts.inter(
+          textStyle: GoogleFonts.dmSans(
               fontSize: 15, fontWeight: FontWeight.w500),
         ),
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
           foregroundColor: primary,
-          textStyle: GoogleFonts.inter(
+          textStyle: GoogleFonts.dmSans(
               fontSize: 14, fontWeight: FontWeight.w600),
         ),
       ),
       chipTheme: ChipThemeData(
         backgroundColor: surfaceLight,
         selectedColor: primary,
-        labelStyle: GoogleFonts.inter(color: textSecondary, fontSize: 13),
+        labelStyle: GoogleFonts.dmSans(color: textSecondary, fontSize: 13),
         side: const BorderSide(color: border),
         shape: const StadiumBorder(),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -256,11 +256,11 @@ class AppTheme {
         titleTextStyle: GoogleFonts.playfairDisplay(
             color: textPrimary, fontSize: 20, fontWeight: FontWeight.w600),
         contentTextStyle:
-            GoogleFonts.inter(color: textSecondary, fontSize: 14),
+            GoogleFonts.dmSans(color: textSecondary, fontSize: 14),
       ),
       snackBarTheme: SnackBarThemeData(
         backgroundColor: surfaceMid,
-        contentTextStyle: GoogleFonts.inter(color: textPrimary, fontSize: 14),
+        contentTextStyle: GoogleFonts.dmSans(color: textPrimary, fontSize: 14),
         shape:
             RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         behavior: SnackBarBehavior.floating,
@@ -298,12 +298,12 @@ class AppTheme {
         headlineLarge: GoogleFonts.playfairDisplay(color: lightText, fontSize: 32, fontWeight: FontWeight.w700),
         headlineMedium: GoogleFonts.playfairDisplay(color: lightText, fontSize: 24, fontWeight: FontWeight.w600),
         headlineSmall:  GoogleFonts.playfairDisplay(color: lightText, fontSize: 20, fontWeight: FontWeight.w600),
-        titleLarge:  GoogleFonts.inter(color: lightText,    fontSize: 17, fontWeight: FontWeight.w600),
-        titleMedium: GoogleFonts.inter(color: lightText,    fontSize: 15, fontWeight: FontWeight.w500),
-        titleSmall:  GoogleFonts.inter(color: lightTextSec, fontSize: 13, fontWeight: FontWeight.w500),
-        bodyLarge:   GoogleFonts.inter(color: lightText,    fontSize: 16, height: 1.6),
-        bodyMedium:  GoogleFonts.inter(color: lightTextSec, fontSize: 14, height: 1.5),
-        bodySmall:   GoogleFonts.inter(color: lightTextMut, fontSize: 12, height: 1.4),
+        titleLarge:  GoogleFonts.dmSans(color: lightText,    fontSize: 17, fontWeight: FontWeight.w600),
+        titleMedium: GoogleFonts.dmSans(color: lightText,    fontSize: 15, fontWeight: FontWeight.w500),
+        titleSmall:  GoogleFonts.dmSans(color: lightTextSec, fontSize: 13, fontWeight: FontWeight.w500),
+        bodyLarge:   GoogleFonts.dmSans(color: lightText,    fontSize: 16, height: 1.6),
+        bodyMedium:  GoogleFonts.dmSans(color: lightTextSec, fontSize: 14, height: 1.5),
+        bodySmall:   GoogleFonts.dmSans(color: lightTextMut, fontSize: 12, height: 1.4),
         labelLarge:  GoogleFonts.spaceGrotesk(color: lightTextSec, fontSize: 12, fontWeight: FontWeight.w500, letterSpacing: 0.8),
         labelMedium: GoogleFonts.spaceGrotesk(color: lightTextMut, fontSize: 11, letterSpacing: 0.6),
         labelSmall:  GoogleFonts.spaceGrotesk(color: lightTextMut, fontSize: 10, letterSpacing: 1.0),
@@ -370,8 +370,8 @@ class AppTheme {
           borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: error),
         ),
-        hintStyle: GoogleFonts.inter(color: lightTextMut, fontSize: 14),
-        labelStyle: GoogleFonts.inter(color: lightTextSec),
+        hintStyle: GoogleFonts.dmSans(color: lightTextMut, fontSize: 14),
+        labelStyle: GoogleFonts.dmSans(color: lightTextSec),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
@@ -379,7 +379,7 @@ class AppTheme {
           foregroundColor: Colors.white,
           minimumSize: const Size(double.infinity, 52),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-          textStyle: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w600),
+          textStyle: GoogleFonts.dmSans(fontSize: 15, fontWeight: FontWeight.w600),
           elevation: 0,
         ),
       ),
@@ -389,19 +389,19 @@ class AppTheme {
           side: const BorderSide(color: lightBorder),
           minimumSize: const Size(double.infinity, 52),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-          textStyle: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w500),
+          textStyle: GoogleFonts.dmSans(fontSize: 15, fontWeight: FontWeight.w500),
         ),
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
           foregroundColor: primary,
-          textStyle: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600),
+          textStyle: GoogleFonts.dmSans(fontSize: 14, fontWeight: FontWeight.w600),
         ),
       ),
       chipTheme: ChipThemeData(
         backgroundColor: lightSurfaceLight,
         selectedColor: primary.withValues(alpha: 0.15),
-        labelStyle: GoogleFonts.inter(color: lightTextSec, fontSize: 13),
+        labelStyle: GoogleFonts.dmSans(color: lightTextSec, fontSize: 13),
         side: const BorderSide(color: lightBorder),
         shape: const StadiumBorder(),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -416,11 +416,11 @@ class AppTheme {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         titleTextStyle: GoogleFonts.playfairDisplay(
             color: lightText, fontSize: 20, fontWeight: FontWeight.w600),
-        contentTextStyle: GoogleFonts.inter(color: lightTextSec, fontSize: 14),
+        contentTextStyle: GoogleFonts.dmSans(color: lightTextSec, fontSize: 14),
       ),
       snackBarTheme: SnackBarThemeData(
         backgroundColor: lightText,
-        contentTextStyle: GoogleFonts.inter(color: lightBg, fontSize: 14),
+        contentTextStyle: GoogleFonts.dmSans(color: lightBg, fontSize: 14),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         behavior: SnackBarBehavior.floating,
       ),

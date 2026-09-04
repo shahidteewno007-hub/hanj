@@ -591,7 +591,15 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
 
             // ── Upcoming This Season ─────────────────────────
+            // Keyed on purpose. The recommendation slivers above are inserted
+            // later, when _loadRecommendations finishes. Without a key, the
+            // sliver list is matched positionally — every entry is an unkeyed
+            // SliverToBoxAdapter, so canUpdate() returns true — and this
+            // sliver's element gets handed a recommendation row instead,
+            // unmounting UpcomingAnimeRow and remounting it further down. That
+            // cost a second identical AniList request on every Home load.
             const SliverToBoxAdapter(
+              key: ValueKey('upcoming-this-season'),
               child: Padding(
                 padding: EdgeInsets.only(top: 24),
                 child: UpcomingAnimeRow(),
