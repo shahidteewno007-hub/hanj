@@ -916,6 +916,90 @@ one, and the transaction is no longer the important part — the error handling 
 
 ---
 
+## 6c. Batch 4a — the key sweep (2026-09-04)
+
+Branch `fix/sliver-keys`. Swept every dynamic sliver and child list in `lib/features` and
+`lib/widgets` for the defect found on Home: children built from a collection, conditionally
+inserted, or reordered, matched positionally because `Element.canUpdate()` returns true for
+two widgets of the same `runtimeType` with null keys.
+
+**Method.** Rather than eyeball 159 loop/spread sites, I scoped it to the combination that
+can actually cause harm: **a child set that changes at runtime × a child that holds state.**
+Enumerated all 71 `StatefulWidget` classes, then found which are constructed inside an
+`itemBuilder` or a `.map()`. Stateless children were checked separately and are listed as
+not needing keys — an index match simply rebuilds them with the right data.
+
+### Fixed
+
+| Site | Set changes because | What went wrong | Key |
+|---|---|---|---|
+| [home_screen.dart:401](lib/features/home/home_screen.dart#L401) `_ContinueCard` | list is sorted by `lastWatched`; "+1 episode" reorders it | **wrong episode number shown, and written** — see below | `animeId` |
+| [home_screen.dart](lib/features/home/home_screen.dart#L256) sliver list, 13 entries | import banner dismissal removes a sliver near the top; recommendations arrive later | `TonightWatchCard`'s `AnimationController` and mood state remount; horizontal lists' scroll offsets swap between sections | section name |
+| [home_screen.dart:595](lib/features/home/home_screen.dart#L595) `_TrendingCard` (recommendation rows) | rows are rebuilt from `_recommendationRows` | `_hovered` carries to another title | `genre` + media id |
+| [profile_screen.dart](lib/features/profile/profile_screen.dart#L201) sliver list, 11 entries | the founder placeholder **disappears entirely** for a non-founder once status resolves; stats and genre slivers appear when the list stream delivers | everything below shifts by one, including the live `HanjCard` and `TasteProfileCard` | section name |
+| [discovery_screen.dart:831](lib/features/discovery/discovery_screen.dart#L831) `_HypeMeterRow` | `activeList` swaps wholesale when `_showNext` toggles season | row stays **expanded and mid-animation** over a different anime (`AnimationController` + `_expanded`) | media id |
+| [discovery_screen.dart:419](lib/features/discovery/discovery_screen.dart#L419) `_AnimeCard` | grid replaced on category change | `_hovered` on the wrong card | media id |
+| [search_screen.dart:399](lib/features/search/search_screen.dart#L399) `_AnimeCard` | results replaced on every query | state lands on a different result | media id |
+
+**The one that matters.** `_ContinueCard` is not a cosmetic case. `_ContinueCardState`
+holds `_current`, the episode number on the card, and its `didUpdateWidget` resyncs only
+when the incoming value differs from the **previous widget's** value:
+
+```dart
+if (incoming != previous) _current = incoming;
+```
+
+When two shows sit on the same episode, that comparison is false and the resync is skipped.
+Bump B from 5 to 6, the list reorders, and **A's card now reads episode 6** — persistently,
+not for a frame. Worse, `_bump` computes `next = _current + 1` from the displayed value, so
+tapping "+1" on that card writes **7** to A's document, silently skipping an episode.
+
+That is the "app is a bit glitchy sometimes" symptom the brief predicted, except it reaches
+Firestore.
+
+### Already correct — no change made
+
+- **[episode_discussion_screen.dart:278, 291](lib/features/episode_discussions/episode_discussion_screen.dart#L278)** —
+  comments and replies already carry `key: ValueKey(comment.id)` and `ValueKey(r.id)`, and
+  the list genuinely is sorted. This is the pattern the rest of the sweep copied.
+- **[anime_detail_screen.dart](lib/features/anime_detail/anime_detail_screen.dart#L677)** —
+  `_TabContent` carries `key: ValueKey(_selectedTab)`, deliberately forcing a remount on tab
+  change.
+- **Home's Upcoming sliver** — keyed in batch 2.
+
+### Checked, keys not needed — and why
+
+Recording these so nobody keys them defensively later.
+
+| Site | Why it is safe |
+|---|---|
+| `emotional_categories.dart:144` `_CategoryRow` | `_categories` is a **`const` list** — fixed at compile time, never filtered or reordered. The child holds real state (`_anime`, `_expanded`, `_hasFetched`) but the set cannot change, so index matching is stable permanently. |
+| `emotional_categories.dart:340` `_AnimeCard` | that row's `_anime` grows from empty exactly once when its fetch resolves. Appending never shifts existing indices, and it is not reordered afterwards. |
+| `staff_detail.dart:316, 436` and `studio_detail.dart:134` `HoverAnimeCard` | built from `_staffData!['staffMedia']`/`characterMedia`, set once after load. Neither screen has a tab, filter or sort (no `TabController`, no `_filter`), so the set never changes again. |
+| `anime_detail_screen.dart:1186` `_RelatedCard` | `_relatedAnime` is loaded once and never reordered. |
+| `anime_detail_screen.dart:2015` `_ZoomableImage` | `_galleryImages` is loaded once. |
+| `tomo_screen.dart:299` chat list | messages only ever append, and the typing bubble occupies the final index. Appending never shifts earlier indices. |
+| `card_collection_screen.dart:295` `_HanjCardTile` | the rarity filter **does** change `grid.length`, but the tile is a `StatelessWidget` with no controller — an index match rebuilds it correctly from `item`. Keys would be pure noise. |
+| `home_screen.dart:493` `_TrendingRow` | stateless. |
+| `my_list_screen.dart:169` slivers | three entries, no conditionals at sliver level. |
+| `anime_detail_screen.dart` hero column | its many conditionals produce `Text`/`Container` children, and the conditions depend on `anime`, which is fixed after load. |
+
+### Outstanding
+
+**The device re-verification the brief asked for is not done.** The CPH2573 disconnected
+part-way through the instrumented run, after the build succeeded but before the mount count
+was captured. `initState` instrumentation was added, then reverted; nothing was committed.
+
+There is strong indirect evidence the Home fix holds — batch 2 measured AniList requests
+going 3 → 2 on both cold load and tab return, which is only possible if `UpcomingAnimeRow`
+mounts once — but that predates this batch's additional keys, so it is not a substitute.
+
+To close it: reconnect the phone, add `debugPrint('PERFMOUNT UpcomingAnimeRow')` to
+`_UpcomingAnimeRowState.initState`, `flutter run --profile -d <id>`, and confirm one line
+per Home load rather than two.
+
+---
+
 ## 7. Dependencies (`flutter pub outdated`) — flagging only
 
 Direct dependencies with a newer major available. **Per the brief, I propose no upgrades
