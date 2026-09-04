@@ -680,6 +680,242 @@ client identifiers. Neither was touched.
 
 ---
 
+## 6b. `firestore.rules` — the audit S1-2 blocked, now run (2026-09-04)
+
+`firestore.rules` is now in the repo and `firebase.json` points at it, so the rules audit
+the brief asked for in phase one can finally be done against source rather than guesswork.
+**This section is report-only — no rule was changed.**
+
+It supersedes the parts of §6 that were written while the file was unavailable. Where a
+phase-one finding is now confirmed or refuted by the actual rules, that is called out.
+
+### R1 · 🔴 Every user document is world-readable, and they contain email addresses
+
+```
+match /users/{userId} {
+  allow read: if true;
+```
+
+`if true` is not "any signed-in user" — it is **unauthenticated**. Anyone who knows the
+project id can read every user document without an account.
+
+Those documents hold, from the writes in `lib/`: `email`, `displayName`, `username`,
+`fcmToken`, `avatarImageUrl`, `notifPrefs`, `isFounder`, `founderNumber`,
+`onboardingComplete`, `pinnedCards`. So this publishes **every user's email address and FCM
+registration token** to the open internet.
+
+The FCM token cannot be used to send pushes without the server key, but it is a stable
+per-device identifier. The email address needs no qualification — that is a personal-data
+leak in a shipped app.
+
+The same `allow read: if true` also applies to `users/{uid}/animeList`
+([:15](firestore.rules#L15)) and `users/{uid}/activity` ([:37](firestore.rules#L37)). Public
+watch history may well be intended for social profiles, but it is worth being deliberate
+about, and it does not need to extend to the parent document holding the email.
+
+**Fix direction:** at minimum `allow read: if request.auth != null`, and better, split the
+public-facing profile fields into their own document (or gate per-field via a function) so
+`email` and `fcmToken` are never in a readable path.
+
+### R2 · 🔴 Founder status is self-assignable — and a comment in the file says otherwise
+
+This confirms **S1-3**, and it is worse than "unenforceable in principle": the rule that is
+meant to prevent it does not.
+
+```
+allow update: if request.auth != null && request.auth.uid == userId && (
+  !('founderNumber' in resource.data)
+  || request.resource.data.founderNumber == resource.data.founderNumber
+);
+```
+
+The rule freezes `founderNumber` **only once it already exists**. On a document that does
+not yet have one, the first branch is true and the update is unconstrained — so any
+authenticated user can write `{isFounder: true, founderNumber: 1}` to their own document
+directly. Nothing requires `meta/founders` to have been read or incremented, nothing checks
+uniqueness, and `isFounder` and `founderJoinedAt` are never constrained at all.
+
+Lines 51–54 of the rules state:
+
+> *"It may only ever be incremented by exactly 1 and never past 50, which is what makes
+> client-side founder claiming safe — a tampered client cannot grant itself an arbitrary
+> number or reset the count."*
+
+**That claim is false.** The counter constraints are correct in themselves, but they only
+bind writes *to the counter*. A tampered client simply skips the counter and writes the
+badge onto its own user document. Worth correcting the comment as well as the rule, because
+it is the kind of comment that stops the next person from looking.
+
+**What the rule does get right:** once set, `founderNumber` genuinely cannot be changed, and
+a `FieldValue.delete()` on it is denied too (the key goes missing and rule evaluation
+errors, which denies). So the immutability half works. It is the *assignment* half that is
+open.
+
+**Fix direction:** as in S1-3 — move the claim into a callable Cloud Function using the
+Admin SDK, and deny client writes to `isFounder`, `founderNumber`, `founderJoinedAt`
+outright. Needs a deploy, so it is downstream of 4d.
+
+### R3 · 🟠 The founder counter can be exhausted by anyone, for free
+
+```
+allow update: if request.auth != null
+  && request.resource.data.count == resource.data.count + 1
+  && request.resource.data.count <= 50;
+```
+
+Correctly capped and correctly +1-only — but **available to any authenticated user**, with
+no requirement that the caller become a founder. Fifty writes from one throwaway account
+takes the count to 50, after which `FounderService.claimFounderNumber` sees
+`current >= maxFounders` and returns null for every genuine user forever.
+
+The founder programme is a headline feature of the app. This is a denial of service on it
+that costs an attacker fifty document writes.
+
+### R4 · 🟠 Anyone can write to anyone else's follower graph
+
+```
+match /followers/{followerId} { allow read: if true; allow write: if request.auth != null; }
+match /following/{followingId} { allow read: if true; allow write: if request.auth != null; }
+```
+
+These sit under `/users/{userId}/`, so the rule grants **any signed-in user write access to
+any other user's followers and following subcollections** — adding entries, or deleting
+them. The `{followerId}` wildcard is never compared to `request.auth.uid`.
+
+Latent rather than live: the client never touches these collections (confirmed by grep —
+`followers`/`following` appear only in `delete_account_screen`'s wipe list). But the rules
+are deployed, so the hole is real the moment the feature ships, and it is the kind of thing
+that gets forgotten precisely because the UI does not exercise it.
+
+**Fix direction:** `allow write: if request.auth != null && request.auth.uid == followerId`
+for `followers`, and `== userId` for `following`, depending on which side owns the edge.
+
+### R5 · 🟠 Reviews and episode discussions: impersonation and unbounded vote counts
+
+Both collections share a pattern, and both halves of it are loose.
+
+**Create does not bind the author.** `allow create: if request.auth != null` — nothing checks
+`request.resource.data.userId == request.auth.uid`. A client can post a review or a comment
+carrying **someone else's uid**, and the rules will accept it. The victim then shows as the
+author, and by the delete rule they are the only one who can remove it.
+
+**Update restricts keys, not values.**
+
+```
+request.resource.data.diff(resource.data).affectedKeys()
+  .hasOnly(['upvotes', 'downvotes', 'helpfulCount'])
+```
+
+`hasOnly` constrains *which* fields may change, not what they may change to. Any signed-in
+user may set `upvotes` to any number they like, on anyone's content, as often as they like.
+Contrast the arcs rules below, which get exactly this right by also requiring `± 1`.
+
+**Vote documents are not scoped to their owner.** `match /votes/{voteId} { allow read,
+write: if request.auth != null; }` — `{voteId}` is never compared to `request.auth.uid`, so
+any user can overwrite or delete any other user's vote record.
+
+`episodeDiscussions` is live in the app (`episode_discussion_screen.dart`). `reviews` is
+not — `reviews_screen` is one of the four screens never recovered — so those rules currently
+guard a feature with no client.
+
+### R6 · 🟠 `companion_chat` has no rule at all, so Loki's history cannot load
+
+Cross-referencing every collection the client touches against the rules turned up exactly
+one gap, and it is a live one.
+
+`TomoService.loadHistory()`
+([tomo_service.dart:49-54](lib/features/companion/tomo_service.dart#L49-L54)) reads
+`users/{uid}/companion_chat` from the client. **There is no `match` block for it.** Firestore
+denies by default, so that read fails for everyone, including the owner.
+
+The Cloud Function writes the same collection through the Admin SDK, which bypasses rules —
+so messages are being stored correctly and simply never load back. Opening Loki shows an
+empty conversation every time.
+
+This is a functional bug, not just a hardening gap, and it is only visible by reading the
+rules and the client together.
+
+**Fix direction:** add `match /companion_chat/{msgId} { allow read: if request.auth != null
+&& request.auth.uid == userId; allow write: if false; }` — writes stay function-only.
+`companion_meta` needs no rule; only the function touches it.
+
+### R7 · 🟡 Arc counters can be inflated
+
+`isPostCountBump` ([:117](firestore.rules#L117)) lets a member add 1 to `postCount`, and
+`isReplyCountBump` ([:163](firestore.rules#L163)) lets **any signed-in user** add 1 to
+`replyCount` — neither is tied to a post or reply actually being created, and the reply one
+is not even membership-gated. Repeated calls inflate the counters without limit. Cosmetic
+rather than dangerous, but it is the same class of "counter the client asserts" the rest of
+this file otherwise avoids.
+
+### R8 · 🟡 Deleting an arc strands its posts permanently
+
+Firestore does not cascade, so `allow delete` on an arc ([:140](firestore.rules#L140))
+leaves `posts` and `replies` behind. The posts rules then resolve membership via
+`get(/databases/$(database)/documents/arcs/$(arcId))` ([:145](firestore.rules#L145)). With
+the parent gone that returns null, `arc().members` and `arc().createdBy` error, and rule
+evaluation on error denies — so the orphaned posts become **unwritable and undeletable by
+anyone**, while still being readable. They can only be cleared with the Admin SDK.
+
+### R9 · 🟡 Account deletion does not remove Loki chat history
+
+Not a rules defect, but it surfaced from the same cross-reference.
+`_wipeUserData` ([delete_account_screen.dart:101-110](lib/features/auth/delete_account_screen.dart#L101-L110))
+deletes an explicit list of subcollections: `animeList`, `alerts`, `cards`, `pinnedCards`,
+`activity`, `followers`, `following`, `firedAlerts`. **`companion_chat` and `companion_meta`
+are not in it**, so a user's conversations with Loki survive their account deletion. For a
+feature that sends user data to a third-party API, that is worth closing.
+
+### R10 · ⚪ Two rule blocks guard things that do not exist
+
+- **`pinnedCards` as a subcollection** ([:24](firestore.rules#L24)) — the app stores pinned
+  cards as an **array field on the user document** (`{'pinnedCards': updated}` via
+  `set(..., merge: true)` in `card_collection_screen.dart`), not as a subcollection. The rule
+  is dead; the real data is governed by the `/users/{userId}` update rule. Harmless, but the
+  comments in both files claim `users/{uid}/pinnedCards`, so the next person will look in
+  the wrong place.
+- **`reviews`** — rules for a screen that was never recovered.
+
+### Cleared — checked and correct
+
+These are the ones the brief asked about specifically, and they hold up.
+
+- **Reply likes are properly constrained.** `isReplyLikeToggle`
+  ([:199-210](firestore.rules#L199-L210)) requires the acting uid to be the only element
+  added or removed **and** `likeCount` to move by exactly ±1. Post likes
+  ([:150-161](firestore.rules#L150-L161)) are identical. This is the pattern R5 is missing.
+- **`arcs` create/join/leave are tight.** Members array, `memberCount` and `postCount` are
+  all pinned on create; join and leave each permit only the caller's own membership to
+  change, with `hasOnly` limiting the blast radius.
+- **`cards` and `firedAlerts` are correctly function-only** for writes, with owner read and
+  owner delete for account wipe.
+- **`meta/founders` cannot be deleted** — no `allow delete`, so the default denial applies.
+- **`founderNumber` is genuinely immutable once set**, including against `FieldValue.delete()`.
+- **Loki's owner gate is not a rules problem.** `chatWithTomo` is a callable function;
+  Firestore rules cannot gate it. **S1-1 stands unchanged** — the owner check still does not
+  exist in any layer.
+
+### One phase-two item this reclassifies
+
+`PHASE-TWO.md` and `BATCH-FOUR.md` both carry the arcs like-toggle forward as *data
+corruption*: "a double-tap permanently inflates `likeCount`". **The rules make that
+impossible.**
+
+A second tap sends `arrayUnion([uid])` — which is a no-op, the uid is already present — plus
+`increment(1)`. `isLikeToggle` requires either (uid absent before **and** present after
+**and** count +1) or the mirror for removal. After a first tap the uid is present in both
+states, so neither branch matches and **the write is rejected**.
+
+So the counter cannot drift. What actually happens is that `_toggleLike`
+([arcs_screen.dart:701-717](lib/features/social/arcs_screen.dart#L701-L717)) has **no
+try/catch**, so the `permission-denied` surfaces as an unhandled async error — which
+`PlatformDispatcher.onError` reports to Crashlytics as **fatal** (AUDIT §3-D).
+
+It is still worth the ~15 lines, but it is a crash-on-double-tap fix, not a data-integrity
+one, and the transaction is no longer the important part — the error handling is.
+
+---
+
 ## 7. Dependencies (`flutter pub outdated`) — flagging only
 
 Direct dependencies with a newer major available. **Per the brief, I propose no upgrades
