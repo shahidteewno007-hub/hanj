@@ -984,19 +984,26 @@ Recording these so nobody keys them defensively later.
 | `my_list_screen.dart:169` slivers | three entries, no conditionals at sliver level. |
 | `anime_detail_screen.dart` hero column | its many conditionals produce `Text`/`Container` children, and the conditions depend on `anime`, which is fixed after load. |
 
-### Outstanding
+### Device verification — done
 
-**The device re-verification the brief asked for is not done.** The CPH2573 disconnected
-part-way through the instrumented run, after the build succeeded but before the mount count
-was captured. `initState` instrumentation was added, then reverted; nothing was committed.
+`debugPrint('PERFMOUNT UpcomingAnimeRow')` in `_UpcomingAnimeRowState.initState`, profile
+build on the CPH2573, with every key in this batch in place. Instrumentation reverted
+afterwards; `git status` clean against HEAD.
 
-There is strong indirect evidence the Home fix holds — batch 2 measured AniList requests
-going 3 → 2 on both cold load and tab return, which is only possible if `UpcomingAnimeRow`
-mounts once — but that predates this batch's additional keys, so it is not a substitute.
+| Phase | `UpcomingAnimeRow` mounts |
+|---|---|
+| cold Home load | **1** |
+| returning to the Home tab | **1** |
+| *before the fix* | *2 per single load* |
 
-To close it: reconnect the phone, add `debugPrint('PERFMOUNT UpcomingAnimeRow')` to
-`_UpcomingAnimeRowState.initState`, `flutter run --profile -d <id>`, and confirm one line
-per Home load rather than two.
+One mount per load, which is what the fix predicts. This is consistent with batch 2's
+independent measurement of AniList requests dropping 3 → 2 on both cold load and tab
+return.
+
+*(This took three attempts: the phone dropped off USB twice, and one build compiled but
+never installed — the earlier run was reading a stale APK from before the fixes, which is
+why its first result was empty rather than wrong. Worth knowing the install can fail
+silently while `flutter run` still reports success.)*
 
 ---
 
