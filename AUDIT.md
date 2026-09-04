@@ -551,7 +551,7 @@ that was "written but never deployed" despite being finished.
 > target, so rules can ship independently of any of this.
 >
 > The same dry run surfaced two further problems, both on a hard deadline — see
-> [§5-F](#5-f--the-deploy-deadline-2026-10-30) below.
+> **§5-F below**.
 
 The fix is to remove the stale `aruku` block from `firebase.json` (or restore the
 directory). **Not yet applied** — you are first comparing the deployed function list in the
