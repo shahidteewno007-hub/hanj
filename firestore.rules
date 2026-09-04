@@ -65,6 +65,23 @@ service cloud.firestore {
         allow read: if request.auth != null;
         allow write: if request.auth != null && request.auth.uid == userId;
       }
+      // Loki's conversation history. Previously had no rule at all, so it fell
+      // through to default-deny and TomoService.loadHistory() failed silently
+      // — the function kept writing both sides of the conversation while the
+      // client could never read any of it back.
+      //
+      // Owner-only read. No client write under any circumstances: chatWithTomo
+      // writes both messages with the Admin SDK, which bypasses rules
+      // entirely, so a client write here could only ever be forged history.
+      match /companion_chat/{messageId} {
+        allow read: if request.auth != null && request.auth.uid == userId;
+        allow write: if false; // Cloud Functions only
+      }
+      // companion_meta (the daily usage counter) has no rule on purpose. Only
+      // chatWithTomo touches it, via the Admin SDK, and the client must never
+      // read or write it — a client that could write it could reset its own
+      // daily cap. Default-deny is the correct rule, so there isn't one.
+
       match /followers/{followerId} {
         allow read: if true;
         allow write: if request.auth != null;
