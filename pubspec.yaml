@@ -61,6 +61,12 @@ flutter_launcher_icons:
   min_sdk_android: 21
   adaptive_icon_background: "assets/icon/ic_launcher_background.png"
   adaptive_icon_foreground: "assets/icon/ic_launcher_foreground.png"
+  adaptive_icon_monochrome: "assets/icon/ic_launcher_monochrome.png"
+  # 0, not the default 16: the foreground is already a disc at 60% of canvas
+  # against a 66.7% safe zone, so the default inset ships the mark ~17%
+  # undersized. Keeping this here means re-running the generator reproduces
+  # the shipped icons instead of silently shrinking them.
+  adaptive_icon_foreground_inset: 0
   remove_alpha_ios: true
 
 # ─────────────────────────────────────────────────────────────────────────────
