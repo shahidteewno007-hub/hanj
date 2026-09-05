@@ -94,13 +94,130 @@
       document.body.style.background = "transparent";
     }
   </script>
+
+  <!-- ── Loading shell ──────────────────────────────────────────────────────
+       Paints before Flutter boots. A cold visit downloads ~4 MB (app +
+       CanvasKit) before the first Flutter frame, and without this the whole
+       wait is a bare #0D0B09 screen that reads as a broken link.
+
+       Deliberately self-contained: no webfont (fetching one would add to the
+       very wait this is covering, so the wordmark uses a system serif),
+       no image request, no external CSS. Everything here is inline and paints
+       on the first pass.
+
+       The background is #0D0B09 — the same colour Flutter paints first in
+       AuthWrapper's waiting branch — so the handover has no flash. -->
+  <style id="hanj-splash-style">
+    #hanj-splash {
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      background: #0D0B09;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: opacity 300ms ease;
+    }
+    #hanj-splash.hanj-splash--hide {
+      opacity: 0;
+      pointer-events: none;
+    }
+    .hanj-splash__inner {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .hanj-splash__mark {
+      width: 54px;
+      height: 54px;
+      display: block;
+    }
+    .hanj-splash__word {
+      margin-top: 14px;
+      /* System serif, chosen to echo Playfair Display without a network
+         request. Never a webfont here. */
+      font-family: Georgia, "Times New Roman", "Times", serif;
+      font-size: 34px;
+      line-height: 1;
+      letter-spacing: -0.5px;
+      color: #F3EEE7;
+    }
+    .hanj-splash__bar {
+      position: relative;
+      margin-top: 26px;
+      width: 132px;
+      height: 2px;
+      border-radius: 2px;
+      background: rgba(243, 238, 231, 0.12);
+      overflow: hidden;
+    }
+    .hanj-splash__bar span {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 40%;
+      border-radius: 2px;
+      background: #E8624A;
+      /* linear, not ease-in-out: an eased sweep lingers at both extremes,
+         where the segment is mostly off-track, so the indicator reads as
+         stalled for a noticeable slice of every cycle. Caught this by looking
+         at a capture mid-load. */
+      animation: hanj-splash-slide 1.15s linear infinite;
+    }
+    @keyframes hanj-splash-slide {
+      0%   { left: -40%; }
+      100% { left: 100%; }
+    }
+    /* Honour a reduced-motion preference: keep the indicator, drop the sweep. */
+    @media (prefers-reduced-motion: reduce) {
+      .hanj-splash__bar span {
+        animation: none;
+        left: 0;
+        width: 100%;
+        opacity: 0.6;
+      }
+      #hanj-splash { transition: none; }
+    }
+  </style>
 </head>
 <body>
   
   
   
   
+  <!-- Removed on Flutter's first frame — see the script at the end of body. -->
+  <div id="hanj-splash">
+    <div class="hanj-splash__inner">
+      <svg class="hanj-splash__mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+        <rect x="7" y="6" width="7" height="20" rx="2" fill="#E8624A"
+              transform="rotate(-15 10.5 16)"/>
+        <rect x="17" y="6" width="7" height="20" rx="2" fill="#F3EEE7"
+              transform="rotate(-15 20.5 16)"/>
+      </svg>
+      <div class="hanj-splash__word">Hanj</div>
+      <div class="hanj-splash__bar"><span></span></div>
+    </div>
+  </div>
+
   <script src="flutter_bootstrap.js" async=""></script>
+
+  <script id="hanj-splash-script">
+    // Hand over on Flutter's own first-frame event, which main.dart.js
+    // dispatches once the first frame is rasterised.
+    //
+    // No timeout fallback on purpose. A timer that removed this early would
+    // reintroduce exactly the problem it exists to solve — a blank screen on a
+    // slow connection, which is the case that most needs covering. If Flutter
+    // never boots, a stuck loading state is more honest than an empty page.
+    (function () {
+      var splash = document.getElementById('hanj-splash');
+      if (!splash) return;
+      window.addEventListener('flutter-first-frame', function () {
+        splash.classList.add('hanj-splash--hide');
+        window.setTimeout(function () { splash.remove(); }, 320);
+      }, { once: true });
+    })();
+  </script>
 
   <!-- Firebase Cloud Messaging (web push) -->
   <script type="module">

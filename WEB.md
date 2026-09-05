@@ -420,11 +420,39 @@ critical path.
 **TTI is not measured** and I could not measure it — the app never leaves the auth-resolution
 state under headless. §7 has the command for you to run.
 
-**What a first-time visitor actually experiences**, from code: browser blank → Flutter splash
-(`#0D0B09`) → **`AuthWrapper` waiting state, which is a bare dark `Scaffold` with no spinner,
-logo or text** ([main.dart:236-239](lib/main.dart#L236)) → login. On a phone connection that
-is several seconds of a screen indistinguishable from a failed load. On Android this state is
-brief and hidden behind the native splash; on web it is the first impression.
+**What a first-time visitor used to experience**, from code: browser blank → Flutter splash
+(`#0D0B09`) → **`AuthWrapper` waiting state, a bare dark `Scaffold` with no spinner, logo or
+text** ([main.dart:236-239](lib/main.dart#L236)) → login. Several seconds indistinguishable
+from a failed load. On Android that state is brief and hidden behind the native splash; on
+web it was the first impression.
+
+> **W2 — fixed (2026-09-04).** `web/index.html` now carries a loading shell that paints
+> before Flutter boots: the Hanj mark as inline SVG, the wordmark in a **system serif** (never
+> a webfont — fetching one would add to the very wait it covers), and a coral `#E8624A`
+> indeterminate bar, all on `#0D0B09` so the handover to Flutter has no flash. Everything is
+> inline: no image request, no external CSS, nothing that can itself be slow.
+>
+> Verified over CDP against the release build, with the network throttled to 1.6 Mbps and the
+> cache disabled:
+>
+> | Elapsed | State |
+> |---|---|
+> | 600 ms | shell visible, Flutter not yet mounted |
+> | 2.5 s / 8 s / 20 s | shell still holding the screen |
+> | 3 s *(unthrottled)* | **shell removed**, Flutter mounted |
+>
+> Handover is on Flutter's own `flutter-first-frame` event. **No timeout fallback, on
+> purpose:** a timer that removed the shell early would reintroduce the blank screen on
+> exactly the slow connection this exists for. If Flutter never boots, a stuck loading state
+> is more honest than an empty page.
+>
+> Two things came out of looking at the captures rather than the code. The `outline` Google
+> button was replaced with `filledBlack` (§2.3a), and the progress bar's `ease-in-out` became
+> `linear` — an eased sweep lingers at both extremes where the segment sits mostly off-track,
+> so the indicator read as stalled for a noticeable slice of every cycle.
+>
+> This does not make the bundle smaller. §3's numbers are unchanged. It makes the wait
+> legible, which is most of the perceived problem.
 
 ---
 
@@ -596,9 +624,10 @@ notification permission can be granted from inside the installed PWA (§4).
    needs a web branch using `renderButton`, plus a web client ID.
 2. **The whole app has one URL** (§2.1). 60 of 62 navigations do not change the address bar.
    For a shareable-card app that is a product limitation, and fixing it means adopting a router.
-3. **4.05 MB gzipped before first paint** (§3), landing on a blank dark screen with no spinner.
-   Plus six font families fetched at runtime, one of which exists only for six call sites on
-   the login screen.
+3. **4.05 MB gzipped before first paint** (§3). ~~Landing on a blank dark screen with no
+   spinner~~ — **W2 fixed the blank screen**; the bytes are unchanged and still the real
+   problem. Plus six font families fetched at runtime, one of which exists only for six call
+   sites on the login screen (W3).
 4. **No offline shell** (§4). The service worker that looks like one deletes itself. And on
    iOS, episode reminders cannot work at all without an install flow that does not exist.
 5. **The responsive layer already exists and is unused** (§1.2). One screen imports it. That
