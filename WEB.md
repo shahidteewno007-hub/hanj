@@ -336,15 +336,27 @@ near-black login screen it reads as a foreign element pasted on top. Re-rendered
 instead of fighting it. **Changed on the evidence, not on taste.** It remains a Google button —
 this is choosing the least-bad of three fixed themes, not styling.
 
-**Still not verified, and honestly cannot be by me:**
+**Web sign-in confirmed end to end (yours, 2026-09-05):** signed in and landed on Home with
+the real account (Founder #1, 165 titles), so the idToken audience is correct and the
+existing project Web client is the right one to use.
 
-- **Completing an actual sign-in.** Clicking the button opens Google's cross-origin account
-  chooser, which needs real credentials. That is yours to run, and it is the step that proves
-  the idToken audience matches Firebase.
-- **Firefox**, and **the blocked-popup case** — both need a human driving a real browser.
-- **Android on device.** The phone dropped off USB mid-batch, so the standing "must not
-  regress" check has not run. The Android path compiles and is behaviourally unchanged, but
-  that is not verified.
+**Android must-not-regress — verified on device (2026-09-05).** Wireless debugging, install
+confirmed by `lastUpdateTime` before anything was read. Signed out, tapped Continue with
+Google, chose the account, landed on Home with the real library intact.
+
+Three things that check specifically:
+
+- The Android login screen renders **the app's own custom button**, not Google's — so the
+  conditional import resolved to `google_button_stub.dart` and the web branch did not leak
+  into the mobile build.
+- `com.google.android.gms/...GoogleSignInActivity` launched, meaning
+  `initialize(serverClientId:)` still succeeds and `authenticate()` still runs the GMS flow
+  on mobile.
+- The account chooser was correctly branded *"to continue to Hanj"*, and sign-in restored
+  the full library.
+
+**Still not verified:** **Firefox** and **the blocked-popup case** on web — both need a human
+driving a real browser.
 
 **A note for the next person who tries to screenshot this app headlessly:** plain
 `chrome --headless --screenshot --virtual-time-budget=N` will only ever capture the blank

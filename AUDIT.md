@@ -1053,6 +1053,39 @@ never installed — the earlier run was reading a stale APK from before the fixe
 why its first result was empty rather than wrong. Worth knowing the install can fail
 silently while `flutter run` still reports success.)*
 
+### `_ContinueCard` write repro — done (2026-09-05)
+
+Mount counts prove the element is not recycled, but they do not prove the *writes* land on
+the right documents. This is the database-level check, on wireless debugging, install
+verified by `lastUpdateTime`.
+
+Setup: two shows sitting on the **same episode number**, which is the condition that makes
+the mismatch invisible — `_ContinueCardState._current` is per-State, and
+`didUpdateWidget` only resyncs when the incoming value *differs* from the previous one. If
+an element were handed a different show at the same episode, nothing would correct it, and
+the next `+1` would compute from the wrong base and write a skipped episode.
+
+`updateEpisodeProgress` was temporarily instrumented to re-read each document from the
+**server** (`Source.server`, not the cache) immediately after writing, so the log shows what
+was actually persisted rather than what the UI believed:
+
+| Document | Wrote | Server read-back | Title |
+|---|---|---|---|
+| `182483` | ep=7 | **ep=7** | The Warrior Princess and the Barbaric King |
+| `35860` | ep=7 | **ep=7** | Karakai Jouzu no Takagi-san |
+
+Both were on episode 6. Each went to 7, **on its own document, with its own value.** Neither
+skipped (no 6→8), and neither received the other's number. The UI agreed with the database
+throughout — both cards read `EP 7 OF 12`.
+
+An unplanned second confirmation: signing out and back in later forced a full reload, which
+**reordered** the Continue arc (Karakai moved first, being most recently watched). Both
+cards still showed the correct EP 7 after the reorder — which is the keyed-element behaviour
+holding through exactly the reordering that caused the original bug.
+
+Instrumentation reverted and a clean build reinstalled on the device afterwards
+(`lastUpdateTime` re-checked).
+
 ---
 
 ## 6d. Batch 5a — the `users` read rule: shape and cost (2026-09-04)
