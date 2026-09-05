@@ -1,5 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="ic_launcher_background">#0A0806</color>
+    <!-- Kept at the same value as splash_bg and the adaptive background drawable.
+         Was #0A0806, a third near-black that appeared nowhere else. Note the name
+         collision with @drawable/ic_launcher_background is deliberate and left
+         alone: ic_launcher.xml uses the drawable, ic_launcher_round.xml uses this
+         colour, and they now resolve to the same value. -->
+    <color name="ic_launcher_background">#0D0B09</color>
     <color name="splash_bg">#0D0B09</color>
+    <!-- Tint FCM applies to the monochrome status-bar icon. -->
+    <color name="notification_accent">#E8624A</color>
 </resources>
