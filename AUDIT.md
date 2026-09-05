@@ -1178,6 +1178,87 @@ should be tracked as open rather than considered closed by 5a.
 
 ---
 
+## 6e. Device clock and timestamp sourcing (2026-09-05)
+
+Prompted by the phone reading ~9 h ahead of the host. **There is no clock skew** — device
+UTC `04:09:36` against host UTC `04:09:32`, a 4-second gap that is adb round-trip. The phone
+has `auto_time=1`. The 9 hours is timezone *display*: the device is `Asia/Karachi` (UTC+5),
+the host is US Eastern.
+
+### Ordering and reminders are both safe
+
+**Every field anything sorts, filters or ranks on is server-stamped.** All 21
+`FieldValue.serverTimestamp()` writes in `lib/` cover: `lastWatched`, `addedAt`, `ratedAt`,
+`createdAt`, `updatedAt`, `votedAt`, `notesUpdatedAt`, `tagsUpdatedAt`, `founderJoinedAt`.
+No ordering key is device-sourced, so a wrong device clock cannot reorder a list.
+
+**`episodeReminderPrecise` never touches the device clock.** It reads only:
+
+| Input | Source |
+|---|---|
+| which anime to check | `alertDoc.id` — [functions/index.js:211](functions/index.js#L211) |
+| the 15-minute window | server-side `Date.now()` — [functions/index.js:224](functions/index.js#L224) |
+| the actual airing time | AniList's own `s.airingAt` — [functions/index.js:263](functions/index.js#L263) |
+
+Reminder timing is therefore immune to device clock and device timezone alike.
+
+Residual device-clock use in `lib/` is 59 `DateTime.now()` calls across 20 files, all
+display or cache-TTL: the greeting, countdowns, "2h ago" relative times, and
+`PulseService`'s 1 h TTL check. A wrong device clock would make those wrong on that device
+only, and nothing persists.
+
+### 🟠 A1 · `alerts.airingAt` is written as a local-time ISO string with no offset
+
+[anime_detail_screen.dart:1738](lib/features/anime_detail/anime_detail_screen.dart#L1738):
+
+```dart
+'airingAt': widget.airingAt.toIso8601String(),
+```
+
+The *instant* is correct — it originates from AniList's `nextAiringEpisode.airingAt` epoch
+([anime_detail_screen.dart:156-159](lib/features/anime_detail/anime_detail_screen.dart#L156)).
+The problem is the encoding. `DateTime.fromMillisecondsSinceEpoch` returns a **local**
+`DateTime`, and `toIso8601String()` on a local `DateTime` emits no timezone designator. So
+the stored value is the writer's wall-clock time wearing no offset:
+
+```
+2026-09-05T09:00:00.000      <- what is stored (Asia/Karachi wall clock)
+2026-09-05T04:00:00.000Z     <- the instant it actually means
+```
+
+Anything that later parses it as UTC is wrong by the writing device's offset — five hours
+for this user, and a *different* amount for every user in a different timezone, which is the
+part that makes it hard to notice and hard to correct after the fact.
+
+**This is a timezone defect, not a clock defect.** It would occur on a perfectly
+synchronised phone. It is listed here because the clock investigation is what surfaced it.
+
+**Currently unread, so currently harmless.** Confirmed both directions:
+
+- `functions/index.js` never reads it. Its three `airingAt` occurrences are all AniList
+  query fields and AniList's own response, never the alert document.
+- No client reads the field. Every `collection('alerts')` access in `lib/` is a document-id
+  or existence check. `anime_calendar_screen.dart`'s `airingAt` is a local variable built
+  from AniList's schedule, not from the stored field.
+
+So it is a write-only field that is wrong in a way nothing currently notices — and it
+becomes a live bug the first time anything reads it, which is exactly the kind of thing that
+gets read months later by someone assuming ISO strings are UTC.
+
+**Fixed** (2026-09-05): the write now emits `widget.airingAt.toUtc().toIso8601String()`,
+which produces a `Z`-suffixed instant. Kept as a string rather than switched to an epoch
+integer deliberately — documents already in Firestore hold strings, and a string/int mix
+would be worse for a future reader than a naive/UTC string mix. `DateTime.parse` handles
+both: a `Z` string parses as UTC, a naive legacy string parses as local, which is what the
+legacy documents actually meant on the device that wrote them.
+
+**Not backfilled.** Existing alert documents keep their naive strings. Backfilling is
+impossible to do correctly — the offset that was applied is the writing device's, and it is
+not recorded anywhere. Anything that starts reading this field must treat a missing `Z` as
+"unknown offset" rather than assume UTC.
+
+---
+
 ## 7. Dependencies (`flutter pub outdated`) — flagging only
 
 Direct dependencies with a newer major available. **Per the brief, I propose no upgrades
