@@ -26,7 +26,14 @@ service cloud.firestore {
       );
       allow delete: if request.auth != null && request.auth.uid == userId;
       match /animeList/{animeId} {
-        allow read: if true;
+        // Signed-in only. A watch list is personal data — what someone is
+        // watching, how far in, and how they rated it — and there is no
+        // logged-out surface that needs it.
+        //
+        // Not owner-only: soulmatch_screen compares two users' lists by
+        // reading the friend's animeList directly, so cross-user reads have to
+        // keep working for signed-in callers.
+        allow read: if request.auth != null;
         allow write: if request.auth != null && request.auth.uid == userId;
       }
       // Cards: Cloud Functions create them, but user can delete (for account wipe)
@@ -48,9 +55,33 @@ service cloud.firestore {
         allow delete: if request.auth != null && request.auth.uid == userId;
       }
       match /activity/{activityId} {
-        allow read: if true;
+        // Signed-in only, same reasoning as animeList: activity entries carry
+        // anime titles, cover art and status changes, which is watch history
+        // in another shape.
+        //
+        // Not owner-only: FirestoreService.getUserActivity(uid) takes an
+        // arbitrary uid to build the social feed, so a signed-in user must
+        // still be able to read another user's activity.
+        allow read: if request.auth != null;
         allow write: if request.auth != null && request.auth.uid == userId;
       }
+      // Loki's conversation history. Previously had no rule at all, so it fell
+      // through to default-deny and TomoService.loadHistory() failed silently
+      // — the function kept writing both sides of the conversation while the
+      // client could never read any of it back.
+      //
+      // Owner-only read. No client write under any circumstances: chatWithTomo
+      // writes both messages with the Admin SDK, which bypasses rules
+      // entirely, so a client write here could only ever be forged history.
+      match /companion_chat/{messageId} {
+        allow read: if request.auth != null && request.auth.uid == userId;
+        allow write: if false; // Cloud Functions only
+      }
+      // companion_meta (the daily usage counter) has no rule on purpose. Only
+      // chatWithTomo touches it, via the Admin SDK, and the client must never
+      // read or write it — a client that could write it could reset its own
+      // daily cap. Default-deny is the correct rule, so there isn't one.
+
       match /followers/{followerId} {
         allow read: if true;
         allow write: if request.auth != null;
@@ -62,10 +93,29 @@ service cloud.firestore {
     }
 
     // ── Founder counter ───────────────────────────────────────
-    // Anyone signed in may read it (to show "X spots left"). It may only
-    // ever be incremented by exactly 1 and never past 50, which is what
-    // makes client-side founder claiming safe — a tampered client cannot
-    // grant itself an arbitrary number or reset the count.
+    // WHAT THIS ENFORCES: the counter itself is monotonic. Any signed-in user
+    // may read it, and an update must move `count` up by exactly 1 and never
+    // above 50. It cannot be decremented or reset (no delete rule either).
+    //
+    // WHAT THIS DOES NOT ENFORCE — and an earlier version of this comment
+    // claimed it did: **the founder claim is not secured.** Nothing here ties
+    // a badge to the counter. Two holes, both open:
+    //
+    //   1. The badge does not require the counter at all. `founderNumber` is
+    //      frozen by the /users rule only once it exists, so the FIRST write
+    //      is unconstrained: a client can write
+    //      `{ isFounder: true, founderNumber: 1 }` straight to its own user
+    //      document, never touch this counter, and keep the badge forever.
+    //      `isFounder` and `founderJoinedAt` are not constrained at all.
+    //
+    //   2. Incrementing costs nothing. Any signed-in user can run the counter
+    //      from 0 to 50 in fifty writes without becoming a founder, denying
+    //      the programme to everyone else.
+    //
+    // This cannot be closed in rules alone: rules constrain the shape of a
+    // write, not the honesty of the client making it, and the client is the
+    // attacker here. The claim has to move into a callable function using the
+    // Admin SDK. Proposal and migration plan: AUDIT.md §6e (R2).
     match /meta/founders {
       allow read: if request.auth != null;
       allow create: if request.auth != null
