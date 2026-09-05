@@ -263,6 +263,71 @@ exposes it as a widget. The login screen needs a web-specific branch rendering
 should work normally. So web is not fully locked out — but the one-tap path most users take
 is dead, and on a fresh phone-shaped browser that is likely to read as "the app is broken".
 
+### 2.3a W1 — the web sign-in fix (implemented, not yet verified end to end)
+
+Branch `fix/web-google-signin`. Android's path is untouched.
+
+**What changed.** Three small pieces, no refactor of the working flow:
+
+- `auth_service.dart` — `_ensureGoogleInitialized()` branches on `kIsWeb`: web passes
+  `clientId`, Android keeps passing `serverClientId`. The Firebase sign-in tail was extracted
+  to `completeGoogleSignIn(user)` so both platforms share one code path and cannot drift.
+  `signInWithGoogle()` now throws a readable message on web instead of reaching the plugin's
+  `UnimplementedError`.
+- `google_button_web.dart` / `google_button_stub.dart` — conditional import, matching the
+  `gal_mobile`/`gal_stub` idiom already in the codebase. Web renders `web_only.renderButton`;
+  mobile returns a `SizedBox.shrink()` and keeps its own custom button.
+- `login_screen.dart` — on web only, shows Google's button and listens to
+  `GoogleSignIn.instance.authenticationEvents`, because the rendered button returns no
+  credential. On Android neither the listener nor the button branch runs.
+
+**How far the button can be styled toward Hanj's identity: barely.** That is the honest
+answer. `GSIButtonConfiguration` exposes exactly: `type` (standard/icon), `theme` (outline /
+filledBlue / filledBlack), `size`, `text`, `shape` (rectangular/pill), `logoAlignment`,
+`minimumWidth` (max 400 px), and `locale`. **No custom colour, no custom font, no custom
+radius.** The coral `#E8624A` and DM Sans cannot be applied. I chose `outline` + `pill`
+because that is the closest of the three themes on a dark background, but a Google-styled
+button in an otherwise Hanj-styled screen is the unavoidable outcome of using GIS at all.
+
+**Client ID — needs your input.** The brief said a Web application client ID would be
+supplied; it did not arrive with the message, so the code currently uses the project's
+**existing** `client_type == 3` (Web) entry from `google-services.json`:
+
+```
+572595796065-gu6s6tq1hv5s1rhp25bfegqateqlgo6o.apps.googleusercontent.com
+```
+
+That is a deliberate default rather than a placeholder: it is the same client Android already
+passes as `serverClientId`, so the idToken audience matches what Firebase expects. If your new
+client is different, change the single constant `_googleWebClientId` in `auth_service.dart`.
+
+**Authorised JavaScript origins to add** — in Google Cloud Console → APIs & Services →
+Credentials → the Web client → *Authorized JavaScript origins*. Scheme, host and port, **no
+trailing slash and no path**:
+
+| Origin | For |
+|---|---|
+| `http://localhost:5000` | local dev — run `flutter run -d chrome --web-port=5000` so the port is stable, otherwise Flutter picks a random one each time and none of them will be authorised |
+| `https://anime-tracker-275cc.web.app` | Firebase Hosting default |
+| `https://anime-tracker-275cc.firebaseapp.com` | Firebase Hosting alternate |
+| your custom domain, if any | production |
+
+*Authorized redirect URIs* are **not** needed — the GIS button is a JavaScript flow, not a
+redirect flow.
+
+**Verified so far:** `flutter build web --release` compiles the web branch; `flutter build apk
+--profile` compiles the Android branch; `flutter analyze` gives 0 errors and 198 issues
+against a 202 baseline (four style infos removed in the code I rewrote, none added — diffed
+to confirm).
+
+**Not verified, and cannot be until the origins are configured:** that the button actually
+renders and returns a credential; behaviour on Chrome and Firefox in a fresh signed-out
+profile; the blocked-popup case. GIS refuses to render for an unauthorised origin, so testing
+before the console entries exist would only reproduce that error. **Android on-device
+verification is also outstanding** — the phone dropped off USB mid-batch and `flutter run`
+could not find it, so the standing "must not regress" check has not been run. The Android
+code path is unchanged in behaviour and compiles, but that is not the same as verified.
+
 ### 2.4 Desktop affordances — measured
 
 | | count | consequence on desktop |

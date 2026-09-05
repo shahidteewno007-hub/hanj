@@ -1,6 +1,9 @@
+import 'dart:async';
 import 'dart:math';
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:google_sign_in/google_sign_in.dart'
+    show GoogleSignInAuthenticationEvent, GoogleSignInAuthenticationEventSignIn;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../widgets/google_g_logo.dart';
@@ -9,6 +12,8 @@ import '../../services/auth_service.dart';
 import '../../services/anilist_service.dart';
 import '../../models/anime_model.dart';
 import 'signup_screen.dart';
+import 'google_button_stub.dart'
+    if (dart.library.js_interop) 'google_button_web.dart' as google_button;
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -28,6 +33,9 @@ class _LoginScreenState extends State<LoginScreen>
   bool _rememberMe      = false;
   bool _isLoading       = false;
   String? _errorMessage;
+
+  /// Web only — the Google rendered button's result stream. Null on Android.
+  StreamSubscription<GoogleSignInAuthenticationEvent>? _googleAuthSub;
 
   List<Anime> _posterAnime        = [];
   List<AnimationController> _controllers = [];
@@ -54,11 +62,43 @@ class _LoginScreenState extends State<LoginScreen>
       ..repeat();
     _tickerAnim = Tween<double>(begin: 0, end: 1).animate(_tickerCtrl);
     _loadPosters();
+    if (google_button.usesRenderedGoogleButton) _listenForWebGoogleSignIn();
+  }
+
+  /// Web only. Google's rendered button does not return a credential, so the
+  /// result arrives on this stream instead. Never runs on Android, which keeps
+  /// its programmatic flow untouched.
+  Future<void> _listenForWebGoogleSignIn() async {
+    try {
+      final events = await _authService.webGoogleAuthEvents();
+      _googleAuthSub = events.listen((event) async {
+        if (event is! GoogleSignInAuthenticationEventSignIn) return;
+        if (mounted) setState(() { _isLoading = true; _errorMessage = null; });
+        try {
+          await _authService.completeGoogleSignIn(event.user);
+          // AuthWrapper's stream swaps to MainScreen on success.
+        } catch (e) {
+          if (mounted) setState(() => _errorMessage = e.toString());
+        } finally {
+          if (mounted) setState(() => _isLoading = false);
+        }
+      });
+    } catch (e) {
+      // initialize() failing is the misconfigured-client-ID case. Say so
+      // rather than leaving a button that silently does nothing.
+      if (mounted) {
+        setState(() => _errorMessage =
+            'Google sign-in is unavailable. You can still sign in with email.');
+      }
+    }
   }
 
   @override
   void dispose() {
-    for (final c in _controllers) c.dispose();
+    _googleAuthSub?.cancel();
+    for (final c in _controllers) {
+      c.dispose();
+    }
     _tickerCtrl.dispose();
     _emailController.dispose();
     _passwordController.dispose();
@@ -350,7 +390,7 @@ class _LoginScreenState extends State<LoginScreen>
                     ? CachedNetworkImage(
                         imageUrl: _posterAnime[i].imageUrl ?? '',
                         fit: BoxFit.cover,
-                        errorWidget: (_, __, ___) => _gradientCard(i),
+                        errorWidget: (_, _, _) => _gradientCard(i),
                       )
                     : _gradientCard(i),
               ),
@@ -413,7 +453,7 @@ class _LoginScreenState extends State<LoginScreen>
           child: ClipRect(
             child: AnimatedBuilder(
               animation: _tickerAnim,
-              builder: (_, __) {
+              builder: (_, _) {
                 return FractionalTranslation(
                   translation: Offset(-_tickerAnim.value, 0),
                   child: Text(
@@ -494,6 +534,18 @@ class _LoginScreenState extends State<LoginScreen>
   // ── Glass card ───────────────────────────────────────────────
 
   Widget _buildGoogleButton() {
+    // Web must use Google's own rendered button — see google_button_web.dart.
+    // The custom button below stays exactly as it is for Android.
+    if (google_button.usesRenderedGoogleButton) {
+      return Align(
+        alignment: Alignment.center,
+        child: SizedBox(
+          height: 52,
+          // GSI caps the button at 400px wide.
+          child: google_button.buildGoogleSignInButton(width: 320),
+        ),
+      );
+    }
     return Material(
       color: Colors.white.withValues(alpha: 0.06),
       borderRadius: BorderRadius.circular(14),

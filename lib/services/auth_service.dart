@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
@@ -37,12 +38,61 @@ class AuthService extends ChangeNotifier {
   static const String _googleServerClientId =
       '572595796065-gu6s6tq1hv5s1rhp25bfegqateqlgo6o.apps.googleusercontent.com';
 
+  /// The OAuth client the browser identifies itself with.
+  ///
+  /// This is the project's existing client_type == 3 (Web) entry — the same
+  /// one Android passes as serverClientId — so the idToken audience matches
+  /// what Firebase already expects. Swap it here if a dedicated web client is
+  /// preferred; whichever is used needs its Authorized JavaScript origins set
+  /// (see WEB.md §2.3a).
+  static const String _googleWebClientId = _googleServerClientId;
+
   Future<void> _ensureGoogleInitialized() async {
     if (_googleInitialized) return;
-    await GoogleSignIn.instance.initialize(
-      serverClientId: _googleServerClientId,
-    );
+    // The two platforms take different parameters and the web plugin asserts
+    // on the Android one: `serverClientId is not supported on Web`. On web the
+    // clientId is mandatory — without it, initialize() asserts in debug and
+    // throws a null check in release.
+    if (kIsWeb) {
+      await GoogleSignIn.instance.initialize(clientId: _googleWebClientId);
+    } else {
+      await GoogleSignIn.instance.initialize(
+        serverClientId: _googleServerClientId,
+      );
+    }
     _googleInitialized = true;
+  }
+
+  /// Prepares the web sign-in flow and returns the stream of results.
+  ///
+  /// Web cannot call authenticate() — google_sign_in_web's
+  /// supportsAuthenticate() is false and authenticate() throws
+  /// UnimplementedError. Google Identity Services requires its own rendered
+  /// button, so the credential arrives asynchronously on this stream instead
+  /// of being returned by a call. The login screen renders the button and
+  /// listens here.
+  Future<Stream<GoogleSignInAuthenticationEvent>> webGoogleAuthEvents() async {
+    await _ensureGoogleInitialized();
+    return GoogleSignIn.instance.authenticationEvents;
+  }
+
+  /// Completes Firebase sign-in from a Google account produced by either
+  /// platform's flow. Shared so the two paths cannot drift apart.
+  Future<UserCredential> completeGoogleSignIn(GoogleSignInAccount user) async {
+    final credential = GoogleAuthProvider.credential(
+      idToken: user.authentication.idToken,
+    );
+    final userCred = await _auth.signInWithCredential(credential);
+
+    if (userCred.additionalUserInfo?.isNewUser == true) {
+      final displayName = user.displayName;
+      if (displayName != null && displayName.isNotEmpty) {
+        await userCred.user?.updateDisplayName(displayName);
+      }
+    }
+
+    NotificationService.instance.saveTokenForCurrentUser();
+    return userCred;
   }
 
   Future<UserCredential?> signInWithEmail(String email, String password) async {
@@ -84,7 +134,14 @@ class AuthService extends ChangeNotifier {
   }
 
   /// Sign in with Google using google_sign_in ^7.x API.
+  ///
+  /// Mobile only. On web the credential arrives via [webGoogleAuthEvents]
+  /// instead — calling this there would reach the plugin's UnimplementedError,
+  /// so it is turned into a message a user can act on rather than a crash.
   Future<UserCredential?> signInWithGoogle() async {
+    if (kIsWeb) {
+      throw 'Use the Google button to sign in on the web.';
+    }
     try {
       await _ensureGoogleInitialized();
 
@@ -93,24 +150,7 @@ class AuthService extends ChangeNotifier {
         scopeHint: const ['email', 'profile'],
       );
 
-      // authentication is now a sync getter, not async
-      final googleAuth = googleUser.authentication;
-
-      final credential = GoogleAuthProvider.credential(
-        idToken: googleAuth.idToken,
-      );
-
-      final userCred = await _auth.signInWithCredential(credential);
-
-      if (userCred.additionalUserInfo?.isNewUser == true) {
-        final displayName = googleUser.displayName;
-        if (displayName != null && displayName.isNotEmpty) {
-          await userCred.user?.updateDisplayName(displayName);
-        }
-      }
-
-      NotificationService.instance.saveTokenForCurrentUser();
-      return userCred;
+      return await completeGoogleSignIn(googleUser);
     } on GoogleSignInException catch (e) {
       if (e.code == GoogleSignInExceptionCode.canceled) {
         return null; // user cancelled — don't throw
