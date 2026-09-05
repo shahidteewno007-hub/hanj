@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../../core/theme/app_theme.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -344,7 +345,7 @@ class _ImportPageContent extends StatelessWidget {
 
               Text(
                 'Already tracking on AniList or MAL?\nWe\'ll import your list after you sign in.',
-                style: GoogleFonts.inter(
+                style: AppTheme.sans(
                   color: Colors.white.withValues(alpha: 0.5),
                   fontSize: 16,
                   height: 1.6,
@@ -385,7 +386,7 @@ class _ImportPageContent extends StatelessWidget {
                       ? 'Or tap Get Started to skip — you can import later in Settings.'
                       : 'We\'ll remind you to complete the import once you\'re in.',
                   textAlign: TextAlign.center,
-                  style: GoogleFonts.inter(
+                  style: AppTheme.sans(
                     color: Colors.white.withValues(alpha: 0.3),
                     fontSize: 12,
                     height: 1.6,
@@ -457,17 +458,17 @@ class _ImportOption extends StatelessWidget {
                 children: [
                   Text(
                     label,
-                    style: GoogleFonts.inter(
+                    style: AppTheme.sans(
                       color: selected
                           ? Colors.white
                           : Colors.white.withValues(alpha: 0.6),
                       fontSize: 14,
-                      fontWeight: FontWeight.w500,
+                      weight: FontWeight.w500,
                     ),
                   ),
                   Text(
                     sublabel,
-                    style: GoogleFonts.inter(
+                    style: AppTheme.sans(
                       color: Colors.white.withValues(alpha: 0.3),
                       fontSize: 11,
                     ),
@@ -628,7 +629,7 @@ class _PageContent extends StatelessWidget {
 
               Text(
                 page.subtitle,
-                style: GoogleFonts.inter(
+                style: AppTheme.sans(
                   color: Colors.white.withValues(alpha: 0.5),
                   fontSize: 16,
                   height: 1.75,

@@ -1735,7 +1735,12 @@ class _NextEpisodeCountdownState extends State<_NextEpisodeCountdown> {
       await ref.set({
         'animeId': widget.animeId,
         'episode': widget.episode,
-        'airingAt': widget.airingAt.toIso8601String(),
+        // toUtc() before toIso8601String(): widget.airingAt is a local
+        // DateTime (AniList's epoch through fromMillisecondsSinceEpoch), and
+        // toIso8601String() on a local DateTime emits no offset, so the value
+        // stored was the writer's wall clock wearing no timezone. See AUDIT.md
+        // 6e A1. Legacy documents still hold naive strings.
+        'airingAt': widget.airingAt.toUtc().toIso8601String(),
         'addedAt': FieldValue.serverTimestamp(),
       });
     } else {

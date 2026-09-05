@@ -195,8 +195,11 @@ class _TomoScreenState extends State<TomoScreen> {
               ],
             ),
             alignment: Alignment.center,
+            // The fox glyph falls back to a platform CJK font on purpose:
+            // DM Sans has no CJK coverage. Forcing Noto Serif JP here fetched
+            // a 4 MB face to draw this one character. See WEB.md 3.3.
             child: Text('狐',
-                style: GoogleFonts.notoSerifJp(
+                style: GoogleFonts.dmSans(
                     color: _kBg, fontSize: 18, fontWeight: FontWeight.w700)),
           ),
           const SizedBox(width: 12),
@@ -240,8 +243,11 @@ class _TomoScreenState extends State<TomoScreen> {
               ],
             ),
             alignment: Alignment.center,
+            // The fox glyph falls back to a platform CJK font on purpose:
+            // DM Sans has no CJK coverage. Forcing Noto Serif JP here fetched
+            // a 4 MB face to draw this one character. See WEB.md 3.3.
             child: Text('狐',
-                style: GoogleFonts.notoSerifJp(
+                style: GoogleFonts.dmSans(
                     color: _kBg, fontSize: 34, fontWeight: FontWeight.w700)),
           ),
         ),
@@ -398,8 +404,11 @@ class _Bubble extends StatelessWidget {
                 gradient: LinearGradient(colors: [_kCoral, _kCoral2]),
               ),
               alignment: Alignment.center,
+              // The fox glyph falls back to a platform CJK font on purpose:
+              // DM Sans has no CJK coverage. Forcing Noto Serif JP here fetched
+              // a 4 MB face to draw this one character. See WEB.md 3.3.
               child: Text('狐',
-                  style: GoogleFonts.notoSerifJp(
+                  style: GoogleFonts.dmSans(
                       color: _kBg, fontSize: 13, fontWeight: FontWeight.w700)),
             ),
             const SizedBox(width: 8),
@@ -579,8 +588,11 @@ class _TypingBubbleState extends State<_TypingBubble>
               gradient: LinearGradient(colors: [_kCoral, _kCoral2]),
             ),
             alignment: Alignment.center,
+            // The fox glyph falls back to a platform CJK font on purpose:
+            // DM Sans has no CJK coverage. Forcing Noto Serif JP here fetched
+            // a 4 MB face to draw this one character. See WEB.md 3.3.
             child: Text('狐',
-                style: GoogleFonts.notoSerifJp(
+                style: GoogleFonts.dmSans(
                     color: _kBg, fontSize: 13, fontWeight: FontWeight.w700)),
           ),
           const SizedBox(width: 8),

@@ -7,6 +7,7 @@ import 'package:google_sign_in/google_sign_in.dart'
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../widgets/google_g_logo.dart';
+import '../../core/theme/app_theme.dart';
 
 import '../../services/auth_service.dart';
 import '../../services/anilist_service.dart';
@@ -574,10 +575,10 @@ class _LoginScreenState extends State<LoginScreen>
               const SizedBox(width: 12),
               Text(
                 'Continue with Google',
-                style: GoogleFonts.inter(
+                style: AppTheme.sans(
                   fontSize: 14,
                   color: Colors.white,
-                  fontWeight: FontWeight.w500,
+                  weight: FontWeight.w500,
                 ),
               ),
             ],
