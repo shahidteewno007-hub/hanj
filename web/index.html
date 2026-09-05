@@ -189,9 +189,10 @@
   <div id="hanj-splash">
     <div class="hanj-splash__inner">
       <!-- The wing mark, inline. No background rect: the shell already paints
-           #0D0B09. Two strokes rather than three, matching favicon.svg — the
-           three-stroke master is for >=96px only. Still no webfont and no image
-           request here, per the W2 note below. -->
+           #0D0B09. Two strokes rather than three, matching favicon.svg. The old
+           ">=96px only" rule for the three-stroke master was wrong: it described
+           file size, not render size. See MARK-SIZES.md. Still no webfont and no
+           image request here, per the W2 note below. -->
       <svg class="hanj-splash__mark" viewBox="0 0 64 64" aria-hidden="true" focusable="false">
         <g transform="translate(11.23,9.37) scale(0.62) translate(-28.50,-34.50)">
           <path d="M34 102 Q62 92 90 60" fill="none" stroke="#E8624A"
