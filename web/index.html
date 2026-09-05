@@ -188,11 +188,17 @@
   <!-- Removed on Flutter's first frame — see the script at the end of body. -->
   <div id="hanj-splash">
     <div class="hanj-splash__inner">
-      <svg class="hanj-splash__mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
-        <rect x="7" y="6" width="7" height="20" rx="2" fill="#E8624A"
-              transform="rotate(-15 10.5 16)"/>
-        <rect x="17" y="6" width="7" height="20" rx="2" fill="#F3EEE7"
-              transform="rotate(-15 20.5 16)"/>
+      <!-- The wing mark, inline. No background rect: the shell already paints
+           #0D0B09. Two strokes rather than three, matching favicon.svg — the
+           three-stroke master is for >=96px only. Still no webfont and no image
+           request here, per the W2 note below. -->
+      <svg class="hanj-splash__mark" viewBox="0 0 64 64" aria-hidden="true" focusable="false">
+        <g transform="translate(11.23,9.37) scale(0.62) translate(-28.50,-34.50)">
+          <path d="M34 102 Q62 92 90 60" fill="none" stroke="#E8624A"
+                stroke-width="11.0" stroke-linecap="round"/>
+          <path d="M39 82 Q60 68 82 38" fill="none" stroke="#E8624A"
+                stroke-width="7.0" stroke-linecap="round"/>
+        </g>
       </svg>
       <div class="hanj-splash__word">Hanj</div>
       <div class="hanj-splash__bar"><span></span></div>
