@@ -410,24 +410,158 @@ being fetched; the skwasm files ship but are not selected.
 **Cold first load ≈ 4.05 MB gzipped** (1.21 MB app + 2.84 MB renderer) **before a single
 pixel of Hanj appears** — and then the font fetches start.
 
-**Fonts are all fetched at runtime.** The only font in the bundle is MaterialIcons. `pubspec.yaml`
-declares no `fonts:` section, so `google_fonts` pulls every family from `fonts.gstatic.com` on
-first paint. Current count on `main`:
+**Fonts are all fetched at runtime.** The only font in the bundle is MaterialIcons.
+`pubspec.yaml` declares no `fonts:` section, so `google_fonts` pulls every family from
+`fonts.gstatic.com` when a widget using it first paints. Count on `main` after W3:
 
-| Family | Call sites |
-|---|---:|
-| DM Sans | 113 |
-| Playfair Display | 55 |
-| Space Grotesk | 44 |
-| Space Mono | 9 |
-| **Inter** | **6** |
-| Noto Serif JP | 4 |
+| Family | Call sites | Weights referenced |
+|---|---:|---|
+| DM Sans | 343 | w400 w500 w600 w700 w800 |
+| Space Grotesk | 198 | w400 w500 w600 w700 |
+| Playfair Display | 152 | w400 w600 w700 w800 w900 |
+| Space Mono | 9 | w400 w700 |
+| Noto Serif JP | 4 | w700 |
 
-**Six families, and Inter is the one that matters here.** Batch 4b is still queued, so the six
-remaining Inter sites are in `login_screen.dart` and `onboarding_screen.dart` — **the first
-screens a web visitor ever sees.** A cold web visitor downloads a whole extra font family to
-render the login screen, for six call sites. 4b was framed as tidying; on web it is on the
-critical path.
+(Call-site counts now include the `AppTheme.serif` / `.mono` / `.sans` helpers, which resolve
+to Playfair Display / Space Grotesk / DM Sans. The earlier table counted only direct
+`GoogleFonts.` calls, which is why these numbers are larger. Inter is gone: 0 sites.)
+
+### 3.1 W3 — Inter removed, and what it actually cost on web
+
+> **Correction to this section as first written.** It claimed a cold web visitor "downloads a
+> whole extra font family to render the login screen" for Inter's six call sites. **That was
+> wrong from the moment W1 landed.** Five of the six Inter sites are in
+> `onboarding_screen.dart`, which a visitor only reaches *after* signing up. The sixth — the
+> only one on the login screen — is the `'Continue with Google'` label inside the **Android**
+> branch of `_buildGoogleButton()`, and W1 made web return Google's rendered button before
+> that branch is ever built. So Inter was never on the web login path. Measured: the
+> login-path font fetch is **byte-identical before and after W3**.
+>
+> Inter was still worth removing — a sixth family for six sites, on the *Android* login path,
+> with five onboarding sites on the web path immediately after signup. But the "critical
+> path" framing above overstated it, and the honest gain on web login is zero.
+
+**Measured — every font byte the login path fetches.** Release build, served locally, HTTP
+cache disabled, driven over CDP with a real-time wait so Firebase auth settles and the login
+screen paints. Sizes are transfer bytes.
+
+| | Family / weight | Wire | On disk |
+|---|---|---:|---:|
+| App (`google_fonts`) | Playfair Display w700 | 62,410 | 123,512 |
+| | Playfair Display w600 | 62,493 | 123,648 |
+| | Space Grotesk w400 | 36,697 | 69,336 |
+| | Space Grotesk w500 | 36,645 | 69,392 |
+| | DM Sans w400 | 26,909 | 48,256 |
+| | DM Sans w500 | 27,199 | 48,284 |
+| | DM Sans w600 | 26,722 | 48,256 |
+| | **subtotal — 7 faces** | **279,075 (272.5 KB)** | 530,684 |
+| CanvasKit fallback | Roboto | 63,498 | — |
+| | Noto Sans Symbols (subset) | 69,153 | — |
+| | Noto Sans SC (subset chunk) | 32,876 | — |
+| | **subtotal — 3 files** | **165,527 (161.6 KB)** | — |
+| | **TOTAL — 10 files** | **444,602 (434.2 KB)** | — |
+
+The seven app faces arrive as opaque `fonts.gstatic.com/s/a/<sha256>.ttf` URLs; each sha256
+maps to exactly one family+weight in the `google_fonts` 8.1.0 manifest, which is how the
+table above is resolved. The three Roboto/Noto files are **not** app-controlled — CanvasKit
+fetches them itself for glyphs no loaded font covers. Noto Sans SC is pulled because the login
+screen's trending ticker renders live AniList titles, which contain CJK; that one is
+data-dependent and will vary with what is trending.
+
+**Fonts are not on the critical path today.** Request timeline from the same capture:
+
+| t | Request |
+|---:|---|
+| 0.03 s | `canvaskit.wasm`, `main.dart.js` |
+| 0.32 s | `FontManifest.json` |
+| 0.34 s | `MaterialIcons-Regular.otf`, Roboto |
+| **7.39 s** | **`flutter-first-frame`** |
+| 7.57–7.59 s | the 7 Google Fonts faces + 2 Noto subsets |
+
+Asset-declared fonts (`FontManifest.json`) are fetched during engine init, **seven seconds
+before the first frame**. The `google_fonts` CDN faces are fetched **after** it, when the
+login screen paints. That ordering is the whole bundling argument. (7.39 s to first frame is
+a headless, cache-disabled local run — the ordering is the point, not the absolute number.)
+
+### 3.2 Bundling — the numbers for both surfaces
+
+Bundling means committing the `.ttf` files and declaring them in `pubspec.yaml`. Full app, all
+16 Latin faces plus Noto Serif JP:
+
+| Family | Faces | Bundled (on disk) |
+|---|---:|---:|
+| Playfair Display | 5 | 617,468 (603 KB) |
+| Space Grotesk | 4 | 277,344 (271 KB) |
+| DM Sans | 5 | 241,220 (236 KB) |
+| Space Mono | 2 | 102,076 (100 KB) |
+| **Latin subtotal** | **16** | **1,238,108 (1.18 MB)** |
+| Noto Serif JP | 1 | **7,472,400 (7.13 MB)** |
+| **Total** | **17** | **8,710,508 (8.31 MB)** |
+
+- **Web.** Today: 272.5 KB, from a CDN with immutable year-long caching, fetched **after** the
+  first frame. Bundled: the same faces move into `FontManifest.json` and are fetched at
+  **0.3 s, before** the first frame — and it would be all 16 faces, not the 7 the login screen
+  needs, because the manifest is loaded whole. That is ~1.18 MB raw (~640 KB gzipped by
+  hosting) added directly ahead of first paint, against the W2/TTFF work that just moved first
+  paint from 1,362 ms to 402 ms.
+- **Android.** Today: the same faces download once on first run and are cached in the app's
+  documents directory; the user sees a brief fallback-text flash on a cold first launch.
+  Bundled: **+1.18 MB uncompressed in the APK** (fonts compress inside the APK, so realistically
+  +0.6–1.2 MB), no runtime fetch, no flash, and correct rendering offline on first launch.
+
+**Recommendation: do not bundle the Latin families; do fix Noto Serif JP.**
+
+The web case is actively negative — bundling converts 272.5 KB of post-first-frame CDN fetch
+into ~640 KB of pre-first-frame blocking fetch, and adds nine faces the login screen never
+uses. The Android case is a genuine but small win (one flash, once, on first launch) bought
+with ~1 MB of APK and ~1.2 MB of binaries committed to a repo that is still being
+reconstructed. Not worth it on either surface.
+
+**A middle option, if the Android first-launch flash is the real complaint:** bundle only the
+faces the first screen needs — DM Sans w400/w500 and Playfair w700, ~220 KB — and leave the
+rest on the CDN. That still costs those bytes ahead of first frame on web, and Flutter has no
+per-platform `fonts:` section, so it cannot be made Android-only. Recording it as a real
+limitation rather than a plan.
+
+### 3.3 Noto Serif JP — the four call sites
+
+**This is the finding that matters, and it is not a bundling question.**
+
+All four sites are in `tomo_screen.dart` ([196](lib/features/companion/tomo_screen.dart#L196),
+[241](lib/features/companion/tomo_screen.dart#L241),
+[399](lib/features/companion/tomo_screen.dart#L399),
+[580](lib/features/companion/tomo_screen.dart#L580)) and every one renders **the same single
+glyph — 狐 — at w700**, at 13 / 18 / 34 px. It is Loki's avatar mark.
+
+`GoogleFonts.notoSerifJp(fontWeight: w700)` resolves to a **7,472,400-byte face**. Measured
+over the wire from `fonts.gstatic.com`: **4,253,424 bytes — 4.06 MB, downloaded to draw one
+character.** That is larger than the gzipped app bundle and renderer combined.
+
+> Not measured in-app: reaching that screen needs an authenticated session on the owner
+> account. The 4.06 MB is a direct `curl` of the exact URL the manifest resolves to, and a
+> DM Sans control fetched the same way (26,878 B) matches the in-app capture (26,909 B), so
+> the URL mapping is sound. What is unconfirmed is how often a user actually pays it —
+> `google_fonts` caches to the documents directory after the first fetch, so it is once per
+> install, and only for users who open Loki.
+
+**Can those four sites use something already loaded? Not from an app font — but they do not
+need one.** None of Playfair Display, DM Sans, Space Grotesk or Space Mono contains CJK; they
+are Latin-only, so no already-loaded family can render 狐. But Flutter resolves missing glyphs
+through platform fallback with no app font at all:
+
+- **Android** ships Noto Sans CJK as a system font. 狐 renders from it at zero cost.
+- **Web** CanvasKit fetches a Noto subset *chunk* on demand — and the login-path capture above
+  shows it already doing exactly that (Noto Sans SC, 32,876 B, for the AniList titles).
+
+So **dropping `GoogleFonts.notoSerifJp` at those four sites** — keeping size, weight and
+colour, just not forcing the family — renders 狐 from fallback for **0 bytes on Android and
+~33 KB of already-fetched subset on web**, in place of a 4.06 MB download. The one real cost
+is that the glyph becomes sans-serif rather than serif at those four sites.
+
+That trade is a design call, not a correctness one, so **flagged rather than done** — it
+touches Loki's avatar mark and the typography rules are settled. It would also remove the
+fifth family, taking the app to the three intended plus Space Mono.
+
 
 **TTI is not measured** and I could not measure it — the app never leaves the auth-resolution
 state under headless. §7 has the command for you to run.
@@ -544,7 +678,7 @@ before promising reminders to web users.
 
 | Screen | Lines | Why | Work |
 |---|---:|---|---|
-| **Login / onboarding** | 715 / 674 | The only door, and **Google sign-in is broken** (§2.3). Also where the stray Inter fetch lives. | Auth fix first; layout is simple |
+| **Login / onboarding** | 715 / 674 | The only door — **Google sign-in fixed in W1** (§2.3a). Fonts here are measured — 434.2 KB, all after first frame (§3.1). | Auth fix first; layout is simple |
 | **Home** | 2,247 | Landing screen; holds 7 of the 13 oversized fixed dimensions and every horizontal rail | High |
 | **Anime detail** | 2,204 | Where users spend time; the unconstrained synopsis is the worst line-length case | High |
 | **Card collection** | 1,101 | 2-column grid that becomes absurd at width; the shareable-card feature is the reason web matters | Medium — grid columns |
@@ -638,8 +772,9 @@ notification permission can be granted from inside the installed PWA (§4).
    For a shareable-card app that is a product limitation, and fixing it means adopting a router.
 3. **4.05 MB gzipped before first paint** (§3). ~~Landing on a blank dark screen with no
    spinner~~ — **W2 fixed the blank screen**; the bytes are unchanged and still the real
-   problem. Plus six font families fetched at runtime, one of which exists only for six call
-   sites on the login screen (W3).
+   problem. Fonts are **not** part of it: measured at 434.2 KB and fetched *after* the first
+   frame (§3.1), which is also why bundling them would make web worse (§3.2). The one real
+   font cost is Noto Serif JP — **4.06 MB for a single glyph** on the Loki screen (§3.3).
 4. **No offline shell** (§4). The service worker that looks like one deletes itself. And on
    iOS, episode reminders cannot work at all without an install flow that does not exist.
 5. **The responsive layer already exists and is unused** (§1.2). One screen imports it. That
