@@ -64,12 +64,24 @@ flutter build apk --profile --target-platform android-arm64
 ```
 
 - **Profile, not debug, for any measurement** — debug timings are meaningless.
+- **Always pass `adb -s <serial>`.** The phone enumerates twice on wireless debugging —
+  once as the plain wireless endpoint (`192.168.123.36:42611`) and once as the mDNS TLS
+  entry (`adb-<id>-<suffix>._adb-tls-connect._tcp`) — so a bare `adb` command fails with
+  `adb: error: failed to get feature set: more than one device/emulator`. Get the serial
+  from `adb devices` and put `-s` on every call, the `dumpsys` check below included:
+
+  ```bash
+  adb devices                                    # pick the serial
+  adb -s <serial> shell dumpsys package com.anitrack.anime_tracker | grep lastUpdateTime
+  ```
+
+  `flutter run -d <device-id>` is unaffected — it takes its own device flag.
 - **Verify the install landed before trusting any reading.** `flutter run` exits 0 on a
   build that compiled but never installed (it happens when the phone drops off USB
   mid-run), and you will then be measuring the *previous* APK. Always check:
 
   ```bash
-  adb shell dumpsys package com.anitrack.anime_tracker | grep lastUpdateTime
+  adb -s <serial> shell dumpsys package com.anitrack.anime_tracker | grep lastUpdateTime
   ```
 
   If that timestamp predates the build, the reading is from stale code — rebuild and
