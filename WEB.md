@@ -624,7 +624,7 @@ a manifest link and an SVG favicon.
 | Viewport | `maximum-scale=1.0, user-scalable=no` — **pinch-zoom disabled**. An accessibility failure, and iOS Safari honours it. |
 | `orientation` | `portrait-primary` — wrong for a surface whose whole point is a desktop layout. |
 | `screenshots` / `shortcuts` | Absent. Not required, but they are what make an install prompt look like an app. |
-| Firebase Hosting | **No `hosting` block in `firebase.json`** — see §6. |
+| Firebase Hosting | **Added in W4** — `hosting` block with SPA rewrite and no-cache headers; not deployed. See §6. |
 
 **The offline shell is the real gap, and it is not what it looks like.** `build/web` does
 contain `flutter_service_worker.js`, so it appears a service worker is present. Read it —
@@ -645,6 +645,89 @@ background push and does not cache the shell.
 One portability bug in that registration: `index.html` registers it at the absolute path
 `/firebase-messaging-sw.js`. Hosted anywhere other than a domain root, that 404s and web push
 silently stops working.
+
+### Cache headers and the self-deleting worker — how they interact
+
+Written before applying the `headers` block to `firebase.json`, because the two are easy to
+reason about wrongly together.
+
+**The stub has no `fetch` handler.** All 815 bytes register two listeners, `install` and
+`activate`, and nothing else. A service worker without a `fetch` handler can never serve a
+response, so **nothing in this app is ever read from a service worker cache**. That is the
+fact everything below follows from: `Cache-Control` is not one caching layer of two here, it
+is the entire caching story for the web app.
+
+**It does not cause a reload loop, and it is worth knowing why.** The `activate` handler
+unregisters the worker and then calls `client.navigate(client.url)` on everything
+`self.clients.matchAll({type:'window'})` returns. Read alone that looks like a cycle —
+bootstrap registers, worker activates, worker reloads the page, bootstrap registers again.
+It terminates because `matchAll()` without `includeUncontrolled: true` returns only
+**controlled** clients, and this worker never calls `clients.claim()`. On a first visit the
+page that registered it is uncontrolled, the list is empty, and no navigation happens. The
+reload fires only for a client that was controlled by a *previous, real* caching worker —
+exactly the case the stub exists to clean up — and after that one reload the client is
+uncontrolled, so it does not recur. One reload, once, for a visitor upgrading from an older
+build. New visitors never see it.
+
+**Which of the three no-cache entries actually does work:**
+
+| File | Effect of `no-cache` |
+|---|---|
+| `flutter_bootstrap.js` | **Load-bearing.** It carries `serviceWorkerVersion: "186906884"` and `buildConfig` (`engineRevision`, `mainJsPath`). A stale copy pins a returning visitor to a stale worker version *and* a stale description of the entry point while `main.dart.js` is new. This is the one that prevents mismatched loads. |
+| `index.html` | **Load-bearing.** The document that references everything else, including the W2 loading shell. Standard practice and correct. |
+| `flutter_service_worker.js` | **Belt-and-braces, not load-bearing.** The Flutter loader does not set `updateViaCache`, so the browser default `"imports"` applies: a top-level worker script is always fetched bypassing the HTTP cache. The header changes nothing about how this worker updates today. It costs nothing and closes the case where a future loader sets `updateViaCache: "all"`. |
+
+**So: no conflict.** `no-cache` on those three does not interfere with the stub, and the stub
+does not undermine the headers. They are independent — which is only true *because* the
+worker has no `fetch` handler. If Flutter ever ships a real caching worker again, this
+section needs rewriting: a caching worker would sit in front of these headers and the
+precedence question becomes real.
+
+**The trap is on the other side of the list.** With no worker cache, the obvious next move is
+a long `max-age` on the big immutable assets — and that is wrong here, because
+**Flutter's web output is not content-hashed.** `flutter_bootstrap.js` references
+`main.dart.js` by that exact stable name with no query string, and CanvasKit loads from an
+unversioned `canvaskit/canvaskit.wasm`. Both filenames are identical across every build, so a
+long `max-age` on them serves *stale application code* after a deploy, with no way to bust it
+short of renaming. Firebase Hosting's default `max-age=3600` is the right compromise for
+these two and should be left alone.
+
+Net: no-cache the entry points, leave the payload on the default. The 4.05 MB cold load in §3
+is not fixable with cache headers.
+
+**Two things about applying it that are not obvious.**
+
+*The hosting emulator cannot verify headers.* Measured, not assumed: with
+`firebase emulators:start --only hosting`, rewrites are applied (a request to
+`/some/spa/route` returns 200 from `index.html`) but **no configured header appears on any
+response** — not the `Cache-Control` entries, and not a `**` catch-all probe header added
+purely to test it. The emulator serves the files and ignores the `headers` block entirely.
+So this config cannot be proven locally; it has to be checked against the real host after the
+first deploy:
+
+```bash
+curl -sI https://anime-tracker-275cc.web.app/ | grep -i cache-control
+curl -sI https://anime-tracker-275cc.web.app/flutter_bootstrap.js | grep -i cache-control
+```
+
+*Hash routing means the document request is for `/`, not `/index.html`.* Firebase matches
+`headers` against the **request** path, before rewrites resolve. Hanj uses the hash URL
+strategy (§2.1), so every real navigation requests `/` — the fragment never reaches the
+server — and a rule written only for `/index.html` would not cover the response that actually
+carries the app. The block therefore lists **both** `/` and `/index.html`. Which of the two
+does the work is exactly what the `curl` above settles; keeping both costs nothing.
+
+**One file the list omits: `firebase-messaging-sw.js`.** That is the only *real* service
+worker in the app — it has a live `onBackgroundMessage` handler and it persists. The same
+`updateViaCache` default protects its top-level script, so omitting it is not a bug, but
+including it in the no-cache list is free and more honest about which workers exist. Note
+that its `importScripts` calls *are* HTTP-cached under `updateViaCache: "imports"`; they
+point at versioned gstatic URLs, so that is fine.
+
+> Unrelated but found while reading it: `firebase-messaging-sw.js` falls back to the
+> notification title **"Aruku"**, not "Hanj" — a leftover from the phantom `aruku` codebase
+> (AUDIT.md 5-E). It is user-visible on any push that arrives without a title. Flagged, not
+> changed; it is not part of this batch.
 
 ### iOS push — what it means for episode reminders
 
@@ -708,16 +791,76 @@ Hosting is *not* configured in this project, contrary to the brief's assumption.
 anything can be published, `firebase.json` needs a `hosting` section pointing at `build/web`,
 plus a SPA rewrite so deep links (once they exist) do not 404.
 
-I did not add it — that is a config change and this phase changes nothing.
+~~I did not add it — that is a config change and this phase changes nothing.~~ Added in W4.
 
-**Dry run, when you want it** (I have not run any deploy or dry run this phase):
+> **W4 — the hosting block, added (2026-09-05). Not deployed.**
+>
+> `firebase.json` now carries a `hosting` block: `public: build/web`, the SPA rewrite, and a
+> `headers` block putting `Cache-Control: no-cache` on `/`, `/index.html`,
+> `/flutter_bootstrap.js` and `/flutter_service_worker.js`. The reasoning for the header set
+> — including why `flutter_bootstrap.js` is the one that matters and why a long `max-age` on
+> `main.dart.js` would be wrong — is in §4 under *Cache headers and the self-deleting
+> worker*.
+>
+> **Nothing is published.** Measured: `https://anime-tracker-275cc.web.app/` returns **404**,
+> so this would be the project's first hosting deploy, not an update to an existing site.
+>
+> **The deploy is held until 5d is live**, per instruction — the rules are the only thing
+> between a public bundle and the data, and 5d closes the last open one. Sequence when it
+> goes:
+>
+> 1. merge and deploy the rules (5b/5c/5d — see the note below), confirm on the live project;
+> 2. `flutter build web` on merged `main`, so the bundle matches what was reviewed;
+> 3. `firebase.cmd deploy --only hosting` — **hosting alone**, never bundled with functions
+>    (the phantom `aruku` codebase still fails any functions deploy, AUDIT.md 5-E) or with
+>    rules;
+> 4. verify the headers actually landed, with the two `curl` commands in §4 — they cannot be
+>    verified before deploy, because the hosting emulator ignores the `headers` block.
+>
+> **Repo/production drift found while preparing this, and it matters for step 1.** The
+> deployed rules were *ahead* of the repository. Probing production unauthenticated:
+> `users/{uid}` 403, `animeList` 403, `activity` 403 — so 5a **and** 5b were live — while
+> `main`'s `firestore.rules` still read `allow read: if true` for `animeList` and `activity`,
+> because the 5b/5c branch was never merged. Deploying rules from `main` as it stood would
+> have **reopened** watch history to the world. The 5d branch merges that work forward first,
+> so its rules file is cumulative; deploy from there, not from an older branch.
+>
+> **Dry run: passes.** `firebase deploy --only hosting --dry-run` completes cleanly and
+> resolves the target to `https://anime-tracker-275cc.web.app`. It does **not** touch
+> functions, so the `aruku` failure never comes into play — which confirms the prediction
+> this section originally made, now with a result behind it.
+>
+> **Exactly what would publish: 45 files, 42.5 MB**, from `build/web`, minus the `ignore`
+> list (`firebase.json`, dotfiles, `node_modules`). The shape of it:
+>
+> | | Size | Note |
+> |---|---:|---|
+> | `canvaskit/` | 37 MB | 30 MB of it never fetched — see below |
+> | `main.dart.js` | 4.24 MB | the app |
+> | `assets/` | 1.8 MB | fonts (MaterialIcons only), images |
+> | `icons/` | 56 KB | PWA icons |
+> | `index.html`, `flutter_bootstrap.js`, `flutter.js` | 28 KB | entry points |
+> | `firebase-messaging-sw.js`, `flutter_service_worker.js`, `manifest.json`, `version.json` | 3.6 KB | |
+>
+> **Most of that upload is never downloaded by anyone.** `flutter_bootstrap.js` pins
+> `"renderer":"canvaskit"`, so only `canvaskit/canvaskit.wasm` (7.2 MB) is ever fetched. The
+> other five variants — `chromium/canvaskit.wasm`, `skwasm.wasm`, `skwasm_heavy.wasm`,
+> `experimental_webparagraph/canvaskit.wasm`, `wimp.wasm`, plus their `.symbols` files —
+> total ~30 MB that ships to the host and is never requested by a browser. It costs deploy
+> time and storage, not user bytes, so §3's 4.05 MB cold load is unaffected.
+>
+> Leaving it alone: they could be excluded with `ignore` patterns, but the renderer set is
+> Flutter's to decide and pruning it by hand is the kind of thing that breaks silently on a
+> Flutter upgrade. Worth revisiting only if deploy time becomes a real complaint.
+
+~~**Dry run, when you want it** (I have not run any deploy or dry run this phase):~~ Run in W4 — result above.
 
 ```
 firebase.cmd deploy --only hosting --dry-run
 ```
 
-Expect it to fail on the missing `hosting` block rather than on the `aruku` codebase, since
-`aruku` is scoped to the functions target — but that is a prediction, not a result.
+~~Expect it to fail on the missing `hosting` block rather than on the `aruku` codebase.~~ It
+passed, and for that reason: `--only hosting` never loads the functions codebases.
 
 **What the web bundle exposes, checked.** The Firebase **web** API key `AIzaSyAn3syfkn…`
 appears in `web/index.html` and `web/firebase-messaging-sw.js`. It is a different key from the
