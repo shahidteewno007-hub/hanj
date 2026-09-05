@@ -34,6 +34,16 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <!-- Status-bar icon for FCM pushes. Android forces a monochrome alpha
+             mask here, so this must be the white-on-transparent wing; without
+             it FCM falls back to the app icon silhouette, which on a filled
+             coral disc renders as a solid blob. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_notification" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_color"
+            android:resource="@color/notification_accent" />
     </application>
     <queries>
         <intent>
