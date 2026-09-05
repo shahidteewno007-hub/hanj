@@ -315,18 +315,42 @@ trailing slash and no path**:
 *Authorized redirect URIs* are **not** needed — the GIS button is a JavaScript flow, not a
 redirect flow.
 
-**Verified so far:** `flutter build web --release` compiles the web branch; `flutter build apk
---profile` compiles the Android branch; `flutter analyze` gives 0 errors and 198 issues
-against a 202 baseline (four style infos removed in the code I rewrote, none added — diffed
-to confirm).
+**Verified with the origins live (2026-09-04).** Served the release build at
+`http://localhost:5000` and drove headless Chrome over CDP, waiting on **real** time rather
+than `--virtual-time-budget` — which is what finally got past `AuthWrapper` (§0). Result:
 
-**Not verified, and cannot be until the origins are configured:** that the button actually
-renders and returns a credential; behaviour on Chrome and Firefox in a fresh signed-out
-profile; the blocked-popup case. GIS refuses to render for an unauthorised origin, so testing
-before the console entries exist would only reproduce that error. **Android on-device
-verification is also outstanding** — the phone dropped off USB mid-batch and `flutter run`
-could not find it, so the standing "must not regress" check has not been run. The Android
-code path is unchanged in behaviour and compiles, but that is not the same as verified.
+- **The Google button renders.** GIS accepted the client ID at the authorised origin. The
+  console shows `Creating policy: gis-dart` — the SDK loading — and **no
+  `origin is not allowed` error**, which is the failure this would have produced if the
+  console entries had not propagated.
+- All six Firebase services initialise on web (core, auth, firestore, functions, analytics,
+  messaging).
+- `flutter build web --release` and `flutter build apk --profile` both compile.
+  `flutter analyze`: 0 errors, 198 issues against a 202 baseline (four style infos removed in
+  the code I rewrote, none added — diffed to confirm).
+
+**One thing the render changed.** I had configured the `outline` theme as the closest to the
+app's palette. Seeing it, that was wrong: `outline` is a **white** button, and on the
+near-black login screen it reads as a foreign element pasted on top. Re-rendered with
+`filledBlack`, which is dark with the Google G in a white circle and sits with the glass card
+instead of fighting it. **Changed on the evidence, not on taste.** It remains a Google button —
+this is choosing the least-bad of three fixed themes, not styling.
+
+**Still not verified, and honestly cannot be by me:**
+
+- **Completing an actual sign-in.** Clicking the button opens Google's cross-origin account
+  chooser, which needs real credentials. That is yours to run, and it is the step that proves
+  the idToken audience matches Firebase.
+- **Firefox**, and **the blocked-popup case** — both need a human driving a real browser.
+- **Android on device.** The phone dropped off USB mid-batch, so the standing "must not
+  regress" check has not run. The Android path compiles and is behaviourally unchanged, but
+  that is not verified.
+
+**A note for the next person who tries to screenshot this app headlessly:** plain
+`chrome --headless --screenshot --virtual-time-budget=N` will only ever capture the blank
+`AuthWrapper` state, however large N is. Virtual time does not wait for Firebase's network
+round-trip. Driving CDP and sleeping on real time works. The script is in the scratchpad as
+`cdpshot.mjs`.
 
 ### 2.4 Desktop affordances — measured
 

@@ -28,7 +28,11 @@ import 'package:google_sign_in_web/web_only.dart' as web_only;
 Widget buildGoogleSignInButton({double? width}) {
   return web_only.renderButton(
     configuration: web_only.GSIButtonConfiguration(
-      theme: web_only.GSIButtonTheme.outline,
+      // filledBlack, not outline: outline renders a white button, which on the
+      // near-black login screen reads as a foreign element pasted on top.
+      // Verified by rendering both. This is the closest of the three themes to
+      // the app's palette — which is as close as GIS allows.
+      theme: web_only.GSIButtonTheme.filledBlack,
       size: web_only.GSIButtonSize.large,
       text: web_only.GSIButtonText.continueWith,
       shape: web_only.GSIButtonShape.pill,
