@@ -838,6 +838,16 @@ that gets forgotten precisely because the UI does not exercise it.
 **Fix direction:** `allow write: if request.auth != null && request.auth.uid == followerId`
 for `followers`, and `== userId` for `following`, depending on which side owns the edge.
 
+**Fixed (2026-09-05, batch 5d).** Reads are now `request.auth != null` on both, and writes
+are scoped to the writer's own end of the edge — `request.auth.uid == followerId` for
+`followers`, `== userId` for `following`. `firestore-tests/social-graph.test.js` covers both
+halves in 15 tests, including the two cases that motivated the fix: a third party fabricating
+an edge between two other users, and a profile owner inflating their own follower count.
+
+Owner-side removal of an unwanted follower is deliberately **not** granted — there is no
+remove-follower feature to justify it, and the test asserts the current denial so the
+decision is visible if that changes.
+
 ### R5 · 🟠 Reviews and episode discussions: impersonation and unbounded vote counts
 
 Both collections share a pattern, and both halves of it are loose.

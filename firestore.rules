@@ -82,13 +82,38 @@ service cloud.firestore {
       // read or write it — a client that could write it could reset its own
       // daily cap. Default-deny is the correct rule, so there isn't one.
 
+      // ── Follow graph ──────────────────────────────────────────
+      // A follow is two mirrored edges. When A follows B the client writes
+      // users/B/followers/A and users/A/following/B, so these two blocks are
+      // owned by different people and cannot share one condition.
+      //
+      // Reads: signed-in only. Who follows whom is social graph data, and
+      // nothing renders it logged out, so there is no reason to serve it
+      // unauthenticated.
+      //
+      // Writes: scoped to the writer's own end of the edge. You may add or
+      // remove yourself from anyone's followers, and add or remove anyone
+      // from your own following. You cannot put a third party into someone
+      // else's graph — which is exactly what the previous
+      // `allow write: if request.auth != null` allowed anyone to do.
+      //
+      // KNOWN RESIDUAL: document *contents* are unconstrained, so a follower
+      // can store arbitrary fields in a document under another user's
+      // subtree. No client writes these collections yet, so the shape isn't
+      // known well enough to validate; worth a field check once one does.
+      //
+      // NOT granted, deliberately: the profile owner removing an unwanted
+      // follower. That needs userId to be able to delete
+      // users/{userId}/followers/{followerId} too, and there is no
+      // remove-follower feature to justify widening the rule yet. Add it
+      // with the feature, not before.
       match /followers/{followerId} {
-        allow read: if true;
-        allow write: if request.auth != null;
+        allow read: if request.auth != null;
+        allow write: if request.auth != null && request.auth.uid == followerId;
       }
       match /following/{followingId} {
-        allow read: if true;
-        allow write: if request.auth != null;
+        allow read: if request.auth != null;
+        allow write: if request.auth != null && request.auth.uid == userId;
       }
     }
 
