@@ -46,9 +46,13 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
-    - assets/images/hanj_wing.png
+    # 2.0x/ and 3.0x/ variants are picked up automatically for this entry.
     - assets/images/hanj_wing_transparent.png
-    - assets/images/hanj_wing_transparent_hires.png
+    # hanj_wing.png (94,054 B) and hanj_wing_transparent_hires.png (9,917 B)
+    # were declared here and bundled into every build, but nothing in lib/
+    # references either and both are the pre-2026-09 mark. Undeclared so they
+    # stop shipping; the files stay on disk deliberately (never delete), so
+    # re-adding a line here is all it takes to bring one back.
 
 
 # ─────────────────────────────────────────────────────────────────────────────
