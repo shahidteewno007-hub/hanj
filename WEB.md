@@ -931,3 +931,219 @@ starting position than the code alone suggested.
 
 Nothing in this file has been acted on. Phase two — the desktop layout proposal — awaits your
 review.
+
+---
+
+## 9. Phase two — the desktop layout system
+
+**Date:** 2026-09-06. Proposal only; nothing here is implemented.
+
+Phase one confirmed stretch from the screenshots but described it in round numbers. This
+section measures it, then derives the layout system from those measurements rather than from
+convention.
+
+### 9.1 Stretch, measured
+
+Method: each capture is decoded to pixels; ink is anything more than 24/255 from `#0D0B09`;
+for every row I take the widest run of background **flanked on both sides by at least 3 CSS px
+of solid ink**. The flanking rule is what makes the number mean anything — without it the
+metric finds card borders and reports three unrelated screens as identical.
+
+The captures are **DPR 2** (390 CSS px → 780 px of image), so every figure below is halved to
+CSS px. Home's worst gap lands at **1,767 CSS px**, which is the ~1,800 px bookmark-to-title
+gap phase one described by eye; that agreement is the calibration for the rest.
+
+Worst content-to-content gap, CSS px (% of viewport width):
+
+| Screen | 390 | 768 | 1024 | 1440 | 1920 | rows affected @1920 |
+|---|---:|---:|---:|---:|---:|---:|
+| Discover | 329 | 707 | 963 | 1379 | **1859 (97%)** | 139 |
+| List | 333 | 711 | 967 | 1383 | **1863 (97%)** | 35 |
+| Profile | 328 | 706 | 962 | 1378 | **1858 (97%)** | 292 |
+| Home | 237 | 615 | 871 | 1287 | **1767 (92%)** | 262 |
+| Pulse | 227 | 452 | 607 | 857 | **1145 (60%)** | 23 |
+
+**Every screen's worst gap grows by exactly +1,530 CSS px between 390 and 1920** — the entire
+width added. Pulse is the only exception at +918. Nothing anywhere is constrained; width goes
+straight into dead space.
+
+Ranked for repair — magnitude alone does not separate the top four, so pervasiveness and what
+actually breaks decides:
+
+1. **Home** — 262 affected rows, the landing screen, and the flagship symptom (trending row:
+   rank, poster and title at the left, bookmark icon 1,767 px away).
+2. **Profile** — most pervasive at 292 rows, and the only true two-column failure. The stat
+   tiles are `Row(Expanded, Expanded)`, not a `GridView`, so each tile is ~950 px wide to show
+   a `0`.
+3. **Discover** — worst per-element ratio: nine full-width category cards, icon hard left,
+   chevron hard right, ~90% empty.
+4. **List** — **understated by the measurement.** The capture account holds 0 titles (§1.5), so
+   1,863 px was measured against an empty state with only 35 affected rows.
+5. **Pulse** — mildest on every axis. Only the tab strip and nav stretch.
+
+### 9.2 Breakpoints: keep 600 and 1024, but only one of them is safe for structure
+
+The decisive constraint is not a design preference, it is the shipped device. The CPH2573 is
+1440 × 3168 at DPR 4.0, so it is **360 × 792 logical px**. Rotated to landscape it is
+**792 logical px wide**.
+
+There is no global orientation lock. `SystemChrome.setPreferredOrientations` appears only in
+`trailer_launcher.dart` and `trailer_player_screen.dart`, which force landscape for playback
+and then restore `portraitUp`. So the app rotates freely until a trailer has been played, after
+which it is pinned to portrait for the rest of the process — the orientation behaviour of the
+app depends on whether the user has watched a trailer.
+
+It follows that:
+
+- **≥600 is unsafe for structural decisions.** A phone in landscape is 792 px wide and crosses
+  it. Anything that changes layout structure at 600 changes it on a shipped phone.
+- **≥1024 is safe, and safe for a measured reason: 792 < 1024.** This is the breakpoint to hang
+  navigation and column-count changes on.
+
+Two breakpoints are enough. 600 stays for decisions that are harmless in landscape (padding,
+spacing); 1024 carries everything structural.
+
+### 9.3 Content width: one column rule, two caps
+
+The cap is derived, not chosen. The design is proven at 360–390 px — that is the width the
+phone renders and the width at which the captures look correct (Home's gap at 390 is 237 px,
+the acceptable baseline). So a wide viewport should **repeat that column, not stretch it**.
+
+With a column target of ~437 px, 24 px gutters and 20 px outer padding:
+
+```
+cap = 3 x 437  +  2 x 24  +  2 x 20  =  1311 + 48 + 40  =  1399  ->  1400
+```
+
+So **a 1400 px page cap is exactly what "three columns of ~440" implies**, and the two numbers
+are the same decision stated twice. Column count follows from the same rule, with a 350 px
+minimum column and a hard maximum of 3:
+
+```
+columns = clamp( floor( (W - 40 + 24) / (350 + 24) ), 1, 3 )
+
+  390 -> 1     768 -> 2     1024 -> 2     1440 -> 3     1920 (capped) -> 3
+```
+
+**A separate, much narrower cap for prose.** One number cannot serve a card grid and a
+paragraph. The synopsis is `AppTheme.sans(fontSize: 14, height: 1.7)`; at Inter's ~0.5 em
+average advance that is ~7 px per character, and the readable measure of 66–75 characters gives
+**462–525 px**. Proposed prose cap: **480 px**.
+
+For scale: unconstrained at 1920 the synopsis line is 1,880 px, about **268 characters** —
+roughly four times the upper bound of readability. Note also that the prose cap and one grid
+column (437 px) are within 10% of each other, so the two rules agree: **long-form text occupies
+at most one column, ever.**
+
+**Honest limit of the page cap on its own.** Applied without the column work, a 1400 px cap
+takes Home's worst gap from 1,767 to roughly 1,250 — real, but not a fix. The cap is the
+foundation; the column count is what closes the gap (to ~284 px, comparable to the phone).
+Screens that stay single-column until then will still look stretched, and that is expected.
+
+### 9.4 Navigation
+
+`main_screen.dart` is 77 lines and holds the five tab roots plus a `NavigationBar`. At ≥1024 it
+becomes a `NavigationRail` on the left; below 1024 the existing bottom bar is untouched. The
+five destinations, their order, icons and labels are unchanged, so the two surfaces cannot
+drift into different information architectures.
+
+**The rail must not change tab behaviour.** `MainScreen` deliberately does not use
+`IndexedStack`, so every tab switch destroys and rebuilds the tab root, and the static caches in
+Home and Discovery (`_cachedCurrent`, `_cachedThis`) exist precisely to cover that. A rail
+refactor that quietly introduces or removes `IndexedStack` would change the rebuild contract
+those caches are written against.
+
+### 9.5 Grids
+
+Eleven `crossAxisCount` sites are hardcoded (2 or 3); two more already call
+`Responsive.getGridColumns`. The rule in §9.3 replaces the constants. `card_share.dart` stays
+excluded — its 340 × 604 canvas is an output format, not a layout.
+
+### 9.6 What desktop earns
+
+Only two are worth building, both from the measurements rather than from ambition:
+
+- **List two-pane** at ≥1024 — list on the left, detail on the right. This is the screen whose
+  stretch is most understated by the captures and the one that gains most from width.
+- **More rows visible at once** on Home and Discover, via the column rule. Not a new feature,
+  just the width being used.
+
+### 9.7 Mechanism: extend the layer that exists, and mind what it cannot reach
+
+`lib/core/responsive.dart` is the right foundation in shape — static helpers, no dependency,
+already in the tree. It is imported by exactly one screen not because it proved insufficient but
+because **adoption was never finished**: `search_screen.dart` uses 3 of its ~10 helpers and they
+work, while the other four tab roots contain no width-aware code at all. Its values, though, are
+phone-shaped (`getGridColumns` returns 3 at every width above 1024, `getCardWidth` caps at 160)
+and need replacing with the rule in §9.3.
+
+**A cap around `_screens[_selectedIndex]` reaches the five tab roots only.** Everything else is
+a pushed `MaterialPageRoute` and stays unconstrained — including anime detail and card
+collection, both Tier 1 in §5, and including `search_screen.dart` itself, which is pushed from
+`home_screen.dart:313` and is therefore the one screen already using `Responsive` that the shell
+cap cannot reach.
+
+Three ways to cover pushed routes:
+
+| Option | Cost | Blast radius |
+|---|---|---|
+| `MaterialApp.builder` | ~15 lines, one place; `builder:` is currently unset | **Wide.** Wraps every route, dialog, bottom sheet and snackbar, plus login/onboarding, whose full-bleed backdrops would letterbox |
+| Reusable wrapper widget, applied per screen | ~20 lines once, 1 line per screen | Narrow and reviewable, but only where applied |
+| Custom `PageRoute` | Moderate | Misses `routes:` entries and anything pushed directly |
+
+**Recommended: the wrapper widget.** It is the same boring mechanism used everywhere, adopted
+one screen at a time as each gets its responsive pass, and it never touches a modal. This is a
+layout concern, not a routing one — it does not depend on named routes and should **not** wait
+for the W5 routing work.
+
+### 9.8 Batches
+
+| | Scope | Files | Est. lines | Android |
+|---|---|---|---:|---|
+| **1** | Page cap in the shell, prose + column helpers, wrapper widget | `main_screen.dart`, `core/responsive.dart` | ~60 | none |
+| **2** | `NavigationRail` at ≥1024 | `main_screen.dart` | ~60 | none |
+| **3** | Home trending rows + Discover category cards to columns | 2 screen files | ~120–180 | real |
+
+Batch 3 splits into 3a (Home) and 3b (Discover) if it approaches 200 lines. Profile's stat tiles
+and the List two-pane are follow-ups, not part of this set — the two-pane in particular should
+not be designed against an empty-state screenshot.
+
+### 9.9 Android risk
+
+- **Batches 1 and 2 carry effectively none.** A 1400 px cap is inert at 360 px and at 792 px, so
+  the phone takes the identical path in both orientations; the rail is gated at ≥1024, which
+  landscape's 792 px never reaches.
+- **Batch 3 is where the risk is.** It edits layout code the phone runs. Every change needs a
+  width gate, and device verification is not optional — including the `lastUpdateTime` check
+  from `CLAUDE.md`, since `flutter run` exits 0 on a build that compiled but never installed.
+- The 792 px landscape width is the systemic trap behind all three.
+
+### 9.10 The one landscape case that is already shipped
+
+`search_screen.dart` is the only screen using the 600-gated helpers, so it is the only place
+where landscape already changes behaviour on Android today. It does — but not in the direction
+expected, and it is not a bug introduced by the breakpoint.
+
+On the CPH2573, with `childAspectRatio: 0.58` fixed at both grid sites:
+
+| | width | cols | card | card height |
+|---|---:|---:|---:|---:|
+| Portrait | 360 | 2 | 163 px | 281 px (viewport 792 — fits) |
+| Landscape, current (tablet branch) | 792 | 3 | 245 px | **423 px (viewport ~360 — does not fit)** |
+| Landscape, if it took the mobile branch | 792 | 2 | 379 px | 653 px — worse still |
+| Landscape, 4 columns | 792 | 4 | 181 px | 312 px — fits |
+
+So the 600 gate **improves** landscape here rather than breaking it. The residual problem is the
+fixed 0.58 aspect ratio, not the breakpoint: no card fits the landscape viewport at any column
+count below 4. Worth recording, not worth fixing in batch 1, and it does not change the rule in
+§9.2 — 600 remains unsafe for structural decisions generally; it simply happens to be benign at
+this one site.
+
+### 9.11 Still unverified
+
+- Everything above rests on five screenshots from an account with **no data**. List and Profile
+  render empty states.
+- **Anime detail and card collection are not captured at all**, though both are Tier 1 and the
+  unconstrained synopsis is the worst line-length case in the app.
+- The 480 px prose cap is derived from Inter's average advance, not measured against rendered
+  text. It should be checked against a real synopsis before it is fixed in code.
