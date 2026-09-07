@@ -85,9 +85,22 @@ class Responsive {
   static const double _gutter = 24;
   static const double _outerPadding = 20;
 
+  /// The width at which multi-column layout begins. Same threshold as
+  /// [isDesktop], and deliberately not 600 — a CPH2573 in landscape is 792
+  /// logical px wide, so 600 would put a phone into desktop layout.
+  static const double desktopMin = 1024;
+
   /// Columns at [width], from the same rule that produced [pageMaxWidth].
-  /// 390 → 1, 768 → 2, 1024 → 2, 1440 → 3, 1920 → 3.
+  /// 390 → 1, 768 → 1, 1024 → 2, 1440 → 3, 1920 → 3.
+  ///
+  /// **Domain: desktop widths only.** This is content-width arithmetic derived
+  /// from the 1400 cap; it was never a rule about phones. Below [desktopMin]
+  /// it returns 1 by construction rather than by arithmetic — the unfloored
+  /// formula yields 2 at 792, which would put a phone in landscape into a
+  /// two-column layout and contradict the very finding that makes 1024 the
+  /// safe structural breakpoint (WEB.md §9.2, §9.3).
   static int columnsFor(double width) {
+    if (width < desktopMin) return 1;
     final capped = width > pageMaxWidth ? pageMaxWidth : width;
     final usable = capped - (2 * _outerPadding) + _gutter;
     final n = usable ~/ (_columnMin + _gutter);
