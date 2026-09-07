@@ -1218,11 +1218,24 @@ are debug-only, so on a real user's phone both fail silently.
 `pulse_screen.dart:216` `_buildEmpty()` is `Center > Padding(all: 40) > Column(min)` holding a
 44 px icon, a two-line message and, when `emptyAction` is set, a **Refresh** `TextButton`.
 
-In landscape the tab body gets `0 <= h <= 162`, and the column wants 176 — it overflows by
-**14 px**. What that costs is not cosmetic: photographed on the device, the icon is sliced by
-the nav bar and **the message and the Refresh button are gone entirely**. The empty state's
-only action is unreachable, and Refresh is exactly what a user looking at an empty feed would
-want.
+The overflow is worse than first recorded, and the correction is what explains the photograph.
+Measured by pumping the screen two ways:
+
+| | tab body | inner, after the 40 px padding | column wants | overflow |
+|---|---:|---:|---:|---:|
+| `PulseScreen` alone | 242 | 162 | 176 | **14 px** |
+| Inside the real shell | **144** | **64** | 176 | **~112 px** |
+
+The shell figure is the one that ships. `MainScreen` puts a tab root under `OfflineBanner` —
+whose connectivity strip permanently reserves ~33 px, sliding rather than unmounting — and
+above a 64 px bottom bar. Together those take 98 px out of a 360 px landscape viewport. The
+14 px figure came from pumping `PulseScreen` on its own and understates the real overflow by
+roughly eight times.
+
+At 64 px of inner height, a 44 px icon plus a two-line message plus a button is not close. The
+photograph agrees: the icon is sliced by the nav bar and **the message and the Refresh button
+are gone entirely**. The empty state's only action is unreachable, and Refresh is exactly what
+a user looking at an empty feed would want.
 
 Caught by `test/page_width_layout_test.dart`, which asserts the overflow occurs identically
 with and without `PageWidth` — that assertion is what proves the defect is pre-existing.
@@ -1240,25 +1253,46 @@ version is not wrong.
 
 `search_screen.dart` grids at `:390` and `:509` both pin `childAspectRatio: 0.58` and take
 their column count from `Responsive.getGridColumns`, which returns 2 below 600 and 3 from
-600–1024. On the CPH2573 (360 × 792 logical):
+600–1024.
 
-| | width | cols | card w | card h | viewport h |
-|---|---:|---:|---:|---:|---:|
-| Portrait | 360 | 2 | 163 | 281 | 792 — fits |
-| **Landscape** | 792 | 3 | 245 | **423** | ~360 — **no card fits** |
-| Landscape, 2 cols | 792 | 2 | 379 | 653 | worse |
-| Landscape, 4 cols | 792 | 4 | 181 | 312 | fits the raw height |
+**The `OfflineBanner` reservation does not apply here.** `OfflineBanner` has exactly one use
+site — `main_screen.dart:64` — so it wraps the five tab roots and nothing else. `SearchScreen`
+is pushed as its own `MaterialPageRoute` with its own `Scaffold` (`home_screen.dart:313`) and
+never sees the strip. The ~33 px is a tab-root cost, and 759 is the *portrait* tab-root figure
+(792 − 33); the landscape equivalent for a tab root is 327.
 
-The 600 breakpoint is not the culprit here — it moves landscape from 2 columns to 3, which is
-the better of the two. The culprit is the **fixed aspect ratio**: at 0.58 a card is 1.72× its
-own width, so no column count below 4 can fit 360 px of height.
+What search actually gets is smaller than either, and it is measured rather than derived. Its
+own `SafeArea`, `_buildHeader()` and `_buildTabBar()` take 113 px of the 360:
 
-**Fix:** derive the count from the available *height* as well as the width. To show a whole
-card, `colWidth <= 0.58 x usableHeight`, so `cols >= available / (0.58 x usableHeight)`.
+| | scaffold | grid slot |
+|---|---:|---:|
+| Portrait | 360 × 792 | 679 |
+| **Landscape** | 792 × 360 | **247** |
+
+Against 247 px, with 16 px padding and 12 px spacing on a 792 px width:
+
+| cols | card w | card h | fits the 247 slot? | fits allowing the grid's own 16 px padding (215)? |
+|---:|---:|---:|---|---|
+| 2 | 379 | 653 | no | no |
+| **3 — current** | 245 | **423** | **no** | no |
+| 4 | 181 | 312 | **no** | no |
+| 5 | 142 | 246 | yes, by 1 px | no |
+| 6 | 117 | 201 | yes | **yes** |
+
+**So four columns does not fit, and the earlier table was wrong to say it did** — it compared a
+312 px card against the raw 360 rather than against the 247 the grid is actually given. Five
+clears the slot by a single pixel, which is not a margin worth shipping. **Six is the first
+count that shows a complete card** once the grid's own vertical padding counts, and a 117 px
+poster is small enough to ask whether more columns is the right lever at all.
+
+That changes the recommendation. Piling on columns to defeat a fixed 1.72× aspect ratio makes
+the posters tiny. The better fix is to **relax `childAspectRatio` in short viewports** — at four
+columns a ratio of ~0.85 gives a 213 px card, which fits 247 with room — and to derive the count
+from height as well as width rather than from width alone.
 
 **Gate on height, not width.** A width gate would work by accident here (792 crosses 600) but
 would also fire on a genuinely wide, short desktop window, and it states the wrong reason. The
-defect is a height problem; the condition should say so. Portrait at 792 px of height is then
+defect is a height problem; the condition should say so. Portrait keeps its 679 px slot and is
 provably untouched, which is the property that matters on the shipped surface.
 
 **~20 lines, one file, two call sites** — and `Responsive.getGridColumns` must keep its current
