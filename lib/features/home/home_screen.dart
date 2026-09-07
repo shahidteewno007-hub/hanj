@@ -504,6 +504,19 @@ class _HomeScreenState extends State<HomeScreen> {
               // columnsFor is floored to 1 (see its domain note), so the
               // phone takes the SliverList branch it has always taken and
               // builds an identical tree in both orientations.
+              //
+              // The count comes from MediaQuery width, not from the width this
+              // sliver is actually laid out in. Those differ — PageWidth caps
+              // the content at 1400 and the rail takes ~117 px beside it — but
+              // the answer does not, because columnsFor caps internally at the
+              // same 1400 and the content is never wider than that. At 1024
+              // with the rail it yields 2 columns of ~453 px, still above the
+              // 350 px minimum the arithmetic is built from.
+              //
+              // That is an assumption, not an identity. If the cap, the rail
+              // width or the column minimum ever change, this can start
+              // over-counting; responsive_columns_test's boundary and
+              // minimum-width cases are what catch it.
               if (Responsive.columnsFor(MediaQuery.of(context).size.width) ==
                   1)
                 SliverList(
