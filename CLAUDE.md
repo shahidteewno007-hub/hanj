@@ -198,11 +198,18 @@ the shareable cards people post. **Do not propose replacing them, adding a fourt
 substituting anything "cleaner".** Improving typography here means improving how these three
 are used.
 
-> **Known drift:** the code currently ships **six** families. `AppTheme.sans()` and the whole
-> `TextTheme` body/title tier resolve to `GoogleFonts.inter`, not DM Sans, across 224 call
-> sites, while 84 sites call `GoogleFonts.dmSans` directly. Space Mono (9 sites, all in
-> `hanj_card.dart`) and Noto Serif JP (4 sites, `tomo_screen.dart`) are also unaccounted for.
-> This is a known open decision — see `PERF.md` S6-1. Don't quietly "fix" it either way.
+> **The drift is resolved — W3, 2026-09.** `AppTheme.sans()` and the `TextTheme` body/title
+> tier resolve to `GoogleFonts.dmSans`. **`GoogleFonts.inter` appears nowhere** in `lib/`,
+> `web/`, `pubspec.yaml` or `android/`, and Noto Serif JP is gone from `tomo_screen.dart` —
+> the four mentions left there are comments explaining why it is *not* used.
+>
+> **Four** families ship now, not six. `GoogleFonts.*` call sites in `lib/`: DM Sans 117,
+> Playfair Display 55, Space Grotesk 44, Space Mono 9. The three type roles above are
+> unchanged; **Space Mono is the one standing exception**, confined to `hanj_card.dart`, and
+> it is not licence to add a fifth.
+>
+> Background: `PERF.md` S6-1 and §8c for what the change cost, `WEB.md` §3.1 for what it
+> saved on web. Counts re-verified 2026-09-07 — see `WEB.md` §9.3a.
 
 Also settled: **the six card rarity tiers** — `enum CardRarity { common, rare, epic,
 legendary, seasonal, secret }` in `lib/features/cards/hanj_card.dart`. The collection screen
