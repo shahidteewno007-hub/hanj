@@ -9,6 +9,25 @@ import 'pulse/pulse_screen.dart';
 import 'my_list/my_list_screen.dart';
 import 'profile/profile_screen.dart';
 
+/// One definition of the five destinations, so the bottom bar and the desktop
+/// rail cannot drift into different information architectures (WEB.md §9.4).
+/// Order, icons and labels are exactly what the bottom bar shipped with.
+class _Destination {
+  const _Destination(this.icon, this.selectedIcon, this.label);
+  final IconData icon;
+  final IconData selectedIcon;
+  final String label;
+}
+
+const List<_Destination> _destinations = [
+  _Destination(Icons.home_outlined, Icons.home_rounded, 'HOME'),
+  _Destination(Icons.explore_outlined, Icons.explore_rounded, 'DISCOVER'),
+  _Destination(Icons.bolt_outlined, Icons.bolt_rounded, 'PULSE'),
+  _Destination(Icons.format_list_bulleted_rounded,
+      Icons.format_list_bulleted_rounded, 'LIST'),
+  _Destination(Icons.person_outline_rounded, Icons.person_rounded, 'PROFILE'),
+];
+
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
 
@@ -29,52 +48,85 @@ class _MainScreenState extends State<MainScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // The rail replaces the bottom bar from 1024 up. A phone never reaches it:
+    // the CPH2573 is 360 px wide in portrait and 792 in landscape (WEB.md
+    // §9.2), so Android keeps taking the branch it always took — which is why
+    // the breakpoint is 1024 and not 600.
+    final useRail = Responsive.isDesktop(context);
+
+    // Still no IndexedStack: switching tabs destroys and rebuilds the tab root,
+    // and the static caches in Home and Discovery exist to cover exactly that.
+    // Indexing _screens here keeps that contract unchanged.
+    //
+    // PageWidth caps the tab root alone. The rail is its sibling inside the
+    // Row, so the rail stays flush to the window edge and full height while the
+    // cap applies only to the content beside it — the Row is never wrapped.
+    final content = OfflineBanner(
+      child: PageWidth(child: _screens[_selectedIndex]),
+    );
+
     return Scaffold(
       backgroundColor: AppTheme.background,
-      // Caps the tab roots at a content column on desktop web. Inert on the
-      // phone in either orientation (WEB.md §9.3); the banner above it stays
-      // full-width by design.
-      body: OfflineBanner(child: PageWidth(child: _screens[_selectedIndex])),
-      bottomNavigationBar: Container(
-        decoration: const BoxDecoration(
-          color: AppTheme.surface,
-          border: Border(top: BorderSide(color: AppTheme.border, width: 1)),
-        ),
-        child: NavigationBar(
-          selectedIndex: _selectedIndex,
-          onDestinationSelected: (i) => setState(() => _selectedIndex = i),
-          backgroundColor: Colors.transparent,
-          indicatorColor: Colors.transparent,
-          labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-          height: 64,
-          destinations: const [
-            NavigationDestination(
-              icon: Icon(Icons.home_outlined),
-              selectedIcon: Icon(Icons.home_rounded),
-              label: 'HOME',
+      body: useRail
+          ? Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _buildRail(),
+                Expanded(child: content),
+              ],
+            )
+          : content,
+      bottomNavigationBar: useRail ? null : _buildBottomBar(),
+    );
+  }
+
+  void _select(int i) => setState(() => _selectedIndex = i);
+
+  Widget _buildRail() {
+    return Container(
+      decoration: const BoxDecoration(
+        color: AppTheme.surface,
+        border: Border(right: BorderSide(color: AppTheme.border, width: 1)),
+      ),
+      child: NavigationRail(
+        selectedIndex: _selectedIndex,
+        onDestinationSelected: _select,
+        backgroundColor: Colors.transparent,
+        indicatorColor: Colors.transparent,
+        labelType: NavigationRailLabelType.all,
+        destinations: [
+          for (final d in _destinations)
+            NavigationRailDestination(
+              icon: Icon(d.icon),
+              selectedIcon: Icon(d.selectedIcon),
+              label: Text(d.label),
             ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBottomBar() {
+    return Container(
+      decoration: const BoxDecoration(
+        color: AppTheme.surface,
+        border: Border(top: BorderSide(color: AppTheme.border, width: 1)),
+      ),
+      child: NavigationBar(
+        selectedIndex: _selectedIndex,
+        onDestinationSelected: _select,
+        backgroundColor: Colors.transparent,
+        indicatorColor: Colors.transparent,
+        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+        height: 64,
+        destinations: [
+          for (final d in _destinations)
             NavigationDestination(
-              icon: Icon(Icons.explore_outlined),
-              selectedIcon: Icon(Icons.explore_rounded),
-              label: 'DISCOVER',
+              icon: Icon(d.icon),
+              selectedIcon: Icon(d.selectedIcon),
+              label: d.label,
             ),
-            NavigationDestination(
-              icon: Icon(Icons.bolt_outlined),
-              selectedIcon: Icon(Icons.bolt_rounded),
-              label: 'PULSE',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.format_list_bulleted_rounded),
-              selectedIcon: Icon(Icons.format_list_bulleted_rounded),
-              label: 'LIST',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.person_outline_rounded),
-              selectedIcon: Icon(Icons.person_rounded),
-              label: 'PROFILE',
-            ),
-          ],
-        ),
+        ],
       ),
     );
   }
