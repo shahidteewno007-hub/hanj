@@ -1144,26 +1144,45 @@ not be designed against an empty-state screenshot.
   from `CLAUDE.md`, since `flutter run` exits 0 on a build that compiled but never installed.
 - The 792 px landscape width is the systemic trap behind all three.
 
-### 9.10 The one landscape case that is already shipped
+### 9.9a Batch 1 device pass — measured, 2026-09-07
 
-`search_screen.dart` is the only screen using the 600-gated helpers, so it is the only place
-where landscape already changes behaviour on Android today. It does — but not in the direction
-expected, and it is not a bug introduced by the breakpoint.
+Run against `eafae3c`, with the pre-batch-1 tree (`e013738`) built and installed separately as
+the baseline rather than trusting the APK already on the phone. Both installs verified by
+`lastUpdateTime` advancing (`02:21:44` → `01:29:38` → `01:38:31`; the phone clock runs ahead of
+the host, so each reading is compared against the previous one, not against the host).
 
-On the CPH2573, with `childAspectRatio: 0.58` fixed at both grid sites:
+All five tab roots captured in both orientations and diffed pixel by pixel. The first pass showed
+~0.6% differing on every screen, which turned out to be **Android's own status bar** — clock and
+battery. Excluding the system bars and the gesture pill:
 
-| | width | cols | card | card height |
-|---|---:|---:|---:|---:|
-| Portrait | 360 | 2 | 163 px | 281 px (viewport 792 — fits) |
-| Landscape, current (tablet branch) | 792 | 3 | 245 px | **423 px (viewport ~360 — does not fit)** |
-| Landscape, if it took the mobile branch | 792 | 2 | 379 px | 653 px — worse still |
-| Landscape, 4 columns | 792 | 4 | 181 px | 312 px — fits |
+| | portrait | landscape |
+|---|---|---|
+| home, discover, pulse, list, profile | **0 px** | **0 px** |
 
-So the 600 gate **improves** landscape here rather than breaking it. The residual problem is the
-fixed 0.58 aspect ratio, not the breakpoint: no card fits the landscape viewport at any column
-count below 4. Worth recording, not worth fixing in batch 1, and it does not change the rule in
-§9.2 — 600 remains unsafe for structural decisions generally; it simply happens to be benign at
-this one site.
+**10/10 pixel-identical.** `PageWidth` is inert on the phone in both orientations, as the widget
+test predicted.
+
+Two things the run established beyond the pass itself:
+
+- **792 × 360 confirmed on hardware.** `dumpsys` reports `w792dp h360dp` in landscape. The number
+  the whole breakpoint argument rests on is now measured, not derived.
+- **`user_rotation` is ignored while `accelerometer_rotation` is 1**, and the device re-enables
+  auto-rotate on its own. A first landscape attempt silently captured portrait. Force both, and
+  verify each capture's pixel dimensions before trusting it.
+
+Also settled here: a profile APK built incrementally measured 50.8 MB against the baseline's
+39.3 MB. Clean rebuilds of both commits are **byte-identical at 41,232,380 bytes** — the gap was
+an incremental build artefact, not a size regression.
+
+### 9.10 Landscape on the phone — moved to §10
+
+`search_screen.dart` is the only screen using the 600-gated helpers, so it was the only place
+landscape was known to change behaviour on Android. It does — but not in the direction expected,
+and not because of the breakpoint.
+
+That finding has since been joined by a second, worse one in Pulse, and both are now written up
+together as a single verification pass in **§10**. The rule in §9.2 is unchanged either way: 600
+remains unsafe for structural decisions; it simply happens to be benign at the search site.
 
 ### 9.11 Still unverified
 
@@ -1174,3 +1193,89 @@ this one site.
 - The 440 px prose cap is derived from DM Sans's measured average advance (6.55 px at 14 px,
   webfont loaded in a browser) applied to the 66–75 character measure. It has not been checked
   against a real synopsis as the app renders it, and should be before it is treated as settled.
+
+---
+
+## 10. Landscape defects on the phone — one pass, two fixes
+
+Two defects on shipped Android, both only in landscape, both found while verifying something
+else rather than by looking for them. **Neither is caused by batch 1** — the batch 1 device
+pass is pixel-identical on all five tab roots in both orientations (§9.9a).
+
+They are written up together because they are one verification pass: rotate the phone, check
+two screens, done. Splitting them would mean rotating twice for no gain.
+
+Landscape is reachable on a shipped phone: there is no global orientation lock (§9.2). The app
+rotates freely until a trailer plays, after which `portraitUp` is pinned for the rest of the
+process — so whether a user can hit either of these depends on whether they have watched a
+trailer yet, which is not a defensible way to be safe.
+
+**Neither shows an assert stripe in a profile or release build.** `RenderFlex` overflow stripes
+are debug-only, so on a real user's phone both fail silently.
+
+### 10.1 Pulse — the screen's only action is clipped away
+
+`pulse_screen.dart:216` `_buildEmpty()` is `Center > Padding(all: 40) > Column(min)` holding a
+44 px icon, a two-line message and, when `emptyAction` is set, a **Refresh** `TextButton`.
+
+In landscape the tab body gets `0 <= h <= 162`, and the column wants 176 — it overflows by
+**14 px**. What that costs is not cosmetic: photographed on the device, the icon is sliced by
+the nav bar and **the message and the Refresh button are gone entirely**. The empty state's
+only action is unreachable, and Refresh is exactly what a user looking at an empty feed would
+want.
+
+Caught by `test/page_width_layout_test.dart`, which asserts the overflow occurs identically
+with and without `PageWidth` — that assertion is what proves the defect is pre-existing.
+
+**Fix, smallest form:** make the empty state scrollable — `Center > SingleChildScrollView >
+Padding > Column`. Content becomes reachable at any height; portrait is unaffected because it
+never overflows there. **~5 lines, one file.**
+
+**Fix, better form:** a `LayoutBuilder` that drops the padding from 40 to ~16 and the icon from
+44 to ~32 when `maxHeight < 220`, so the state still fits rather than needing a scroll for
+three elements. **~12 lines, one file.** Preferred, but it is a judgement call and the cheap
+version is not wrong.
+
+### 10.2 Search — no card fits the viewport
+
+`search_screen.dart` grids at `:390` and `:509` both pin `childAspectRatio: 0.58` and take
+their column count from `Responsive.getGridColumns`, which returns 2 below 600 and 3 from
+600–1024. On the CPH2573 (360 × 792 logical):
+
+| | width | cols | card w | card h | viewport h |
+|---|---:|---:|---:|---:|---:|
+| Portrait | 360 | 2 | 163 | 281 | 792 — fits |
+| **Landscape** | 792 | 3 | 245 | **423** | ~360 — **no card fits** |
+| Landscape, 2 cols | 792 | 2 | 379 | 653 | worse |
+| Landscape, 4 cols | 792 | 4 | 181 | 312 | fits the raw height |
+
+The 600 breakpoint is not the culprit here — it moves landscape from 2 columns to 3, which is
+the better of the two. The culprit is the **fixed aspect ratio**: at 0.58 a card is 1.72× its
+own width, so no column count below 4 can fit 360 px of height.
+
+**Fix:** derive the count from the available *height* as well as the width. To show a whole
+card, `colWidth <= 0.58 x usableHeight`, so `cols >= available / (0.58 x usableHeight)`.
+
+**Gate on height, not width.** A width gate would work by accident here (792 crosses 600) but
+would also fire on a genuinely wide, short desktop window, and it states the wrong reason. The
+defect is a height problem; the condition should say so. Portrait at 792 px of height is then
+provably untouched, which is the property that matters on the shipped surface.
+
+**~20 lines, one file, two call sites** — and `Responsive.getGridColumns` must keep its current
+values, since batch 1 deliberately left it alone and it is the only width helper anything
+currently depends on.
+
+### 10.3 Scope
+
+| | File | Lines | Risk |
+|---|---|---:|---|
+| 10.1 | `pulse_screen.dart` | ~5–12 | Low — portrait provably unaffected, no overflow there |
+| 10.2 | `search_screen.dart` | ~20 | Low if gated on height; touches the one file already using `Responsive` |
+
+One branch, ~25–32 lines total, well inside the 200-line ceiling. Verification is one device
+pass in landscape plus a portrait pixel-diff to prove nothing moved — the same method as §9.9a,
+which found the batch 1 change to be pixel-identical on all ten captures.
+
+**Not scheduled.** This is a write-up, not a queued batch; it sits behind batches 2 and 3 unless
+you want it sooner. It is worth doing before any public web launch only in the sense that it is
+an *Android* defect and Android is the shipped product.
