@@ -1026,14 +1026,40 @@ columns = clamp( floor( (W - 40 + 24) / (350 + 24) ), 1, 3 )
 ```
 
 **A separate, much narrower cap for prose.** One number cannot serve a card grid and a
-paragraph. The synopsis is `AppTheme.sans(fontSize: 14, height: 1.7)`; at Inter's ~0.5 em
-average advance that is ~7 px per character, and the readable measure of 66–75 characters gives
-**462–525 px**. Proposed prose cap: **480 px**.
+paragraph. The synopsis is `AppTheme.sans(fontSize: 14, height: 1.7)`, and `AppTheme.sans`
+resolves to **DM Sans** — Inter was removed from the code by the W3 batch and is now at **0
+sites** (see §9.3a). Measured in a browser with the real webfont loaded, DM Sans averages
+**6.55 px per character at 14 px** (0.468 em); Inter, for comparison, measures 6.72 px
+(0.480 em). The readable measure of 66–75 characters therefore gives **432–491 px**.
 
-For scale: unconstrained at 1920 the synopsis line is 1,880 px, about **268 characters** —
-roughly four times the upper bound of readability. Note also that the prose cap and one grid
-column (437 px) are within 10% of each other, so the two rules agree: **long-form text occupies
-at most one column, ever.**
+Proposed prose cap: **440 px** — about 67 characters, which is the typographic optimum of 66,
+and the same width as one grid column (437 px). The two rules collapse into one: **long-form
+text occupies exactly one column, never more.**
+
+For scale: unconstrained at 1920 the synopsis line is 1,880 px, about **287 characters** —
+more than four times the upper bound of readability.
+
+### 9.3a Inter is gone; the note in CLAUDE.md is not
+
+Confirmed while re-deriving the cap above: `AppTheme.sans` resolves to `GoogleFonts.dmSans`,
+and `GoogleFonts.inter` appears **nowhere in `lib/`, `web/`, `pubspec.yaml` or `android/`**.
+Four families ship, not six:
+
+| Family | Sites |
+|---|---:|
+| DM Sans | 117 |
+| Playfair Display | 55 |
+| Space Grotesk | 44 |
+| Space Mono | 9 |
+
+Noto Serif JP is also gone from `tomo_screen.dart`; the four remaining mentions there are
+comments explaining why it is *not* used.
+
+**`CLAUDE.md` lines 201–205 are stale.** The "Known drift" note still states that the code
+ships six families, that `AppTheme.sans()` and the whole `TextTheme` tier resolve to
+`GoogleFonts.inter` across 224 call sites, and that Noto Serif JP is unaccounted for at 4
+sites. All three are now false. Reported, not fixed — it is the standing instructions file and
+editing it was outside this batch.
 
 **Honest limit of the page cap on its own.** Applied without the column work, a 1400 px cap
 takes Home's worst gap from 1,767 to roughly 1,250 — real, but not a fix. The cap is the
@@ -1145,5 +1171,6 @@ this one site.
   render empty states.
 - **Anime detail and card collection are not captured at all**, though both are Tier 1 and the
   unconstrained synopsis is the worst line-length case in the app.
-- The 480 px prose cap is derived from Inter's average advance, not measured against rendered
-  text. It should be checked against a real synopsis before it is fixed in code.
+- The 440 px prose cap is derived from DM Sans's measured average advance (6.55 px at 14 px,
+  webfont loaded in a browser) applied to the 66–75 character measure. It has not been checked
+  against a real synopsis as the app renders it, and should be before it is treated as settled.

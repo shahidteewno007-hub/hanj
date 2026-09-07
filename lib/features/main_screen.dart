@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/connectivity_service.dart';
 import '../core/theme/app_theme.dart';
+import '../core/responsive.dart';
 import 'home/home_screen.dart';
 import 'search/search_screen.dart';
 import 'discovery/discovery_screen.dart';
@@ -30,7 +31,10 @@ class _MainScreenState extends State<MainScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppTheme.background,
-      body: OfflineBanner(child: _screens[_selectedIndex]),
+      // Caps the tab roots at a content column on desktop web. Inert on the
+      // phone in either orientation (WEB.md §9.3); the banner above it stays
+      // full-width by design.
+      body: OfflineBanner(child: PageWidth(child: _screens[_selectedIndex])),
       bottomNavigationBar: Container(
         decoration: const BoxDecoration(
           color: AppTheme.surface,
