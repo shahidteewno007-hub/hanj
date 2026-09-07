@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 
 import '../../core/theme/app_theme.dart';
+import '../../core/responsive.dart';
 import '../../services/anilist_service.dart';
 import '../../services/firestore_service.dart';
 import '../../services/offline_cache_service.dart';
@@ -499,19 +500,44 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
               ),
-              SliverList(
-                key: const ValueKey('home-trending-list'),
-                delegate: SliverChildBuilderDelegate(
-                  (context, index) {
-                    if (index >= _trendingAnime.length) return null;
-                    return _TrendingRow(
-                      anime: _trendingAnime[index],
-                      rank: index + 1,
-                    );
-                  },
-                  childCount: _trendingAnime.length.clamp(0, 10),
+              // Trending lays out in columns on desktop. Below 1024
+              // columnsFor is floored to 1 (see its domain note), so the
+              // phone takes the SliverList branch it has always taken and
+              // builds an identical tree in both orientations.
+              //
+              // The count comes from MediaQuery width, not from the width this
+              // sliver is actually laid out in. Those differ — PageWidth caps
+              // the content at 1400 and the rail takes ~117 px beside it — but
+              // the answer does not, because columnsFor caps internally at the
+              // same 1400 and the content is never wider than that. At 1024
+              // with the rail it yields 2 columns of ~453 px, still above the
+              // 350 px minimum the arithmetic is built from.
+              //
+              // That is an assumption, not an identity. If the cap, the rail
+              // width or the column minimum ever change, this can start
+              // over-counting; responsive_columns_test's boundary and
+              // minimum-width cases are what catch it.
+              if (Responsive.columnsFor(MediaQuery.of(context).size.width) ==
+                  1)
+                SliverList(
+                  key: const ValueKey('home-trending-list'),
+                  delegate: _trendingDelegate(),
+                )
+              else
+                SliverGrid(
+                  key: const ValueKey('home-trending-grid'),
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: Responsive.columnsFor(
+                        MediaQuery.of(context).size.width),
+                    // _TrendingRow is a fixed height by construction: 14 px
+                    // of padding, a 72 px poster (taller than its text stack,
+                    // whose title is maxLines: 1), 14 px of padding, and a
+                    // 1 px divider under every rank but the last.
+                    mainAxisExtent: 101,
+                    crossAxisSpacing: 24,
+                  ),
+                  delegate: _trendingDelegate(),
                 ),
-              ),
             ],
 
             // ── Coming Up ─────────────────────────────────────
@@ -637,6 +663,21 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  /// Shared by the trending SliverList and SliverGrid so the two branches
+  /// cannot drift in what they build.
+  SliverChildBuilderDelegate _trendingDelegate() {
+    return SliverChildBuilderDelegate(
+      (context, index) {
+        if (index >= _trendingAnime.length) return null;
+        return _TrendingRow(
+          anime: _trendingAnime[index],
+          rank: index + 1,
+        );
+      },
+      childCount: _trendingAnime.length.clamp(0, 10),
     );
   }
 

@@ -1020,10 +1020,19 @@ are the same decision stated twice. Column count follows from the same rule, wit
 minimum column and a hard maximum of 3:
 
 ```
-columns = clamp( floor( (W - 40 + 24) / (350 + 24) ), 1, 3 )
+columns(W) = 1                                            when W < 1024
+           = clamp( floor( (W - 40 + 24) / (350 + 24) ), 1, 3 )   otherwise
 
-  390 -> 1     768 -> 2     1024 -> 2     1440 -> 3     1920 (capped) -> 3
+  390 -> 1     768 -> 1     1024 -> 2     1440 -> 3     1920 (capped) -> 3
 ```
+
+**The domain is desktop widths, and the floor below 1024 is part of the rule, not a guard
+bolted onto it.** The arithmetic above is derived from the 1400 content cap — it describes how
+to divide a desktop content column, and it was never a statement about phone layout. Left
+unfloored it returns **2 at 768 and at 792**, and 792 is a CPH2573 in landscape: the shipped
+phone would get a two-column layout from a formula whose whole justification was that 1024 is
+the safe structural breakpoint and 600 is not (§9.2). Flooring it inside `columnsFor` keeps
+that contradiction out of every call site, so no caller has to remember to clamp.
 
 **A separate, much narrower cap for prose.** One number cannot serve a card grid and a
 paragraph. The synopsis is `AppTheme.sans(fontSize: 14, height: 1.7)`, and `AppTheme.sans`
@@ -1313,3 +1322,36 @@ which found the batch 1 change to be pixel-identical on all ten captures.
 **Not scheduled.** This is a write-up, not a queued batch; it sits behind batches 2 and 3 unless
 you want it sooner. It is worth doing before any public web launch only in the sense that it is
 an *Android* defect and Android is the shipped product.
+
+### 10.4 A measurement lesson: pump the shell, not the screen
+
+The Pulse overflow was first recorded as **14 px**, from `test/page_width_layout_test.dart`
+pumping `PulseScreen` on its own. The real figure is **~112 px**. The standalone pump
+understated it by roughly eight times, and the reason is simple arithmetic:
+
+| | what the screen is given |
+|---|---:|
+| `pumpWidget(MaterialApp(home: PulseScreen()))` | 242 px of tab body |
+| `MainScreen` as it ships | **144 px** |
+
+A bare pump hands the screen the entire viewport. The real shell does not: `OfflineBanner`'s
+connectivity strip permanently reserves ~33 px — it slides out of view rather than unmounting —
+and the bottom bar takes another 65. On a 360 px landscape viewport that is 98 px, more than a
+quarter of the height, and it is invisible to a test that pumps the screen alone.
+
+**So: any test measuring *absolute* space must reproduce the shell** — the strip above, the bar
+below, and the content cap — rather than pumping the screen bare. Roughly:
+
+```dart
+Scaffold(
+  body: const OfflineBanner(child: PageWidth(child: TheScreen())),
+  bottomNavigationBar: Container(height: 65),
+)
+```
+
+**The converse is also worth stating, because it is what saved the batch 1 result.** A bare pump
+is still sound for *relative* comparisons — wrapped against unwrapped, before against after —
+since both sides are handed the same viewport and the error cancels. `page_width_layout_test`
+compares two trees under identical conditions, so its pixel-identical finding stands; it is only
+the one absolute number it reported in passing, the 14 px, that was wrong. Relative claims
+survive a bare pump. Absolute ones do not.
