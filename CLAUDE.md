@@ -160,12 +160,21 @@ hit means no request.
   `animeList` + activity; **social, arcs, discussions, cards and founders all call
   `FirebaseFirestore.instance` directly from their screens**, so there is no single place to
   change a collection name.
-- **`firestore.rules` is not in this repo** and `firebase.json` has no `firestore` section.
-  The rules live only in the console — unversioned and unreviewable. Recover them with
-  `firebase.cmd firestore:rules get` before making any security claim.
-- **Cloud Functions** — `functions/index.js` (v2, Node 20, 10 exports). `firebase.json` also
-  declares a second codebase `aruku` whose directory **does not exist**, which likely blocks
-  all function deploys.
+- **`firestore.rules` is in this repo** and `firebase.json` declares it
+  (`"firestore": { "rules": "firestore.rules" }`). It covers users, `animeList`, cards,
+  alerts, activity, `companion_chat`, followers/following, `meta/founders`, reviews,
+  `episodeDiscussions` and arcs. Read it before making a security claim.
+  **But the file is not evidence of what is deployed.** `firebase firestore:rules get` does
+  not exist in firebase-tools 15, and an unauthenticated probe cannot distinguish "rule
+  requires auth" from "no rule at all", since both deny. The deployed ruleset is
+  **undetermined** — the console Rules tab is the cheap way to settle it. See
+  `RECON-0907-REPORT.md` A5.
+- **Cloud Functions** — `functions/index.js` (v2, Node 20, **9 exports**): `newSeasonAlert`,
+  `episodeReminders`, `episodeReminderPrecise`, `weeklyRecap`, `friendActivity`,
+  `streakAlerts`, `checkCardUnlocks`, `seasonalCardCheck`, `chatWithTomo`. `firebase.json`
+  also declares a second codebase `aruku` whose directory **does not exist**, which likely
+  blocks all function deploys — and would leave anything previously deployed from it running
+  as an orphan, invisible in the list above.
 
 ## Domain rules
 

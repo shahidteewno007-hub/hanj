@@ -786,10 +786,14 @@ is a deliberate 9:16 output format, not a layout.
 
 ## 6. Hosting and the public bundle
 
-**`firebase.json` has no `hosting` block** — only `firestore` and `functions`. So Firebase
+**Superseded — `firebase.json` now has a `hosting` block.** It points `public` at
+`build/web`, rewrites `**` to `/index.html` for SPA deep links, and sets `no-cache` on `/`,
+`/index.html`, `/flutter_bootstrap.js` and `/flutter_service_worker.js`.
+
+~~**`firebase.json` has no `hosting` block** — only `firestore` and `functions`. So Firebase
 Hosting is *not* configured in this project, contrary to the brief's assumption. Before
 anything can be published, `firebase.json` needs a `hosting` section pointing at `build/web`,
-plus a SPA rewrite so deep links (once they exist) do not 404.
+plus a SPA rewrite so deep links (once they exist) do not 404.~~
 
 ~~I did not add it — that is a config change and this phase changes nothing.~~ Added in W4.
 
