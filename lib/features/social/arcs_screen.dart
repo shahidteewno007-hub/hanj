@@ -700,9 +700,26 @@ class _PostCard extends StatelessWidget {
     required this.accentColor,
   });
 
-  /// Toggles this post's like for the signed-in user.
+  /// Toggles this post's like for the signed-in user, inside a transaction.
   ///
-  /// The two writes below were the only awaits in this file outside a try.
+  /// firestore.rules:239-250 (isLikeToggle) requires the update to, all
+  /// measured against the document AS THE SERVER HOLDS IT:
+  ///
+  ///   1. touch only `likes` and `likeCount` — affectedKeys().hasOnly(...)
+  ///   2. move the caller across the array, absent->present or present->absent
+  ///   3. move `likeCount` by exactly the matching +1 / -1
+  ///   4. find both fields already present; the rule dereferences both, so a
+  ///      legacy post missing either is denied whatever the client sends.
+  ///
+  /// Deciding the direction from `data['likes']` — a widget snapshot that can
+  /// be stale — is what produced the denial: an arrayUnion for a uid already
+  /// present is a no-op, `likes` does not change, neither branch of the rule
+  /// holds, and the write is rejected. A double-tap does the same thing.
+  /// Reading inside the transaction makes the direction and the count
+  /// provably consistent with what the rule will evaluate, and the
+  /// transaction retries on contention.
+  ///
+  /// The write below was the only await in this file outside a try.
   /// GestureDetector.onTap takes a VoidCallback, so the Future returned here
   /// is dropped at the call site and any error became an unhandled async
   /// error — which main.dart:40-43 reports to Crashlytics with fatal: true.
@@ -717,23 +734,34 @@ class _PostCard extends StatelessWidget {
   /// from the parent StreamBuilder, so a rejected write simply leaves the row
   /// as it was.
   Future<void> _toggleLike() async {
-    if (uid == null) return;
+    final user = uid;
+    if (user == null) return;
     final ref = FirebaseFirestore.instance
         .collection('arcs').doc(arcId)
         .collection('posts').doc(postId);
-    final likes = (data['likes'] as List<dynamic>?) ?? [];
     try {
-      if (likes.contains(uid)) {
-        await ref.update({
-          'likes': FieldValue.arrayRemove([uid]),
-          'likeCount': FieldValue.increment(-1),
+      await FirebaseFirestore.instance.runTransaction((tx) async {
+        final snap = await tx.get(ref);
+        // Deleted, or deleted while this sheet was open. Nothing to toggle.
+        if (!snap.exists) return;
+
+        final d = snap.data() ?? const <String, dynamic>{};
+        final current =
+            List<dynamic>.from(d['likes'] as List<dynamic>? ?? const []);
+        final count = (d['likeCount'] as num?)?.toInt() ?? 0;
+        final isLiked = current.contains(user);
+
+        // Explicit values, not arrayUnion/increment: the rule compares the
+        // result against the server document, so the membership move and the
+        // count step have to be provably consistent with each other. Derived
+        // from the transaction's own read, they are.
+        tx.update(ref, {
+          'likes': isLiked
+              ? (current..removeWhere((e) => e == user))
+              : [...current, user],
+          'likeCount': isLiked ? count - 1 : count + 1,
         });
-      } else {
-        await ref.update({
-          'likes': FieldValue.arrayUnion([uid]),
-          'likeCount': FieldValue.increment(1),
-        });
-      }
+      });
     } catch (e, stack) {
       try {
         await FirebaseCrashlytics.instance.recordError(
