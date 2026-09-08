@@ -3,6 +3,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+
 import '../../core/theme/app_theme.dart';
 
 // ─────────────────────────────────────────────────────────────
@@ -698,22 +700,53 @@ class _PostCard extends StatelessWidget {
     required this.accentColor,
   });
 
+  /// Toggles this post's like for the signed-in user.
+  ///
+  /// The two writes below were the only awaits in this file outside a try.
+  /// GestureDetector.onTap takes a VoidCallback, so the Future returned here
+  /// is dropped at the call site and any error became an unhandled async
+  /// error — which main.dart:40-43 reports to Crashlytics with fatal: true.
+  /// A permission-denied on a like was therefore arriving as a fatal crash on
+  /// a public app.
+  ///
+  /// The denial is recorded as a non-fatal rather than swallowed: it stops
+  /// crashing without becoming invisible.
+  ///
+  /// There is no optimistic UI state to roll back. _PostCard is a
+  /// StatelessWidget and the heart renders from `data['likes']`, which comes
+  /// from the parent StreamBuilder, so a rejected write simply leaves the row
+  /// as it was.
   Future<void> _toggleLike() async {
     if (uid == null) return;
     final ref = FirebaseFirestore.instance
         .collection('arcs').doc(arcId)
         .collection('posts').doc(postId);
     final likes = (data['likes'] as List<dynamic>?) ?? [];
-    if (likes.contains(uid)) {
-      await ref.update({
-        'likes': FieldValue.arrayRemove([uid]),
-        'likeCount': FieldValue.increment(-1),
-      });
-    } else {
-      await ref.update({
-        'likes': FieldValue.arrayUnion([uid]),
-        'likeCount': FieldValue.increment(1),
-      });
+    try {
+      if (likes.contains(uid)) {
+        await ref.update({
+          'likes': FieldValue.arrayRemove([uid]),
+          'likeCount': FieldValue.increment(-1),
+        });
+      } else {
+        await ref.update({
+          'likes': FieldValue.arrayUnion([uid]),
+          'likeCount': FieldValue.increment(1),
+        });
+      }
+    } catch (e, stack) {
+      try {
+        await FirebaseCrashlytics.instance.recordError(
+          e,
+          stack,
+          reason: 'arcs like toggle rejected',
+          information: ['arc=$arcId', 'post=$postId'],
+          fatal: false,
+        );
+      } catch (_) {
+        // Crashlytics has no web implementation. Reporting must never be the
+        // thing that throws, or this reintroduces the fatal it just removed.
+      }
     }
   }
 
