@@ -35,6 +35,14 @@ changing, no new dependencies, no edits to `pubspec.yaml` versions, no touching
 Existing analysis lives in `AUDIT.md` (correctness/security) and `PERF.md` (performance,
 device-measured). Check them before re-investigating something.
 
+**Verify a screen is reachable before scoping work on it, not after building the fix.**
+Grep the widget for a gate — a `const bool` short-circuiting `build()`, an early
+`return _buildSomething()`, a hidden entry point — and then walk the app to it on a device.
+`arcs_screen.dart` cost a full four-commit batch before anyone noticed that `_comingSoon`
+at `:27` has made the whole feature unreachable since the root commit, while `CLAUDE.md`,
+`AUDIT.md` and two briefs all described it as live. Code being correct about a defect says
+nothing about whether a user can hit it.
+
 **Run `git status` at the start of every batch, and flag anything you did not do.**
 Something outside the Claude session has modified the working tree at least once:
 `discovery_screen.dart` was overwritten mid-batch in a way that stripped already-committed
@@ -154,8 +162,17 @@ hit means no request.
 
 ### Data reach
 
+> **Arcs is gated off and has been since the root commit.**
+> `arcs_screen.dart:27` holds `static const bool _comingSoon = true`, checked as the first
+> statement of `build()` at `:46`. It is a compile-time constant, so **the entire arcs
+> surface — the list, arc detail, posts, replies, `_submitPost` and the like toggle — is
+> unreachable in every build in git history.** Users see a "Arcs are coming" placeholder.
+> The collection list below and `AUDIT.md` §5-D / S3-4 describe that code accurately and
+> read as though it ships; it does not. Flip the flag to `false` to reach any of it.
+
 - **Firestore** — `users/{uid}` is the hub, with subcollections `animeList`, `alerts`,
-  `activity`, `companion_chat`, `companion_meta`. Top-level: `arcs` (+`posts`, +`replies`),
+  `activity`, `companion_chat`, `companion_meta`. Top-level: `arcs` (+`posts`, +`replies`)
+  — **gated, see above; no build in git history writes these**,
   `episodeDiscussions` (+`votes`), `meta/founders`. `FirestoreService` covers only
   `animeList` + activity; **social, arcs, discussions, cards and founders all call
   `FirebaseFirestore.instance` directly from their screens**, so there is no single place to

@@ -493,6 +493,13 @@ sixth tab.
 
 ### D · `arcs_screen` needs redoing — concrete reasons
 
+> **Status: this describes gated code.** `arcs_screen.dart:27` sets
+> `static const bool _comingSoon = true`, checked first in `build()` at `:46`, so none of
+> the code below is reachable in any build in git history. **Every finding in this section
+> is accurate about the source and none of it is currently live.** It is kept, not removed,
+> because all of it becomes live the moment that flag flips — which is exactly when this
+> section is worth re-reading. Verified on device 2026-09-08 (RECON-0907-REPORT.md).
+
 Reading it, the case for a rewrite is structural rather than cosmetic:
 
 1. **Membership is an array on the arc document.**
@@ -1465,7 +1472,7 @@ brief's 200-line batch limit.
 | **S3-1** | 🟡 Med | **18 × `setState` after `await` with no `mounted` guard** → `setState() after dispose`, reported as fatal | 14 files, §3-A | ~18 | Mechanical. Check Crashlytics first to rank it |
 | **S3-2** | 🟡 Med | **Pulse/Discover SafeArea gap** — banner reserves ~33 px permanently + inset applied twice | [connectivity_service.dart:110](lib/services/connectivity_service.dart#L110), pulse/discovery/home | ~15 | Invisible on web; test on device |
 | **S3-3** | 🟡 Med | **Share-card centring** — unbalanced trailing 26 px spacer pushes art ~13 px high | [card_share.dart:388](lib/features/cards/card_share.dart#L388) | **1** | Fully diagnosed; see §5-A |
-| **S3-4** | 🟡 Med | **Arc like double-tap inflates `likeCount`** — stale read + non-idempotent increment | [arcs_screen.dart:701](lib/features/social/arcs_screen.dart#L701) | ~15 | Do this standalone; copy `_vote`'s transaction |
+| **S3-4** | ⚪ **Gated** (was 🟡 Med) | **Arc like double-tap inflates `likeCount`** — stale read + non-idempotent increment. **Accurate about the source, but unreachable: `_comingSoon` at [arcs_screen.dart:27](lib/features/social/arcs_screen.dart#L27) is `true` and short-circuits `build()` at `:46`, in every build in git history.** Fixed anyway on `fix/arcs-like-toggle`; becomes live if the flag flips | [arcs_screen.dart:701](lib/features/social/arcs_screen.dart#L701) | ~15 | Done — transaction + guard. Rules already permit the write |
 | **S3-5** | 🟡 Med | **Unawaited list-write + `Navigator.pop` across async gap** — silent data loss; can pop the wrong route | [home_screen.dart:711-718](lib/features/home/home_screen.dart#L711-L718) | ~8 | Two bugs, adjacent lines |
 | **S3-6** | 🟡 Med | **Startup blocks on the notification permission prompt** (no timeout before `runApp`) | [main.dart:63](lib/main.dart#L63), [notification_service.dart:35](lib/services/notification_service.dart#L35) | ~10 | Candidate for the blank-screen reports |
 | **S3-7** | 🟡 Med | **3 AniList calls with no throttle *and* no timeout** — calendar/import/edit-profile spin forever on a hung connection | calendar, import, edit_profile | ~12 | Same fix as S2-3 |
@@ -1476,7 +1483,7 @@ brief's 200-line batch limit.
 | **S4-5** | 🟢 Low | Tab state lost on switch (no `IndexedStack`) | [main_screen.dart:36](lib/features/main_screen.dart#L36) | ~5 | Behaviour change — confirm it's wanted |
 | **S4-6** | 🟢 Low | 47 dead declarations from the recovery | 12 files | 0 | **Keep as the missing-feature map** (§2) |
 | **S4-7** | 🟢 Low | `dart:html` deprecated → scheduled for removal | [trailer_launcher_web.dart:2](lib/core/trailer_launcher_web.dart#L2) | ~20 | Not urgent; will eventually stop compiling |
-| **—** | ⚪ Defer | **`arcs_screen` rewrite** — array membership, 4 client counters, listener churn | [arcs_screen.dart](lib/features/social/arcs_screen.dart) (1534 ln) | **>200** | Exceeds the batch limit by design. Needs a conversation. Extract S3-4 and do it now |
+| **—** | ⚪ Defer | **`arcs_screen` rewrite** — array membership, 4 client counters, listener churn. **Gated off: `_comingSoon` at [:27](lib/features/social/arcs_screen.dart#L27) makes the whole screen unreachable, so none of this is user-facing today** | [arcs_screen.dart](lib/features/social/arcs_screen.dart) (1534 ln) | **>200** | Exceeds the batch limit by design. Needs a conversation — and the flag decision comes first |
 | **—** | ⚪ Defer | **`episodeReminderPrecise` read amplification** — full user scan every 10 min (~288k reads/day @ 1k users) | [functions/index.js:194](functions/index.js#L194) | ~60 | Address before deploying it |
 
 ### Suggested batches
