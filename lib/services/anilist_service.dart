@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../models/anime_model.dart';
 
@@ -42,6 +43,43 @@ class AnilistService {
     if (pushTo.isAfter(_nextSlotTime)) _nextSlotTime = pushTo;
   }
 
+  // ── Availability signal ─────────────────────────────────────
+  // Same shape as throttle()/backoff() above: static, service-owned,
+  // and opted into with one line by the nine call sites that issue
+  // their own http.post. It records the last outcome so a surface can
+  // tell an upstream failure apart from a query that legitimately came
+  // back empty — today those are indistinguishable, which is why an
+  // AniList outage reads as "the app fetches nothing".
+  //
+  // Deliberately does NOT throw. OfflineCacheService:148-150 and
+  // discovery_screen.dart:644/:659 all use an empty return to trigger
+  // their stale fallback; throwing would bypass those and make the app
+  // less useful during exactly the outage this exists for.
+  static int? _lastFailStatus;
+  static DateTime? _lastOkAt;
+
+  /// True when the most recent AniList request failed and none has
+  /// succeeded since.
+  static bool get isUnavailable => _lastFailStatus != null;
+
+  /// The last non-200 seen, or null if the last request succeeded.
+  static int? get lastFailStatus => _lastFailStatus;
+
+  /// When AniList last answered successfully — for a "saved data" note.
+  static DateTime? get lastOkAt => _lastOkAt;
+
+  /// One-line opt-in for call sites that post directly. [source] only
+  /// tags the log line, so a failure can be traced to a surface.
+  static void noteStatus(int statusCode, String source) {
+    if (statusCode == 200) {
+      _lastFailStatus = null;
+      _lastOkAt = DateTime.now();
+      return;
+    }
+    _lastFailStatus = statusCode;
+    debugPrint('AniList HTTP $statusCode ($source)');
+  }
+
   /// POST with throttle + up to 2 retries on 429, respecting Retry-After.
   Future<http.Response> _post(Map<String, dynamic> body) async {
     for (var attempt = 0; attempt < 3; attempt++) {
@@ -56,6 +94,7 @@ class AnilistService {
         body: jsonEncode(body),
       ).timeout(const Duration(seconds: 15));
 
+      noteStatus(response.statusCode, 'service');
       if (response.statusCode != 429) return response;
 
       // Rate limited — honor Retry-After header, else exponential backoff
