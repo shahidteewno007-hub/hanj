@@ -68,6 +68,21 @@ class AnilistService {
   /// When AniList last answered successfully — for a "saved data" note.
   static DateTime? get lastOkAt => _lastOkAt;
 
+  /// A per-status message, in the shape cadre_roster_service.dart:212-224
+  /// already uses. Null while AniList is answering, so a surface can tell
+  /// "unavailable" apart from "this query legitimately returned nothing" —
+  /// today both render the same empty state.
+  static String? get unavailableMessage {
+    final code = _lastFailStatus;
+    if (code == null) return null;
+    if (code == 403) {
+      return 'AniList has switched its API off. Nothing new can load'
+          ' until it is back.';
+    }
+    if (code == 429) return 'AniList is rate limiting. Try again shortly.';
+    return 'AniList returned $code. Try again.';
+  }
+
   /// One-line opt-in for call sites that post directly. [source] only
   /// tags the log line, so a failure can be traced to a surface.
   static void noteStatus(int statusCode, String source) {

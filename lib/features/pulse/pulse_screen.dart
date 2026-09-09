@@ -8,6 +8,7 @@ import '../../core/trailer_launcher.dart';
 import '../../models/anime_model.dart';
 import '../../models/pulse_card.dart';
 import '../../services/pulse_service.dart';
+import '../../services/anilist_service.dart';
 import '../anime_detail/anime_detail_screen.dart';
 
 class PulseScreen extends StatefulWidget {
@@ -225,7 +226,7 @@ class _PulseTabViewState extends State<_PulseTabView>
                 color: const Color(0xFFF3EEE7).withOpacity(0.18)),
             const SizedBox(height: 16),
             Text(
-              widget.emptyMessage,
+              AnilistService.unavailableMessage ?? widget.emptyMessage,
               textAlign: TextAlign.center,
               style: GoogleFonts.dmSans(
                 fontSize: 14,

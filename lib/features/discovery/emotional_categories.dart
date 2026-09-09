@@ -326,7 +326,9 @@ class _CategoryRowState extends State<_CategoryRow> {
                 : _anime.isEmpty
                     ? Padding(
                         padding: const EdgeInsets.only(top: 12),
-                        child: Text('No titles found',
+                        child: Text(
+                            AnilistService.unavailableMessage ??
+                                'No titles found',
                             style: AppTheme.sans(
                                 color: AppTheme.textMuted)),
                       )
