@@ -1954,20 +1954,27 @@ class _ComingUpSectionState extends State<_ComingUpSection> {
     ''';
 
     try {
-      await AnilistService.throttle();
-      final resp = await http.post(
-        Uri.parse(url),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'query': query, 'variables': {'ids': ids}}),
-      ).timeout(const Duration(seconds: 12));
+      // Same retry shape as AnilistService._post: up to 3 attempts, and
+      // ONLY for 429. Anything else — including a 403 — returns on the
+      // first attempt, so an outage is never hammered. This used to back
+      // off correctly and then return without ever retrying, so a single
+      // transient 429 silently cost the whole cycle of countdowns.
+      http.Response? resp;
+      for (var attempt = 0; attempt < 3; attempt++) {
+        await AnilistService.throttle();
+        resp = await http.post(
+          Uri.parse(url),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'query': query, 'variables': {'ids': ids}}),
+        ).timeout(const Duration(seconds: 12));
 
-      if (resp.statusCode == 429) {
+        AnilistService.noteStatus(resp.statusCode, 'home airing');
+        if (resp.statusCode != 429) break;
         final retryAfter =
-            int.tryParse(resp.headers['retry-after'] ?? '') ?? 3;
+            int.tryParse(resp.headers['retry-after'] ?? '') ?? (3 * (attempt + 1));
         AnilistService.backoff(retryAfter);
-        return out; // skip this cycle; next refresh will retry
       }
-      if (resp.statusCode != 200) return out;
+      if (resp == null || resp.statusCode != 200) return out;
 
       final body = jsonDecode(resp.body);
       final media = body['data']?['Page']?['media'] as List? ?? [];
