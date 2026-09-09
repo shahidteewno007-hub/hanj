@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 
 import '../../core/theme/app_theme.dart';
+import '../../widgets/anilist_saved_note.dart';
 import '../../core/responsive.dart';
 import '../../services/anilist_service.dart';
 import '../../services/firestore_service.dart';
@@ -500,6 +501,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
               ),
+              const SliverToBoxAdapter(child: AnilistSavedNote()),
+
               // Trending lays out in columns on desktop. Below 1024
               // columnsFor is floored to 1 (see its domain note), so the
               // phone takes the SliverList branch it has always taken and

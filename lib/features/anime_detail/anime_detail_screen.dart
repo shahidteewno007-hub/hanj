@@ -9,6 +9,8 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:gal/gal.dart';
 import 'package:http/http.dart' as http;
 
+import '../../widgets/anilist_saved_note.dart';
+
 import '../../core/theme/app_theme.dart';
 import '../../widgets/confetti_overlay.dart';
 import '../../models/anime_model.dart';
@@ -861,6 +863,8 @@ class _OverviewTab extends StatelessWidget {
           ),
           const SizedBox(height: 24),
         ],
+
+        const AnilistSavedNote(padding: EdgeInsets.only(bottom: 12)),
 
         // Synopsis
         if (anime.description != null) ...[

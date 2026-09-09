@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 
 import '../../core/theme/app_theme.dart';
 import '../../services/anilist_service.dart';
+import '../../widgets/anilist_saved_note.dart';
 import '../../services/offline_cache_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'hanj_filter_sheet.dart';
@@ -741,6 +742,7 @@ class _SeasonalHubState extends State<_SeasonalHub>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        const AnilistSavedNote(),
         // ── Season toggle ────────────────────────────────────────────────
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
