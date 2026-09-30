@@ -31,6 +31,7 @@ class PulseService {
             body: jsonEncode(body),
           )
           .timeout(const Duration(seconds: 15));
+      AnilistService.noteLimits(response.headers);
       if (response.statusCode == 429) {
         final retryAfter =
             int.tryParse(response.headers['retry-after'] ?? '') ?? 10;

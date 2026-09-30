@@ -1969,6 +1969,7 @@ class _ComingUpSectionState extends State<_ComingUpSection> {
         ).timeout(const Duration(seconds: 12));
 
         AnilistService.noteStatus(resp.statusCode, 'home airing');
+        AnilistService.noteLimits(resp.headers);
         if (resp.statusCode != 429) break;
         final retryAfter =
             int.tryParse(resp.headers['retry-after'] ?? '') ?? (3 * (attempt + 1));

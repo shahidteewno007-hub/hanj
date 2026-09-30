@@ -8,10 +8,9 @@ class AnilistService {
   static const String _apiUrl = 'https://graphql.anilist.co';
 
   // ── Adaptive reservation-based throttle ─────────────────────
-  // Normally allows a brisk 350ms gap (~170/min). After a 429, it
-  // backs off to a 2s gap (30/min) for a cooldown window, then
-  // recovers. This keeps the app fast when AniList is healthy and
-  // only slows down when we're actually being rate-limited.
+  // The gap between requests follows AniList's own rate-limit headers
+  // (see noteLimits below). After a 429 it still backs off to at least
+  // a 2s gap (30/min) for a cooldown window, then recovers.
   static DateTime _nextSlotTime = DateTime(2000);
   static DateTime _slowUntil = DateTime(2000);
   static const _fastGap = Duration(milliseconds: 350);
@@ -19,7 +18,42 @@ class AnilistService {
   static const _cooldown = Duration(seconds: 60);
 
   static Duration get _minGap =>
-      DateTime.now().isBefore(_slowUntil) ? _slowGap : _fastGap;
+      DateTime.now().isBefore(_slowUntil) && _slowGap > _paceGap
+          ? _slowGap
+          : _paceGap;
+
+  // ── Header-driven pacing ────────────────────────────────────
+  // Every AniList response carries X-RateLimit-Limit (requests/minute for
+  // this IP) and X-RateLimit-Remaining. The gap is 60s ÷ Limit, so Hanj
+  // paces to what AniList says rather than to a guess — the old fixed
+  // 350ms gap was ~171/min against a published 90/min.
+  //
+  // Remaining matters as well as Limit: it counts traffic this device
+  // can't see, such as another phone on the same Wi-Fi sharing the IP.
+  // Once it is down to _paceReserve, the gap stretches to spread what is
+  // left over a full minute (60s ÷ (Remaining + 1)), reaching 60s at zero.
+  //
+  // Until the first response arrives the gap is 2s, AniList's current
+  // 30/min limit. _fastGap is now only a floor, so a header claiming a huge
+  // limit can't take pacing below 350ms. The 429 / Retry-After path is
+  // unchanged and still wins whenever it is slower.
+  static Duration _paceGap = _slowGap;
+  static const _paceReserve = 3;
+
+  /// One-line opt-in, next to noteStatus: pass every AniList response's
+  /// headers. Headers without a usable Limit leave pacing as it was.
+  static void noteLimits(Map<String, String> headers) {
+    final limit = int.tryParse(headers['x-ratelimit-limit'] ?? '');
+    if (limit == null || limit <= 0) return;
+    final remaining = int.tryParse(headers['x-ratelimit-remaining'] ?? '');
+    var gapMs = (60000 + limit - 1) ~/ limit; // round up: never over Limit
+    if (remaining != null && remaining <= _paceReserve) {
+      final stretched = 60000 ~/ (remaining < 0 ? 1 : remaining + 1);
+      if (stretched > gapMs) gapMs = stretched;
+    }
+    if (gapMs < _fastGap.inMilliseconds) gapMs = _fastGap.inMilliseconds;
+    _paceGap = Duration(milliseconds: gapMs);
+  }
 
   static Future<void> _reserveSlot() async {
     final now  = DateTime.now();
@@ -110,6 +144,7 @@ class AnilistService {
       ).timeout(const Duration(seconds: 15));
 
       noteStatus(response.statusCode, 'service');
+      noteLimits(response.headers);
       if (response.statusCode != 429) return response;
 
       // Rate limited — honor Retry-After header, else exponential backoff

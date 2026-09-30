@@ -636,6 +636,7 @@ class _SeasonalHubState extends State<_SeasonalHub>
           body: jsonEncode({'query': query}),
         );
         AnilistService.noteStatus(res.statusCode, 'discovery seasonal');
+        AnilistService.noteLimits(res.headers);
         if (res.statusCode != 429) break;
         // Rate limited — honor Retry-After, push the shared slot out
         final retryAfter =

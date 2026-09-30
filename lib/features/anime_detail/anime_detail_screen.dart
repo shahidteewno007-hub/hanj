@@ -226,6 +226,7 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
         headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
         body: jsonEncode({'query': query, 'variables': {'id': int.parse(widget.anime.id)}}),
       ).timeout(const Duration(seconds: 15));
+      AnilistService.noteLimits(resp.headers);
       if (resp.statusCode == 200) {
         final data = jsonDecode(resp.body);
         final media = data['data']?['Media'];
