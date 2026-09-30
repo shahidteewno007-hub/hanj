@@ -142,7 +142,7 @@ class PulseService {
       'query': _statusQuery,
       'variables': {
         'status': status,
-        if (genre != null) 'genre': genre,
+        'genre': ?genre,
         'perPage': perPage,
         'sort': [sort],
       },
@@ -485,8 +485,8 @@ class PulseService {
         headline: headline,
         timestamp: now,
         payload: {
-          if (season != null) 'season': season,
-          if (year != null) 'year': year,
+          'season': ?season,
+          'year': ?year,
         },
       );
     }).toList();

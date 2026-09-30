@@ -73,7 +73,9 @@ class OfflineCacheService {
   Future<bool> get hasCachedHomeData async {
     if (_memCache.containsKey(_kTrending) ||
         _memCache.containsKey(_kPopular) ||
-        _memCache.containsKey(_kTopRated)) return true;
+        _memCache.containsKey(_kTopRated)) {
+      return true;
+    }
     final prefs = await SharedPreferences.getInstance();
     return prefs.containsKey(_kTrending) ||
         prefs.containsKey(_kPopular) ||
