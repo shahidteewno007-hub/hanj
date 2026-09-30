@@ -213,6 +213,13 @@ cache); copy it. Five call sites currently bypass the throttle — see `AUDIT.md
 handling to save a frame.** The stale-while-revalidate fallbacks are what keep screens
 populated when AniList rate-limits; add caching *in front of* them, never in place of them.
 
+**AniList's Terms of Use** ([docs.anilist.co/guide/terms-of-use](https://docs.anilist.co/guide/terms-of-use),
+read 2026-09-30) prohibit "using the AniList API as a backup or data storage service", and
+prohibit its use "within competing, non-complementary services of the same nature" — naming
+anime and manga list or tracker services, and covering user and media data alike. Hanj's
+position under them is **unresolved**. The contact AniList names is `contact@anilist.co`
+(the page gives it under commercial licensing).
+
 ### Design system
 
 Palette — background `#0D0B09`, coral `#E8624A`, ivory `#F3EEE7`. Defined in
