@@ -218,8 +218,8 @@ query ($search: String, $perPage: Int) {
       throw const CadreRosterException('No anime matched that search.');
     }
     if (response.statusCode != 200) {
-      throw CadreRosterException(
-        'AniList returned ${response.statusCode}. Try again.',
+      throw const CadreRosterException(
+        'Fresh data can\'t load right now. Try again.',
       );
     }
 

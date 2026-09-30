@@ -72,15 +72,15 @@ class AnilistService {
   /// already uses. Null while AniList is answering, so a surface can tell
   /// "unavailable" apart from "this query legitimately returned nothing" —
   /// today both render the same empty state.
+  ///
+  /// Everything but a 429 gets the same line, and it names no cause and no
+  /// status code: the app sees a status, not the reason behind it. The
+  /// 2026-09 403 read as an outage and was a suspension.
   static String? get unavailableMessage {
     final code = _lastFailStatus;
     if (code == null) return null;
-    if (code == 403) {
-      return 'AniList has switched its API off. Nothing new can load'
-          ' until it is back.';
-    }
     if (code == 429) return 'AniList is rate limiting. Try again shortly.';
-    return 'AniList returned $code. Try again.';
+    return 'Fresh data can\'t load right now. Try again shortly.';
   }
 
   /// One-line opt-in for call sites that post directly. [source] only
