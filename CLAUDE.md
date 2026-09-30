@@ -204,6 +204,13 @@ throttle: **350 ms** between requests normally, **2 s** for a 60 s cooldown afte
 honouring `Retry-After`. `AnilistService.throttle()` and `.backoff(seconds)` are public
 precisely so direct `http.post` callers can join the same queue.
 
+> **The pacing is not settled: it is over AniList's limit and under review.** The 350 ms
+> gap paces Hanj at ~171 requests/min. AniList publishes **90/min** as its normal limit and
+> **30/min** as its current one (a degraded state, per
+> [docs.anilist.co/guide/rate-limiting](https://docs.anilist.co/guide/rate-limiting), read
+> 2026-09-30). The 2 s gap works out to 30/min but only engages after a 429 has already
+> happened. The *gap values* are open; the shared queue and the rules below are not.
+
 **Any new AniList call must `await AnilistService.throttle()` and call `.backoff()` on a 429.**
 A call that bypasses the queue causes blank screens under load — that was a real bug here.
 `PulseService._query` is the reference implementation (throttle + backoff + timeout + TTL
