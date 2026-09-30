@@ -200,21 +200,23 @@ These are deliberate and settled. Do not "improve" them.
 ### AniList — everything goes through the throttle
 
 `AnilistService` (`lib/services/anilist_service.dart`) owns an adaptive reservation-based
-throttle: **350 ms** between requests normally, **2 s** for a 60 s cooldown after a 429,
-honouring `Retry-After`. `AnilistService.throttle()` and `.backoff(seconds)` are public
+throttle, and **pacing follows AniList's own `X-RateLimit` headers.** `noteLimits(headers)`
+sets the gap to 60 s ÷ `X-RateLimit-Limit` (30/min → 2 s, 90/min → 667 ms), and stretches it
+as `X-RateLimit-Remaining` nears zero, since Remaining also counts traffic this device can't
+see, such as other devices on the same IP. **Before the first response the gap is 2 s
+(30/min)**, AniList's current limit
+([docs.anilist.co/guide/rate-limiting](https://docs.anilist.co/guide/rate-limiting)). 350 ms
+is only a floor. A 429 still forces at least 2 s for a 60 s cooldown, honouring `Retry-After`.
+`AnilistService.throttle()`, `.backoff(seconds)` and `.noteLimits(headers)` are public
 precisely so direct `http.post` callers can join the same queue.
 
-> **The pacing is not settled: it is over AniList's limit and under review.** The 350 ms
-> gap paces Hanj at ~171 requests/min. AniList publishes **90/min** as its normal limit and
-> **30/min** as its current one (a degraded state, per
-> [docs.anilist.co/guide/rate-limiting](https://docs.anilist.co/guide/rate-limiting), read
-> 2026-09-30). The 2 s gap works out to 30/min but only engages after a 429 has already
-> happened. The *gap values* are open; the shared queue and the rules below are not.
+**Every AniList call site goes through the queue** — all ten, including the five that used to
+bypass it (`AUDIT.md` §4, fixed on `fix/anilist-pacing-offline`).
 
-**Any new AniList call must `await AnilistService.throttle()` and call `.backoff()` on a 429.**
-A call that bypasses the queue causes blank screens under load — that was a real bug here.
-`PulseService._query` is the reference implementation (throttle + backoff + timeout + TTL
-cache); copy it. Five call sites currently bypass the throttle — see `AUDIT.md` §4.
+**Any new AniList call must `await AnilistService.throttle()`, pass the response headers to
+`.noteLimits()`, and call `.backoff()` on a 429.** A call that bypasses the queue causes
+blank screens under load — that was a real bug here. `PulseService._query` is the reference
+implementation (throttle + limits + backoff + timeout + TTL cache); copy it.
 
 **Never weaken the throttle, shorten a backoff, drop a `mounted` check, or remove error
 handling to save a frame.** The stale-while-revalidate fallbacks are what keep screens
