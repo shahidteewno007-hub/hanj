@@ -1962,11 +1962,16 @@ class _ComingUpSectionState extends State<_ComingUpSection> {
       http.Response? resp;
       for (var attempt = 0; attempt < 3; attempt++) {
         await AnilistService.throttle();
-        resp = await http.post(
-          Uri.parse(url),
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({'query': query, 'variables': {'ids': ids}}),
-        ).timeout(const Duration(seconds: 12));
+        try {
+          resp = await http.post(
+            Uri.parse(url),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'query': query, 'variables': {'ids': ids}}),
+          ).timeout(const Duration(seconds: 12));
+        } catch (_) {
+          AnilistService.noteStatus(0, 'home airing');
+          rethrow;
+        }
 
         AnilistService.noteStatus(resp.statusCode, 'home airing');
         AnilistService.noteLimits(resp.headers);

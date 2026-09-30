@@ -630,11 +630,18 @@ class _SeasonalHubState extends State<_SeasonalHub>
       http.Response? res;
       for (var attempt = 0; attempt < 3; attempt++) {
         await AnilistService.throttle();
-        res = await http.post(
-          Uri.parse(url),
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({'query': query}),
-        );
+        try {
+          res = await http.post(
+            Uri.parse(url),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'query': query}),
+          );
+        } catch (_) {
+          // No response at all — record it, then let the network-exception
+          // stale fallback at the bottom of this method run as before.
+          AnilistService.noteStatus(0, 'discovery seasonal');
+          rethrow;
+        }
         AnilistService.noteStatus(res.statusCode, 'discovery seasonal');
         AnilistService.noteLimits(res.headers);
         if (res.statusCode != 429) break;

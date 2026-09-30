@@ -97,6 +97,8 @@ class AnilistService {
   static bool get isUnavailable => _lastFailStatus != null;
 
   /// The last non-200 seen, or null if the last request succeeded.
+  /// 0 means no response at all: the request threw (no network, DNS
+  /// failure, timeout) before AniList could answer.
   static int? get lastFailStatus => _lastFailStatus;
 
   /// When AniList last answered successfully — for a "saved data" note.
@@ -119,6 +121,13 @@ class AnilistService {
 
   /// One-line opt-in for call sites that post directly. [source] only
   /// tags the log line, so a failure can be traced to a surface.
+  ///
+  /// Statuses: 200 clears the signal; any other HTTP status records an
+  /// upstream failure; 0 records "no response" — pass it from a catch
+  /// around the request itself, then rethrow, so the caller's existing
+  /// stale fallback still runs. Offline, the request throws instead of
+  /// returning a status, so without 0 the most common failure of all
+  /// would never reach this signal.
   static void noteStatus(int statusCode, String source) {
     if (statusCode == 200) {
       _lastFailStatus = null;
@@ -133,15 +142,21 @@ class AnilistService {
   Future<http.Response> _post(Map<String, dynamic> body) async {
     for (var attempt = 0; attempt < 3; attempt++) {
       await _reserveSlot();
-      final response = await http.post(
-        Uri.parse(_apiUrl),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'User-Agent': 'Hanj/1.0',
-        },
-        body: jsonEncode(body),
-      ).timeout(const Duration(seconds: 15));
+      final http.Response response;
+      try {
+        response = await http.post(
+          Uri.parse(_apiUrl),
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'User-Agent': 'Hanj/1.0',
+          },
+          body: jsonEncode(body),
+        ).timeout(const Duration(seconds: 15));
+      } catch (_) {
+        noteStatus(0, 'service');
+        rethrow;
+      }
 
       noteStatus(response.statusCode, 'service');
       noteLimits(response.headers);
