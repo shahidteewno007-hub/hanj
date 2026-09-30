@@ -6,6 +6,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../core/theme/app_theme.dart';
+import '../../services/anilist_service.dart';
 
 class EditProfileScreen extends StatefulWidget {
   const EditProfileScreen({super.key});
@@ -69,6 +70,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   Future<void> _loadCharactersForAnime(String animeId, String animeTitle) async {
     setState(() { _isLoadingCharacters = true; _characters = []; _selectedAnimeTitle = animeTitle; });
     try {
+      await AnilistService.throttle();
       final response = await http.post(
         Uri.parse('https://graphql.anilist.co'),
         headers: {'Content-Type': 'application/json', 'User-Agent': 'Aruku/1.0'},
@@ -87,6 +89,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           'variables': {'id': int.tryParse(animeId) ?? 0},
         }),
       );
+      AnilistService.noteLimits(response.headers);
+      if (response.statusCode == 429) {
+        AnilistService.backoff(
+            int.tryParse(response.headers['retry-after'] ?? '') ?? 10);
+      }
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final nodes = data['data']['Media']['characters']['nodes'] as List;

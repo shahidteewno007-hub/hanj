@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:cached_network_image/cached_network_image.dart';
 
 import '../../core/theme/app_theme.dart';
+import '../../services/anilist_service.dart';
 import '../../services/firestore_service.dart';
 import '../../models/anime_model.dart';
 import '../anime_detail/anime_detail_screen.dart';
@@ -110,6 +111,7 @@ class _AnimeCalendarScreenState extends State<AnimeCalendarScreen> {
       }
       ''';
 
+      await AnilistService.throttle();
       final response = await http.post(
         Uri.parse('https://graphql.anilist.co'),
         headers: {
@@ -118,6 +120,11 @@ class _AnimeCalendarScreenState extends State<AnimeCalendarScreen> {
         },
         body: jsonEncode({'query': query, 'variables': {'page': 1}}),
       );
+      AnilistService.noteLimits(response.headers);
+      if (response.statusCode == 429) {
+        AnilistService.backoff(
+            int.tryParse(response.headers['retry-after'] ?? '') ?? 10);
+      }
 
       if (response.statusCode != 200) throw Exception('Failed');
 

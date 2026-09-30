@@ -178,11 +178,17 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
   Future<Map<String, dynamic>?> _fetchAiringHttp(
       String url, String query, String animeId) async {
     try {
+      await AnilistService.throttle();
       final resp = await http.Client().post(
         Uri.parse(url),
         headers: {'Content-Type': 'application/json'},
         body: '{"query":"${query.replaceAll('\n', ' ').replaceAll('"', '\\"')}","variables":{"id":$animeId}}',
       ).timeout(const Duration(seconds: 8));
+      AnilistService.noteLimits(resp.headers);
+      if (resp.statusCode == 429) {
+        AnilistService.backoff(
+            int.tryParse(resp.headers['retry-after'] ?? '') ?? 10);
+      }
       if (resp.statusCode != 200) return null;
       final data = jsonDecode(resp.body);
       return data['data']['Media']['nextAiringEpisode'] as Map<String, dynamic>?;

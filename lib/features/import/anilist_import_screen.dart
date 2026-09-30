@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 
 import '../../core/theme/app_theme.dart';
 import '../../models/anime_model.dart';
+import '../../services/anilist_service.dart';
 import '../../services/firestore_service.dart';
 
 enum ImportSource { mal, anilist, csv }
@@ -109,11 +110,17 @@ class _AnilistImportScreenState extends State<AnilistImportScreen> {
     }
     ''';
 
+    await AnilistService.throttle();
     final response = await http.post(
       Uri.parse('https://graphql.anilist.co'),
       headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
       body: jsonEncode({'query': query, 'variables': {'username': username}}),
     );
+    AnilistService.noteLimits(response.headers);
+    if (response.statusCode == 429) {
+      AnilistService.backoff(
+          int.tryParse(response.headers['retry-after'] ?? '') ?? 10);
+    }
 
     if (response.statusCode != 200) throw Exception('Failed to connect to AniList.');
     final data = jsonDecode(response.body);

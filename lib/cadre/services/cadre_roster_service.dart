@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../../services/anilist_service.dart';
 import '../data/cadre_affinity.dart';
 import '../data/cadre_rankings.dart';
 import '../models/cadre_fighter.dart';
@@ -192,6 +193,7 @@ query ($search: String, $perPage: Int) {
 
   Future<Map<String, dynamic>> _post(Map<String, dynamic> body) async {
     http.Response response;
+    await AnilistService.throttle();
     try {
       response = await http
           .post(
@@ -209,7 +211,10 @@ query ($search: String, $perPage: Int) {
       );
     }
 
+    AnilistService.noteLimits(response.headers);
     if (response.statusCode == 429) {
+      AnilistService.backoff(
+          int.tryParse(response.headers['retry-after'] ?? '') ?? 10);
       throw const CadreRosterException(
         'AniList is rate limiting. Wait a moment and try again.',
       );
