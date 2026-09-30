@@ -109,12 +109,14 @@ class AnilistService {
   /// "unavailable" apart from "this query legitimately returned nothing" —
   /// today both render the same empty state.
   ///
-  /// Everything but a 429 gets the same line, and it names no cause and no
-  /// status code: the app sees a status, not the reason behind it. The
-  /// 2026-09 403 read as an outage and was a suspension.
+  /// Three lines: no response (0), rate limited (429), and one line for
+  /// every other status that names no cause and no status code — the app
+  /// sees a status, not the reason behind it. The 2026-09 403 read as an
+  /// outage and was a suspension.
   static String? get unavailableMessage {
     final code = _lastFailStatus;
     if (code == null) return null;
+    if (code == 0) return 'Can\'t connect right now. Try again shortly.';
     if (code == 429) return 'AniList is rate limiting. Try again shortly.';
     return 'Fresh data can\'t load right now. Try again shortly.';
   }

@@ -26,10 +26,16 @@ class AnilistSavedNote extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (!AnilistService.isUnavailable) return const SizedBox.shrink();
+    // Two causes the app can actually tell apart: no response at all
+    // (status 0 — no network, DNS, timeout) versus a response that wasn't
+    // a 200. Neither names a reason the app can't verify.
+    final noResponse = AnilistService.lastFailStatus == 0;
     return Padding(
       padding: padding,
       child: Text(
-        'SAVED DATA · ANILIST UNAVAILABLE',
+        noResponse
+            ? 'SAVED DATA · CAN\'T CONNECT'
+            : 'SAVED DATA · COULDN\'T REFRESH',
         style: AppTheme.mono(
           fontSize: 9,
           color: AppTheme.textMuted,
