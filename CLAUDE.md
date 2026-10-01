@@ -54,6 +54,11 @@ So: do not assume the tree matches what you last wrote. If you find changes you 
 make, **preserve a copy and the diff before touching them, then say so** — do not silently
 revert, and do not silently build on top.
 
+**Push `main` to `origin` after every merge** (`git push origin main`; `origin` is
+`github.com/shahidteewno007-hub/hanj`). Merges used to stay local: on 2026-10-01 `main` was
+41 commits ahead of `origin/main` before it was pushed. This covers `git push` only —
+deploys stay off-limits.
+
 ## Commands
 
 ```bash
