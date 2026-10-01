@@ -243,7 +243,12 @@ class _SearchScreenState extends State<SearchScreen>
               focusNode: _focusNode,
               textInputAction: TextInputAction.search,
               onChanged: _onTextChanged,
-              onSubmitted: (v) => _search(v, isStudio: _tabCtrl.index == 1),
+              onSubmitted: (v) {
+                // Enter searches now, so cancel the pending debounce in
+                // _onTextChanged; otherwise it fires the same query again.
+                _lastSearchMs = null;
+                _search(v, isStudio: _tabCtrl.index == 1);
+              },
               style: AppTheme.sans(fontSize: 14, color: AppTheme.textPrimary),
               decoration: InputDecoration(
                 hintText: _tabCtrl.index == 0
