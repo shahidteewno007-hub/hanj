@@ -128,14 +128,18 @@ class _AnilistImportScreenState extends State<AnilistImportScreen> {
 
     final lists = data['data']['MediaListCollection']['lists'] as List;
     int total = 0;
-    for (final l in lists) total += (l['entries'] as List).length;
+    for (final l in lists) {
+      total += (l['entries'] as List).length;
+    }
     if (mounted) setState(() => _total = total);
 
     for (final list in lists) {
       for (final entry in list['entries'] as List) {
         final media = entry['media'];
-        if (mounted) setState(() => _currentAnime =
+        if (mounted) {
+          setState(() => _currentAnime =
             media['title']['english'] ?? media['title']['romaji'] ?? '');
+        }
 
         await _firestoreService.addAnimeToList(
           anime: Anime(

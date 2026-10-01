@@ -266,7 +266,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 borderRadius: BorderRadius.circular(28),
                 child: _selectedCharacterImage != null
                     ? Image.network(_selectedCharacterImage!, fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => Center(child: Text(initial,
+                        errorBuilder: (_, _, _) => Center(child: Text(initial,
                           style: const TextStyle(color: Colors.white, fontSize: 42, fontWeight: FontWeight.bold))))
                     : Center(child: Text(initial,
                         style: const TextStyle(color: Colors.white, fontSize: 42, fontWeight: FontWeight.bold))),
@@ -376,7 +376,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                                     CachedNetworkImage(
                                       imageUrl: imgUrl,
                                       fit: BoxFit.cover,
-                                      errorWidget: (_, __, ___) =>
+                                      errorWidget: (_, _, _) =>
                                           const Icon(Icons.person),
                                     ),
                                     if (isSelected)
@@ -681,7 +681,7 @@ class _AnimePickerSheetState extends State<_AnimePickerSheet> {
                                         width: 44,
                                         height: 60,
                                         fit: BoxFit.cover,
-                                        errorBuilder: (_, __, ___) =>
+                                        errorBuilder: (_, _, _) =>
                                             Container(
                                           width: 44,
                                           height: 60,

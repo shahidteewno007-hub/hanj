@@ -56,7 +56,11 @@ class _AnimeCalendarScreenState extends State<AnimeCalendarScreen> {
 
   Future<void> _toggleReminder(String animeId, String title, int episode, bool newVal) async {
     setState(() {
-      if (newVal) _remindersOn.add(animeId); else _remindersOn.remove(animeId);
+      if (newVal) {
+        _remindersOn.add(animeId);
+      } else {
+        _remindersOn.remove(animeId);
+      }
     });
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
@@ -353,7 +357,7 @@ class _AnimeCalendarScreenState extends State<AnimeCalendarScreen> {
                         width: 52,
                         height: 72,
                         fit: BoxFit.cover,
-                        errorWidget: (_, __, ___) => Container(
+                        errorWidget: (_, _, _) => Container(
                           width: 52,
                           height: 72,
                           color: AppTheme.surface,
