@@ -20,17 +20,24 @@ class PulseService {
   Future<Map<String, dynamic>?> _query(Map<String, dynamic> body) async {
     await AnilistService.throttle();
     try {
-      final response = await http
-          .post(
-            Uri.parse(_apiUrl),
-            headers: {
-              'Content-Type': 'application/json',
-              'Accept': 'application/json',
-              'User-Agent': 'Hanj/1.0',
-            },
-            body: jsonEncode(body),
-          )
-          .timeout(const Duration(seconds: 15));
+      final http.Response response;
+      try {
+        response = await http
+            .post(
+              Uri.parse(_apiUrl),
+              headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'User-Agent': 'Hanj/1.0',
+              },
+              body: jsonEncode(body),
+            )
+            .timeout(const Duration(seconds: 15));
+      } catch (_) {
+        AnilistService.noteStatus(0, 'pulse');
+        rethrow;
+      }
+      AnilistService.noteStatus(response.statusCode, 'pulse');
       AnilistService.noteLimits(response.headers);
       if (response.statusCode == 429) {
         final retryAfter =
