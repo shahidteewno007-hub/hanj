@@ -54,6 +54,26 @@ So: do not assume the tree matches what you last wrote. If you find changes you 
 make, **preserve a copy and the diff before touching them, then say so** — do not silently
 revert, and do not silently build on top.
 
+**Known behaviour: `dart fix` edits appear in files Claude Code has opened.** Since
+2026-09-30, lint fixes (`curly_braces_in_flow_control_structures`, `unnecessary_underscores`,
+`use_null_aware_elements`) have repeatedly appeared in files a Claude Code session had just
+read or edited, minutes or seconds later, with no command from the session. Committed so far
+as `9d21922`, `cfed283` and `247c658`. **The source is unidentified after two
+investigations** — no hook, no fix-on-save setting, no extension default, and a controlled
+shell-write / Edit-tool test triggered nothing. Procedure:
+
+1. Detect it with `git status` / `git diff --stat`. The tells are `-` lines in a file you only
+   added to, and the analyzer count dropping by the number of fixable infos.
+2. Confirm `dart fix --apply --code=<rule> <file>` on the committed version reproduces the
+   change exactly. Compare with `git hash-object --path=<file>`, since a CRLF/LF difference
+   under `core.autocrlf` is not a content difference.
+3. Keep it out of your own commits (stage only your hunks), then commit it separately as a
+   behaviour-neutral chore: `chore: apply dart fix (behaviour-neutral)`.
+
+If `dart fix` does **not** reproduce it exactly, it is not this behaviour. Fall back to the
+rule above, preserve and report, as for the `discovery_screen.dart` overwrite, which was not
+a clean fix.
+
 **Push `main` to `origin` after every merge** (`git push origin main`; `origin` is
 `github.com/shahidteewno007-hub/hanj`). Merges used to stay local: on 2026-10-01 `main` was
 41 commits ahead of `origin/main` before it was pushed. This covers `git push` only —
