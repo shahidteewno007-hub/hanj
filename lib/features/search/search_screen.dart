@@ -254,7 +254,7 @@ class _SearchScreenState extends State<SearchScreen>
                     color: AppTheme.textMuted, size: 18),
                 suffixIcon: ValueListenableBuilder<TextEditingValue>(
                   valueListenable: _textCtrl,
-                  builder: (_, value, __) => value.text.isEmpty
+                  builder: (_, value, _) => value.text.isEmpty
                       ? const SizedBox.shrink()
                       : IconButton(
                           icon: const Icon(Icons.clear_rounded,
