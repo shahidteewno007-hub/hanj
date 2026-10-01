@@ -15,6 +15,13 @@ import '../services/anilist_service.dart';
 ///
 /// Renders nothing while AniList is answering, so the healthy path costs one
 /// `SizedBox.shrink()`.
+///
+/// Listens to `AnilistService.failStatus`, so it redraws itself the moment the
+/// status changes. It used to read the flag only when its screen built, which
+/// missed changes both ways: an offline cold start built Home from cache before
+/// the first request failed, so no marker until a tab switch, and after
+/// reconnecting the marker lingered until one more rebuild. Only this widget
+/// rebuilds; the screen around it doesn't.
 class AnilistSavedNote extends StatelessWidget {
   const AnilistSavedNote({
     super.key,
@@ -25,23 +32,28 @@ class AnilistSavedNote extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (!AnilistService.isUnavailable) return const SizedBox.shrink();
-    // Two causes the app can actually tell apart: no response at all
-    // (status 0 — no network, DNS, timeout) versus a response that wasn't
-    // a 200. Neither names a reason the app can't verify.
-    final noResponse = AnilistService.lastFailStatus == 0;
-    return Padding(
-      padding: padding,
-      child: Text(
-        noResponse
-            ? 'SAVED DATA · CAN\'T CONNECT'
-            : 'SAVED DATA · COULDN\'T REFRESH',
-        style: AppTheme.mono(
-          fontSize: 9,
-          color: AppTheme.textMuted,
-          letterSpacing: 1.2,
-        ),
-      ),
+    return ValueListenableBuilder<int?>(
+      valueListenable: AnilistService.failStatus,
+      builder: (context, code, _) {
+        if (code == null) return const SizedBox.shrink();
+        // Two causes the app can actually tell apart: no response at all
+        // (status 0 — no network, DNS, timeout) versus a response that
+        // wasn't a 200. Neither names a reason the app can't verify.
+        final noResponse = code == 0;
+        return Padding(
+          padding: padding,
+          child: Text(
+            noResponse
+                ? 'SAVED DATA · CAN\'T CONNECT'
+                : 'SAVED DATA · COULDN\'T REFRESH',
+            style: AppTheme.mono(
+              fontSize: 9,
+              color: AppTheme.textMuted,
+              letterSpacing: 1.2,
+            ),
+          ),
+        );
+      },
     );
   }
 }

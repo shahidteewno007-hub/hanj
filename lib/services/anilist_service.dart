@@ -92,6 +92,14 @@ class AnilistService {
   static int? _lastFailStatus;
   static DateTime? _lastOkAt;
 
+  // Listenable view of the same state, for a widget that has to redraw
+  // when it changes rather than only when its screen happens to rebuild.
+  // Holds lastFailStatus: null while AniList is answering, 0 for no
+  // response, otherwise the HTTP status. A ValueNotifier only notifies on
+  // an actual change, so a run of identical failures costs nothing.
+  static final ValueNotifier<int?> _failStatus = ValueNotifier<int?>(null);
+  static ValueListenable<int?> get failStatus => _failStatus;
+
   /// True when the most recent AniList request failed and none has
   /// succeeded since.
   static bool get isUnavailable => _lastFailStatus != null;
@@ -134,9 +142,11 @@ class AnilistService {
     if (statusCode == 200) {
       _lastFailStatus = null;
       _lastOkAt = DateTime.now();
+      _failStatus.value = null;
       return;
     }
     _lastFailStatus = statusCode;
+    _failStatus.value = statusCode;
     debugPrint('AniList HTTP $statusCode ($source)');
   }
 
