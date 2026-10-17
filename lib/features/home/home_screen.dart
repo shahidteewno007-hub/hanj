@@ -23,6 +23,7 @@ import '../my_list/my_list_screen.dart';
 import '../import/anilist_import_screen.dart';
 import '../search/search_screen.dart';
 import '../companion/tomo_screen.dart';
+import '../companion/tomo_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -276,39 +277,46 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                         Row(
                           children: [
-                            // Tomo — AI anime companion
-                            GestureDetector(
-                              onTap: () => Navigator.push(context,
-                                  MaterialPageRoute(
-                                      builder: (_) => const TomoScreen())),
-                              child: Container(
-                                width: 30,
-                                height: 30,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  gradient: const LinearGradient(
-                                    colors: [Color(0xFFF97316), Color(0xFFE8624A)],
-                                  ),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: const Color(0xFFF97316).withValues(alpha: 0.4),
-                                      blurRadius: 10,
-                                      spreadRadius: -2,
+                            // Loki is locked until Hanj+ ships: the entry is
+                            // compiled out while kLokiEnabled is false.
+                            if (kLokiEnabled) ...[
+                              // Tomo — AI anime companion
+                              GestureDetector(
+                                onTap: () => Navigator.push(context,
+                                    MaterialPageRoute(
+                                        builder: (_) => const TomoScreen())),
+                                child: Container(
+                                  width: 30,
+                                  height: 30,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    gradient: const LinearGradient(
+                                      colors: [Color(0xFFF97316), Color(0xFFE8624A)],
                                     ),
-                                  ],
-                                ),
-                                alignment: Alignment.center,
-                                child: const Text(
-                                  '友',
-                                  style: TextStyle(
-                                    color: Color(0xFF0A0A0A),
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w700,
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: const Color(0xFFF97316).withValues(alpha: 0.4),
+                                        blurRadius: 10,
+                                        spreadRadius: -2,
+                                      ),
+                                    ],
+                                  ),
+                                  alignment: Alignment.center,
+                                  child: const Text(
+                                    '友',
+                                    style: TextStyle(
+                                      color: Color(0xFF0A0A0A),
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w700,
+                                    ),
                                   ),
                                 ),
                               ),
-                            ),
-                            const SizedBox(width: 16),
+                              const SizedBox(width: 16),
+                            ] else
+                              // Holds the row at the button's 30 px so the
+                              // headline below doesn't move up.
+                              const SizedBox(height: 30),
                             GestureDetector(
                               onTap: () => Navigator.push(context,
                                   MaterialPageRoute(

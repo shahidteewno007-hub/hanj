@@ -11,6 +11,14 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+/// Loki is locked for everyone, owner included, until Hanj+ ships.
+///
+/// Compile-time on purpose: with it off, the home-header entry point is
+/// compiled out, nothing references TomoScreen, and the tree-shaker drops
+/// the screen from the build. No owner bypass. Flip it only together with
+/// the server-side lock in chatWithTomo (functions/index.js).
+const bool kLokiEnabled = false;
+
 class TomoMessage {
   final String role; // 'user' | 'assistant'
   final String text;
@@ -44,6 +52,7 @@ class TomoService {
 
   /// Load saved conversation (oldest first) so the screen can repopulate.
   Future<List<TomoMessage>> loadHistory({int limit = 50}) async {
+    if (!kLokiEnabled) throw StateError('Loki is locked (kLokiEnabled)');
     final uid = _uid;
     if (uid == null) return [];
     final snap = await FirebaseFirestore.instance
@@ -65,6 +74,7 @@ class TomoService {
     required String message,
     required List<TomoMessage> history,
   }) async {
+    if (!kLokiEnabled) throw StateError('Loki is locked (kLokiEnabled)');
     final callable = _functions.httpsCallable(
       'chatWithTomo',
       options: HttpsCallableOptions(timeout: const Duration(seconds: 120)),
