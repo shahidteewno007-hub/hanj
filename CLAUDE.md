@@ -47,8 +47,12 @@ nothing about whether a user can hit it.
 Something outside the Claude session has modified the working tree at least once:
 `discovery_screen.dart` was overwritten mid-batch in a way that stripped already-committed
 `ValueKey`s, turned a settable `_PillChip` default into a constructor initialiser, and left
-`_HanjFilterSheet` syntactically invalid (`) : genre = null : format : year;`). It read like
-an automated quick-fix or formatter, not a hand edit. Under investigation.
+`_HanjFilterSheet` syntactically invalid (`) : genre = null : format : year;`). **That was
+`dart fix`, not a hand edit:** on 2026-10-18 a plain `dart fix --apply` on `3df8ef0`'s copy of
+the file reproduced the corrupted VS Code buffer byte for byte. Its `unused_element_parameter`
+and `avoid_init_to_null` fixes compose into the invalid line, and the former also makes the
+`_PillChip` initialiser. It does not account for the stripped `ValueKey`s (that buffer keeps
+both of `3df8ef0`'s).
 
 So: do not assume the tree matches what you last wrote. If you find changes you did not
 make, **preserve a copy and the diff before touching them, then say so** — do not silently
@@ -59,7 +63,9 @@ holding 19 unsaved `lib/` buffers from 5–7 Sep, each a stale copy that one sav
 written over the tree. They show as files under
 `%APPDATA%\Code\Backups\<workspace-id>\file\` (hot-exit backups; the folder is empty when
 nothing is unsaved). If any exist, **stop without touching them** — don't save, revert, close
-or delete — and report them. Only Shahid discards them.
+or delete — and report them. Only Shahid discards them. All 19 turned out to be an older
+commit plus `dart fix --apply`, so whatever runs `dart fix` in VS Code acts on open buffers
+too, not just on files on disk. What that is remains unidentified.
 
 **Known behaviour: `dart fix` edits appear in files Claude Code has opened.** Since
 2026-09-30, lint fixes (`curly_braces_in_flow_control_structures`, `unnecessary_underscores`,
@@ -74,12 +80,15 @@ shell-write / Edit-tool test triggered nothing. Procedure:
 2. Confirm `dart fix --apply --code=<rule> <file>` on the committed version reproduces the
    change exactly. Compare with `git hash-object --path=<file>`, since a CRLF/LF difference
    under `core.autocrlf` is not a content difference.
-3. Keep it out of your own commits (stage only your hunks), then commit it separately as a
-   behaviour-neutral chore: `chore: apply dart fix (behaviour-neutral)`.
+3. Run `flutter analyze` with the change in place. **Only if it shows no new errors or
+   warnings**, keep it out of your own commits (stage only your hunks) and commit it
+   separately as a behaviour-neutral chore: `chore: apply dart fix (behaviour-neutral)`.
+   If it does, preserve a copy and the diff, restore the committed file, and report it.
+   **Exact reproduction proves where an edit came from, not that it's safe**: the invalid
+   `discovery_screen.dart` line above is exact `dart fix` output.
 
 If `dart fix` does **not** reproduce it exactly, it is not this behaviour. Fall back to the
-rule above, preserve and report, as for the `discovery_screen.dart` overwrite, which was not
-a clean fix.
+rule above: preserve and report.
 
 **Push `main` to `origin` after every merge** (`git push origin main`; `origin` is
 `github.com/shahidteewno007-hub/hanj`). Merges used to stay local: on 2026-10-01 `main` was
