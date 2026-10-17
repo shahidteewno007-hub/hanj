@@ -191,7 +191,7 @@ class _TomoScreenState extends State<TomoScreen> {
               shape: BoxShape.circle,
               gradient: const LinearGradient(colors: [_kCoral, _kCoral2]),
               boxShadow: [
-                BoxShadow(color: _kCoral.withOpacity(0.4), blurRadius: 12, spreadRadius: -2),
+                BoxShadow(color: _kCoral.withValues(alpha: 0.4), blurRadius: 12, spreadRadius: -2),
               ],
             ),
             alignment: Alignment.center,
@@ -239,7 +239,7 @@ class _TomoScreenState extends State<TomoScreen> {
               shape: BoxShape.circle,
               gradient: const LinearGradient(colors: [_kCoral, _kCoral2]),
               boxShadow: [
-                BoxShadow(color: _kCoral.withOpacity(0.35), blurRadius: 24, spreadRadius: -4),
+                BoxShadow(color: _kCoral.withValues(alpha: 0.35), blurRadius: 24, spreadRadius: -4),
               ],
             ),
             alignment: Alignment.center,
