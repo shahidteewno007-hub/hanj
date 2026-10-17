@@ -54,6 +54,13 @@ So: do not assume the tree matches what you last wrote. If you find changes you 
 make, **preserve a copy and the diff before touching them, then say so** — do not silently
 revert, and do not silently build on top.
 
+**Also at the start of every batch, check VS Code for unsaved buffers.** On 2026-10-17 it was
+holding 19 unsaved `lib/` buffers from 5–7 Sep, each a stale copy that one save would have
+written over the tree. They show as files under
+`%APPDATA%\Code\Backups\<workspace-id>\file\` (hot-exit backups; the folder is empty when
+nothing is unsaved). If any exist, **stop without touching them** — don't save, revert, close
+or delete — and report them. Only Shahid discards them.
+
 **Known behaviour: `dart fix` edits appear in files Claude Code has opened.** Since
 2026-09-30, lint fixes (`curly_braces_in_flow_control_structures`, `unnecessary_underscores`,
 `use_null_aware_elements`) have repeatedly appeared in files a Claude Code session had just
@@ -83,7 +90,9 @@ deploys stay off-limits.
 
 ```bash
 flutter run -d chrome              # the normal dev loop
-flutter analyze                    # baseline: 202 issues, 0 errors (48 warnings, 154 infos)
+flutter analyze                    # baseline 2026-10-18, 0 errors: main 181 (48 warnings, 133 infos),
+                                   #   fix/loki-lock 179 (48 warnings, 131 infos)
+flutter test                       # 3 files, 16 tests; flutter test test/<file>.dart for one
 flutter build web                  # must be clean before calling a change done
 ```
 
@@ -125,9 +134,11 @@ flutter build apk --profile --target-platform android-arm64
   144 / 431 / 719 / 1007 / 1295. **Swipes that end low trigger gesture navigation and throw
   the app to the launcher** — keep them ending above `y≈900`.
 
-**There are no tests.** `test/` is empty, so there is no single-test command to give. Don't
-claim a change is verified by tests; verify with `flutter analyze`, `flutter build web`, and
-device measurement where it's a performance claim.
+**Tests are few.** `test/` holds three files (`main_screen_nav_test`, `page_width_layout_test`,
+`responsive_columns_test`, 16 tests). They cover the responsive layout and the nav shell's
+no-`IndexedStack` contract, and nothing else. Don't claim a change is verified by tests unless
+it touches those. Verify with `flutter analyze`, `flutter build web`, and device measurement
+where it's a performance claim.
 
 ### Build environment (Windows)
 
