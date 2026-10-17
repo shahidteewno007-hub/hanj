@@ -1052,6 +1052,12 @@ exports.seasonalCardCheck = onSchedule('0 0 * * *', async () => {
 //      firebase deploy --only functions:chatWithTomo   (key already set as secret)
 // ═════════════════════════════════════════════════════════════════════════════
 
+// Loki is locked for every caller, owner included, until Hanj+ ships. While
+// this is false, chatWithTomo refuses before it checks auth, touches the usage
+// counter, reads the key or calls Anthropic, and doesn't bind the secret at
+// all. Pairs with kLokiEnabled in lib/features/companion/tomo_service.dart.
+const TOMO_ENABLED        = false;
+
 const TOMO_MODEL          = 'claude-sonnet-4-6'; // balanced: smart + affordable
 const TOMO_DAILY_CAP      = 40;                  // messages per user per day
 const TOMO_MAX_HISTORY    = 20;                  // prior turns sent to Claude
@@ -1130,8 +1136,12 @@ function buildTomoListContext(docs) {
 }
 
 exports.chatWithTomo = onCall(
-  { secrets: [ANTHROPIC_API_KEY], timeoutSeconds: 120 },
+  { secrets: TOMO_ENABLED ? [ANTHROPIC_API_KEY] : [], timeoutSeconds: 120 },
   async (request) => {
+    if (!TOMO_ENABLED) {
+      throw new HttpsError('failed-precondition', 'Loki is not available.');
+    }
+
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError('unauthenticated', 'Sign in to chat with Loki.');
 
