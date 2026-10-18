@@ -15,9 +15,22 @@ class PulseService {
   static final Map<String, List<PulseCard>> _memCache = {};
   static final Map<String, DateTime> _cacheTs = {};
 
+  // The outcome of the fetch behind each list this service returns: the
+  // last non-200 any of its AniList queries saw (0 = no response), absent
+  // if they all got a 200. Pulse reads this rather than AnilistService's
+  // app-wide flag, which another screen's 200 clears while Pulse is still
+  // showing a fetch that failed. It is tied to the list itself, so a cache
+  // hit — which makes no request — still carries its own fetch's outcome.
+  static final Expando<int> _failOf = Expando<int>();
+  static final Map<String, int> _pendingFail = {};
+
+  /// Null when every AniList query behind [cards] got a 200.
+  int? failStatusOf(List<PulseCard> cards) => _failOf[cards];
+
   String? get _uid => FirebaseAuth.instance.currentUser?.uid;
 
-  Future<Map<String, dynamic>?> _query(Map<String, dynamic> body) async {
+  Future<Map<String, dynamic>?> _query(
+      Map<String, dynamic> body, String key) async {
     await AnilistService.throttle();
     try {
       final http.Response response;
@@ -35,9 +48,11 @@ class PulseService {
             .timeout(const Duration(seconds: 15));
       } catch (_) {
         AnilistService.noteStatus(0, 'pulse');
+        _pendingFail[key] = 0;
         rethrow;
       }
       AnilistService.noteStatus(response.statusCode, 'pulse');
+      if (response.statusCode != 200) _pendingFail[key] = response.statusCode;
       AnilistService.noteLimits(response.headers);
       if (response.statusCode == 429) {
         final retryAfter =
@@ -98,7 +113,8 @@ class PulseService {
   }
   ''';
 
-  Future<List<Map<String, dynamic>>> _fetchByIds(List<int> ids) async {
+  Future<List<Map<String, dynamic>>> _fetchByIds(
+      List<int> ids, String key) async {
     if (ids.isEmpty) return [];
     final results = <Map<String, dynamic>>[];
     for (var i = 0; i < ids.length; i += 50) {
@@ -106,7 +122,7 @@ class PulseService {
       final data = await _query({
         'query': _batchQuery,
         'variables': {'ids': chunk, 'perPage': chunk.length},
-      });
+      }, key);
       if (data != null) {
         final media = data['data']?['Page']?['media'] as List? ?? [];
         results.addAll(media.cast<Map<String, dynamic>>());
@@ -141,7 +157,8 @@ class PulseService {
   ''';
 
   Future<List<Map<String, dynamic>>> _fetchByStatus(
-    String status, {
+    String status,
+    String key, {
     String? genre,
     int perPage = 20,
     String sort = 'POPULARITY_DESC',
@@ -154,7 +171,7 @@ class PulseService {
         'perPage': perPage,
         'sort': [sort],
       },
-    });
+    }, key);
     if (data == null) return [];
     return (data['data']?['Page']?['media'] as List? ?? [])
         .cast<Map<String, dynamic>>();
@@ -189,6 +206,7 @@ class PulseService {
   void _toCache(String key, List<PulseCard> cards) {
     _memCache[key] = cards;
     _cacheTs[key] = DateTime.now();
+    _failOf[cards] = _pendingFail.remove(key);
   }
 
   void invalidate() {
@@ -207,6 +225,7 @@ class PulseService {
       final cached = _fromCache(key);
       if (cached != null) return cached;
     }
+    _pendingFail.remove(key);
 
     final cards = <PulseCard>[];
     final seen = <String>{};
@@ -255,7 +274,7 @@ class PulseService {
     // ── Batch-fetch watching + plan ────────────────────────
     final priorityIds = [...watchingIds, ...planIds].take(40).toList();
     if (priorityIds.isNotEmpty) {
-      final media = await _fetchByIds(priorityIds);
+      final media = await _fetchByIds(priorityIds, key);
       for (final item in media) {
         final animeId = item['id'].toString();
         final title = _displayTitle(item);
@@ -336,6 +355,7 @@ class PulseService {
     for (final genre in topGenres) {
       final media = await _fetchByStatus(
         'NOT_YET_RELEASED',
+        key,
         genre: genre,
         perPage: 5,
         sort: 'POPULARITY_DESC',
@@ -378,14 +398,15 @@ class PulseService {
       final cached = _fromCache(key);
       if (cached != null) return cached;
     }
+    _pendingFail.remove(key);
 
     final now = DateTime.now();
     final seen = <String>{};
     final cards = <PulseCard>[];
 
-    final releasing =
-        await _fetchByStatus('RELEASING', perPage: 30, sort: 'TRENDING_DESC');
-    final upcoming = await _fetchByStatus('NOT_YET_RELEASED',
+    final releasing = await _fetchByStatus('RELEASING', key,
+        perPage: 30, sort: 'TRENDING_DESC');
+    final upcoming = await _fetchByStatus('NOT_YET_RELEASED', key,
         perPage: 25, sort: 'POPULARITY_DESC');
 
     for (final item in [...releasing, ...upcoming]) {
@@ -418,10 +439,11 @@ class PulseService {
       final cached = _fromCache(key);
       if (cached != null) return cached;
     }
+    _pendingFail.remove(key);
 
     final now = DateTime.now();
-    final media =
-        await _fetchByStatus('RELEASING', perPage: 30, sort: 'TRENDING_DESC');
+    final media = await _fetchByStatus('RELEASING', key,
+        perPage: 30, sort: 'TRENDING_DESC');
 
     final cards = media.map((item) {
       final animeId = item['id'].toString();
@@ -470,9 +492,10 @@ class PulseService {
       final cached = _fromCache(key);
       if (cached != null) return cached;
     }
+    _pendingFail.remove(key);
 
     final now = DateTime.now();
-    final media = await _fetchByStatus('NOT_YET_RELEASED',
+    final media = await _fetchByStatus('NOT_YET_RELEASED', key,
         perPage: 25, sort: 'POPULARITY_DESC');
 
     final cards = media.map((item) {

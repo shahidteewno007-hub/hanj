@@ -173,7 +173,7 @@ class _PulseTabViewState extends State<_PulseTabView>
           return _buildShimmer();
         }
         final cards = snap.data ?? [];
-        if (cards.isEmpty) return _buildEmpty();
+        if (cards.isEmpty) return _buildEmpty(cards);
         return RefreshIndicator(
           onRefresh: () async => _refresh(),
           color: const Color(0xFFF97316),
@@ -214,7 +214,11 @@ class _PulseTabViewState extends State<_PulseTabView>
     );
   }
 
-  Widget _buildEmpty() {
+  // [cards] is this feed's own last result, so the message follows the
+  // outcome of this feed's own fetch — not AnilistService's app-wide flag,
+  // which a 200 anywhere else clears while this feed still holds a failure.
+  Widget _buildEmpty(List<PulseCard> cards) {
+    final failStatus = PulseService.instance.failStatusOf(cards);
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(40),
@@ -226,7 +230,7 @@ class _PulseTabViewState extends State<_PulseTabView>
                 color: const Color(0xFFF3EEE7).withOpacity(0.18)),
             const SizedBox(height: 16),
             Text(
-              AnilistService.unavailableMessage ?? widget.emptyMessage,
+              AnilistService.messageFor(failStatus) ?? widget.emptyMessage,
               textAlign: TextAlign.center,
               style: GoogleFonts.dmSans(
                 fontSize: 14,

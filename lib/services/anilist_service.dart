@@ -121,8 +121,12 @@ class AnilistService {
   /// every other status that names no cause and no status code — the app
   /// sees a status, not the reason behind it. The 2026-09 403 read as an
   /// outage and was a suspension.
-  static String? get unavailableMessage {
-    final code = _lastFailStatus;
+  static String? get unavailableMessage => messageFor(_lastFailStatus);
+
+  /// The same mapping for a status a surface kept itself — the outcome of
+  /// its own last fetch — rather than the app-wide last one above, which
+  /// any other screen's request can set or clear in the meantime.
+  static String? messageFor(int? code) {
     if (code == null) return null;
     if (code == 0) return 'Can\'t connect right now. Try again shortly.';
     if (code == 429) return 'AniList is rate limiting. Try again shortly.';
