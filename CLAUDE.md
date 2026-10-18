@@ -53,6 +53,8 @@ the file reproduced the corrupted VS Code buffer byte for byte. Its `unused_elem
 and `avoid_init_to_null` fixes compose into the invalid line, and the former also makes the
 `_PillChip` initialiser. It does not account for the stripped `ValueKey`s (that buffer keeps
 both of `3df8ef0`'s).
+**Open:** the stripped `ValueKey`s are not explained by `dart fix` — the corrupted buffer
+still contains both of `3df8ef0`'s `ValueKey`s.
 
 So: do not assume the tree matches what you last wrote. If you find changes you did not
 make, **preserve a copy and the diff before touching them, then say so** — do not silently
@@ -63,8 +65,10 @@ holding 19 unsaved `lib/` buffers from 5–7 Sep, each a stale copy that one sav
 written over the tree. They show as files under
 `%APPDATA%\Code\Backups\<workspace-id>\file\` (hot-exit backups; the folder is empty when
 nothing is unsaved). If any exist, **stop without touching them** — don't save, revert, close
-or delete — and report them. Only Shahid discards them. All 19 turned out to be an older
-commit plus `dart fix --apply`, so whatever runs `dart fix` in VS Code acts on open buffers
+or delete — and report them. Only Shahid discards them. Only 4 of the 19 were reproduced
+byte for byte as an older commit plus `dart fix --apply` (`main_screen`, `anilist_service`,
+`anime_detail_screen`, `discovery_screen`); the other 15 looked like older content plus lint
+fixes but were not verified. So whatever runs `dart fix` in VS Code acts on open buffers
 too, not just on files on disk. What that is remains unidentified.
 
 **Known behaviour: `dart fix` edits appear in files Claude Code has opened.** Since
