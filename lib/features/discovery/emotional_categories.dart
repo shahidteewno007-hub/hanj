@@ -164,6 +164,10 @@ class _CategoryRowState extends State<_CategoryRow> {
   bool _loading = false;
   bool _expanded = false;
   bool _hasFetched = false;
+  // Outcome of this row's own last fetch (null = AniList answered). The
+  // empty message follows this, not AnilistService's app-wide flag, which
+  // a 200 anywhere else clears while this row still holds a failed fetch.
+  int? _failStatus;
 
   // ── Static cache keyed by category name — survives widget rebuilds ──
   static final Map<String, List<Anime>> _globalCache = {};
@@ -188,8 +192,12 @@ class _CategoryRowState extends State<_CategoryRow> {
         genre: widget.category.genre,
         sort: widget.category.sort,
       );
+      // searchAnime has no await after its request, so the flag still holds
+      // this row's own outcome here — no other request can land in between.
+      final failStatus = AnilistService.lastFailStatus;
       if (mounted) {
         setState(() {
+          _failStatus = failStatus;
           _anime = widget.category.isHiddenGems
               ? results.where((a) =>
                   a.averageScore != null && a.averageScore! >= 80).toList()
@@ -327,7 +335,7 @@ class _CategoryRowState extends State<_CategoryRow> {
                     ? Padding(
                         padding: const EdgeInsets.only(top: 12),
                         child: Text(
-                            AnilistService.unavailableMessage ??
+                            AnilistService.messageFor(_failStatus) ??
                                 'No titles found',
                             style: AppTheme.sans(
                                 color: AppTheme.textMuted)),
