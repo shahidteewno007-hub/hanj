@@ -1016,12 +1016,18 @@ class _TonightCardState extends State<_TonightCard>
   Future<void> _loadStatus() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
-    final doc = await FirebaseFirestore.instance
-        .collection('users').doc(uid)
-        .collection('animeList').doc(widget.anime.id)
-        .get();
-    if (mounted && doc.exists) {
-      setState(() => _savedStatus = doc.data()?['status'] as String?);
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('users').doc(uid)
+          .collection('animeList').doc(widget.anime.id)
+          .get();
+      if (mounted && doc.exists) {
+        setState(() => _savedStatus = doc.data()?['status'] as String?);
+      }
+    } catch (_) {
+      // Offline with no cached copy, get() throws `unavailable`. Uncaught, that
+      // went to Crashlytics as fatal on every offline cold start (main.dart's
+      // PlatformDispatcher.onError). The bookmark just stays unsaved.
     }
   }
 
@@ -1667,12 +1673,17 @@ class _TrendingRowState extends State<_TrendingRow>
   Future<void> _loadStatus() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
-    final doc = await FirebaseFirestore.instance
-        .collection('users').doc(uid)
-        .collection('animeList').doc(widget.anime.id)
-        .get();
-    if (mounted && doc.exists) {
-      setState(() => _savedStatus = doc.data()?['status'] as String?);
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('users').doc(uid)
+          .collection('animeList').doc(widget.anime.id)
+          .get();
+      if (mounted && doc.exists) {
+        setState(() => _savedStatus = doc.data()?['status'] as String?);
+      }
+    } catch (_) {
+      // Same as _TonightCardState._loadStatus: offline, get() can throw, and
+      // uncaught it is reported to Crashlytics as fatal.
     }
   }
 
