@@ -103,8 +103,7 @@ deploys stay off-limits.
 
 ```bash
 flutter run -d chrome              # the normal dev loop
-flutter analyze                    # baseline 2026-10-18, 0 errors: main 181 (48 warnings, 133 infos),
-                                   #   fix/loki-lock 179 (48 warnings, 131 infos)
+flutter analyze                    # baseline 2026-10-24, 0 errors: main 178 (48 warnings, 130 infos)
 flutter test                       # 3 files, 16 tests; flutter test test/<file>.dart for one
 flutter build web                  # must be clean before calling a change done
 ```
