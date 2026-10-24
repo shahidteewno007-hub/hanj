@@ -800,9 +800,14 @@ Future<String?> showHanjListSheet({
                       setLocal(() => selected = s.$1);
                       // 2. Close sheet and return result
                       await Future.delayed(const Duration(milliseconds: 180));
+                      // Dismissed during those 180 ms: ctx is gone and the
+                      // caller already got null, so don't pop and don't save.
+                      if (!ctx.mounted) return;
                       Navigator.pop(ctx, s.$1);
                       // 3. Save to Firestore (fire and forget — UI already updated)
-                      firestoreService.addAnimeToList(anime: anime, status: s.$1);
+                      // Caught: uncaught, a rejected write was a fatal Crashlytics report.
+                      firestoreService.addAnimeToList(anime: anime, status: s.$1)
+                          .catchError((_) {});
                     },
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 150),
