@@ -163,6 +163,45 @@ class AuthService extends ChangeNotifier {
     }
   }
 
+  /// Re-proves a Google user's sign-in before account deletion.
+  ///
+  /// Firebase refuses `delete()` without a recent sign-in, and the deletion
+  /// screen wipes Firestore before it calls `delete()`, so it must reach this
+  /// first. Returns false if the user dismissed the prompt. Anything else
+  /// throws, e.g. `user-mismatch` when a different Google account is chosen.
+  ///
+  /// Web cannot call authenticate() (see [webGoogleAuthEvents]), and the GIS
+  /// button cannot be asked for a credential on demand, so web uses Firebase's
+  /// own popup instead.
+  Future<bool> reauthenticateWithGoogle(User user) async {
+    if (kIsWeb) {
+      try {
+        await user.reauthenticateWithPopup(GoogleAuthProvider());
+        return true;
+      } on FirebaseAuthException catch (e) {
+        if (e.code == 'popup-closed-by-user' ||
+            e.code == 'cancelled-popup-request') {
+          return false;
+        }
+        rethrow;
+      }
+    }
+    try {
+      await _ensureGoogleInitialized();
+      final googleUser = await GoogleSignIn.instance.authenticate(
+        scopeHint: const ['email', 'profile'],
+      );
+      final credential = GoogleAuthProvider.credential(
+        idToken: googleUser.authentication.idToken,
+      );
+      await user.reauthenticateWithCredential(credential);
+      return true;
+    } on GoogleSignInException catch (e) {
+      if (e.code == GoogleSignInExceptionCode.canceled) return false;
+      rethrow;
+    }
+  }
+
   Future<void> resendVerificationEmail() async {
     final user = _auth.currentUser;
     if (user == null || user.emailVerified) return;

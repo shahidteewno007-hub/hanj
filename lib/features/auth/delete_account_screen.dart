@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:provider/provider.dart';
 import '../../core/theme/app_theme.dart';
+import '../../services/auth_service.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Account Deletion Screen
@@ -37,6 +39,7 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
   Future<void> _deleteAccount() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
+    final auth = Provider.of<AuthService>(context, listen: false);
 
     setState(() => _busy = true);
 
@@ -55,9 +58,13 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
           password: _passwordCtrl.text.trim(),
         );
         await user.reauthenticateWithCredential(credential);
+      } else {
+        // Everyone else signed in with Google, the app's only other method.
+        // Their sign-in is usually too old for delete(), which would throw
+        // 'requires-recent-login' only after step 2 had wiped their data. So
+        // prove it again here; a dismissed prompt stops with nothing deleted.
+        if (!await auth.reauthenticateWithGoogle(user)) return;
       }
-      // For Google/Apple/etc. sign-in, recent auth is usually fresh enough.
-      // If not, FirebaseAuth throws 'requires-recent-login' and we surface that.
 
       // 2. Delete Firestore data (all subcollections + main doc)
       await _wipeUserData(user.uid);
@@ -82,6 +89,9 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
           break;
         case 'requires-recent-login':
           msg = 'Please sign out and sign back in, then try again';
+          break;
+        case 'user-mismatch':
+          msg = 'Choose the Google account you signed in with';
           break;
         default:
           msg = 'Could not delete account: ${e.message ?? e.code}';
