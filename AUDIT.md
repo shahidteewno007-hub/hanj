@@ -883,7 +883,7 @@ any user can overwrite or delete any other user's vote record.
 not — `reviews_screen` is one of the four screens never recovered — so those rules currently
 guard a feature with no client.
 
-**Fixed for `episodeDiscussions` in the repo (2026-10-24), not deployed.** All three halves:
+**Fixed for `episodeDiscussions` (2026-10-24), deployed the same day (§6g).** All three halves:
 
 - **Create binds the author.** `userId` must be the caller. This landed with D13 (§6g).
   Counters must also start at 0, and `createdAt` must equal `request.time`. The thread sorts
@@ -1457,9 +1457,9 @@ appears in the UI. No other field changes.
 
 The client fix stops new comments **from this build** only. Two things it cannot do.
 
-**1. Rules: in the repo, not deployed.** Existing documents stay world-readable, and any
-installed APK older than this fix keeps writing `userEmail` until it updates. The rules
-change for both is now in `firestore.rules`
+**1. Rules: deployed 2026-10-24.** Until then, existing documents stayed world-readable, and
+any installed APK older than this fix kept writing `userEmail`. The rules change for both is
+in `firestore.rules`
 ([:173-192](firestore.rules#L173-L192) and [:226-232](firestore.rules#L226-L232)):
 
 ```
@@ -1491,21 +1491,37 @@ match /episodeDiscussions/{commentId} {
   the previous rules, its six DENIES tests fail and its six ALLOWS tests pass, so the suite
   tells the old rules from the new. Full suite, with R5's vote tests: 89 pass, 0 fail.
 
-**Yours: the deploy.** Check the console Rules tab against this file first. The deployed
-ruleset is undetermined, and deploying overwrites whatever is live, including anything
-that was only ever changed in the console. Rules deploys are not blocked by the `aruku`
-problem (S2-5 / §5-E); only functions deploys are.
+**Deployed 2026-10-24** by Shahid, from `9c33b39` (the head of PR #1,
+`claude/vibrant-vaughan-d3a3a3`). The CLI reported "rules file firestore.rules compiled
+successfully" and then "released rules firestore.rules to cloud.firestore". **Verified from
+outside afterwards:** an unauthenticated REST read of `episodeDiscussions`, and one of
+`reviews`, both return `403 PERMISSION_DENIED`. Each read was masked to `animeId` and limited
+to one document, so no address could come back. Whatever was live before is in the console's
+Rules history, if anything ever needs comparing or rolling back.
+
+**How, for next time.** The plain `firebase` command in PowerShell is the standalone
+`firebase.exe` (firepit), and it crashed before reading the rules with `EPERM … lstat
+~/.cache/firebase/firebase-debug.log`. On startup it wipes that folder as a "legacy install",
+and a running firebase-tools MCP server keeps that log file open. The project-local CLI
+(`npm ci` in `firestore-tests/` first) has no such step. Run it from the checkout whose rules
+you mean to ship, because it finds `firebase.json` by walking up from the current directory.
+Rules deploys are not blocked by the `aruku` problem (S2-5 / §5-E); only functions deploys
+are.
 
 ```bash
-firebase deploy --only firestore:rules
+./firestore-tests/node_modules/.bin/firebase.cmd deploy --only firestore:rules --project anime-tracker-275cc
 ```
 
 **2. Backfill existing documents (Admin SDK, after the rules deploy).** This strips
 `userEmail`, and the local-part `userName`, from comments already written. A client cannot
 do it, because the update rule lets only the author edit content. Run it **after** step 1,
 or an old client can write a fresh `userEmail` behind it. It is a one-off and should not be
-committed. Run it from `functions/` (which has `firebase-admin` ^12) with Application Default
-Credentials:
+committed. Run it from a `functions/` that has `node_modules` (`firebase-admin` ^12) with
+admin credentials. This machine has no `gcloud`, so Application Default Credentials are not
+available. The alternatives are a service-account key, or deleting the field by hand in the
+console if there are only a few comments. For a key: Console → Project settings → Service
+accounts → Generate new private key, and point `GOOGLE_APPLICATION_CREDENTIALS` at the file
+for this one run. Afterwards delete the file and revoke the key.
 
 ```js
 // functions/d13-backfill.mjs — one-off, run once
