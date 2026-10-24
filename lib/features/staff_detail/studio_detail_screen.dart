@@ -40,11 +40,13 @@ class _StudioDetailScreenState extends State<StudioDetailScreen> {
         results = await _aniListService.searchByStudio(
             widget.studioName.split(' ').first);
       }
+      if (!mounted) return;
       setState(() {
         _animeList = results;
         _isLoading = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() => _isLoading = false);
     }
   }

@@ -151,6 +151,7 @@ class _UpcomingAnimeScreenState extends State<UpcomingAnimeScreen>
 
     if (_alertedIds.contains(anime.id)) {
       await ref.delete();
+      if (!mounted) return;
       setState(() => _alertedIds.remove(anime.id));
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -170,6 +171,7 @@ class _UpcomingAnimeScreenState extends State<UpcomingAnimeScreen>
         'seasonYear': anime.seasonYear,
         'addedAt':    FieldValue.serverTimestamp(),
       });
+      if (!mounted) return;
       setState(() => _alertedIds.add(anime.id));
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -529,6 +531,7 @@ class _UpcomingAnimeRowState extends State<UpcomingAnimeRow> {
 
     if (_alertedIds.contains(anime.id)) {
       await ref.delete();
+      if (!mounted) return;
       setState(() => _alertedIds.remove(anime.id));
     } else {
       await ref.set({
@@ -539,6 +542,7 @@ class _UpcomingAnimeRowState extends State<UpcomingAnimeRow> {
         'seasonYear': anime.seasonYear,
         'addedAt':    FieldValue.serverTimestamp(),
       });
+      if (!mounted) return;
       setState(() => _alertedIds.add(anime.id));
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

@@ -413,6 +413,7 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
               onPressed: () async {
                 Navigator.pop(context);
                 await _firestoreService.updateRating(int.parse(widget.anime.id), tempRating);
+                if (!mounted) return;
                 setState(() => _userRating = tempRating);
               },
               child: Text('Save', style: AppTheme.sans(color: AppTheme.primary, weight: FontWeight.w600)),

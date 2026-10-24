@@ -85,6 +85,7 @@ class _AnimeCalendarScreenState extends State<AnimeCalendarScreen> {
       // Get user's watching list
       final snapshot =
           await _firestoreService.getAnimeByStatus('WATCHING').first;
+      if (!mounted) return;
       final watchingIds = snapshot.docs
           .map((d) => (d.data() as Map)['animeId']?.toString() ?? '')
           .where((id) => id.isNotEmpty)

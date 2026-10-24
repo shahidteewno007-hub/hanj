@@ -36,11 +36,13 @@ class _StaffDetailScreenState extends State<StaffDetailScreen> {
     setState(() => _isLoading = true);
     try {
       final data = await _aniListService.getStaffDetails(widget.staffId);
+      if (!mounted) return;
       setState(() {
         _staffData = data;
         _isLoading = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() => _isLoading = false);
     }
   }

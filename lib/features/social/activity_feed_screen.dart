@@ -38,11 +38,13 @@ class _ActivityFeedScreenState extends State<ActivityFeedScreen>
     setState(() => _isLoadingFriends = true);
     try {
       final activity = await _firestoreService.getFriendsActivity();
+      if (!mounted) return;
       setState(() {
         _friendsActivity = activity;
         _isLoadingFriends = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() => _isLoadingFriends = false);
     }
   }

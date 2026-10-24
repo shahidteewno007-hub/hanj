@@ -52,6 +52,7 @@ class _SoulmatchScreenState extends State<SoulmatchScreen> {
       // Find friend by share code
       final usersSnap = await FirebaseFirestore.instance
           .collection('users').get();
+      if (!mounted) return;
 
       String? friendUid;
       String? friendName;
@@ -77,6 +78,7 @@ class _SoulmatchScreenState extends State<SoulmatchScreen> {
           .collection('users').doc(_uid).collection('animeList').get();
       final friendSnap = await FirebaseFirestore.instance
           .collection('users').doc(friendUid).collection('animeList').get();
+      if (!mounted) return;
 
       final result = SoulmatchAnalyzer.analyze(
         myDocs: mySnap.docs,
@@ -86,6 +88,7 @@ class _SoulmatchScreenState extends State<SoulmatchScreen> {
 
       setState(() { _result = result; _isLoading = false; });
     } catch (e) {
+      if (!mounted) return;
       setState(() { _error = 'Something went wrong. Try again.'; _isLoading = false; });
     }
   }

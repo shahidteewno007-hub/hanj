@@ -60,6 +60,7 @@ class _SocialScreenState extends State<SocialScreen> {
       // Find user with this share code (in real app, you'd have a shareCode field)
       // For now, we'll simulate with mock data
       final myList = await _firestoreService.getAnimeList().first;
+      if (!mounted) return;
       
       // Simulate friend's list (in real app, fetch from Firestore)
       final comparison = _simulateComparison(myList.docs);
@@ -69,6 +70,7 @@ class _SocialScreenState extends State<SocialScreen> {
         _isComparing = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() => _isComparing = false);
       _showSnackBar('Failed to compare lists', AppTheme.error);
     }

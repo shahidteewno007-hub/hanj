@@ -214,6 +214,7 @@ class _TonightWatchSheetState extends State<TonightWatchSheet>
     try {
       final results = await _anilist.searchAnime(
           '', genre: moodObj.genre, sort: moodObj.sort);
+      if (!mounted) return;
 
       if (results.isEmpty) {
         setState(() => _isLoading = false);
@@ -227,6 +228,7 @@ class _TonightWatchSheetState extends State<TonightWatchSheet>
         _isLoading      = false;
       });
     } catch (_) {
+      if (!mounted) return;
       setState(() => _isLoading = false);
     }
   }

@@ -47,6 +47,7 @@ class _TasteProfileScreenState extends State<TasteProfileScreen>
     try {
       final snapshot = await FirebaseFirestore.instance
           .collection('users').doc(uid).collection('animeList').get();
+      if (!mounted) return;
 
       final docs = snapshot.docs;
       if (docs.isEmpty) {
@@ -58,6 +59,7 @@ class _TasteProfileScreenState extends State<TasteProfileScreen>
       setState(() => _isLoading = false);
       _revealCtrl.forward();
     } catch (e) {
+      if (!mounted) return;
       setState(() => _isLoading = false);
     }
   }

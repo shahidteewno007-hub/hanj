@@ -77,6 +77,7 @@ class _NotificationPreferencesScreenState
       await _service.setPreference(key, value);
     } catch (_) {
       // Save locally if Firestore fails
+      if (!mounted) return;
       setState(() => _prefs[key] = value);
     }
   }
