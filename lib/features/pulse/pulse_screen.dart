@@ -161,7 +161,10 @@ class _PulseTabViewState extends State<_PulseTabView>
     _future = widget.loader(false);
   }
 
-  void _refresh() => setState(() => _future = widget.loader(true));
+  // Block body on purpose: an arrow would return the Future to setState,
+  // whose debug assert then throws before the rebuild (Refresh did nothing
+  // in debug builds).
+  void _refresh() => setState(() { _future = widget.loader(true); });
 
   @override
   Widget build(BuildContext context) {
