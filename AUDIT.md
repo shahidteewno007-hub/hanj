@@ -883,6 +883,34 @@ any user can overwrite or delete any other user's vote record.
 not — `reviews_screen` is one of the four screens never recovered — so those rules currently
 guard a feature with no client.
 
+**Fixed for `episodeDiscussions` in the repo (2026-10-24), not deployed.** All three halves:
+
+- **Create binds the author.** `userId` must be the caller. This landed with D13 (§6g).
+  Counters must also start at 0, and `createdAt` must equal `request.time`. The thread sorts
+  newest first, so a future timestamp would pin a comment to the top permanently.
+- **Counters follow the caller's own vote record.** An update may touch only `upvotes` and
+  `downvotes`, and only by exactly what the caller's `votes/{uid}` record changes by in the
+  same write ([firestore.rules `isVote`](firestore.rules#L208-L217)). The client already
+  votes this way, in one transaction
+  ([episode_discussion_screen.dart `_vote`](lib/features/episode_discussions/episode_discussion_screen.dart#L118-L159)),
+  unchanged since the root commit, so no build's voting breaks. The author's own update is
+  narrowed to `commentText` and `containsSpoilers`. Before, an author could set their own
+  counters or reassign the comment.
+- **Vote records are the voter's own.** Records are readable and writable only at
+  `votes/{own uid}`, `dir` must be ±1, and a record may change only together with the
+  matching counter move. That mirror condition matters. Without it, planting a record and
+  then "un-voting" drains someone's counter, and deleting your own record lets you vote again.
+
+`firestore-tests/episode-discussion-votes.test.js` (24 tests) replays the client's
+transaction step for step, through all six vote transitions (0→±1, ±1→0, ±1→∓1). Run against
+the previous rules, its 9 ALLOWS tests pass, so client behaviour is unchanged. 13 of its 15
+DENIES tests fail there: those are the holes this closes. The other two were already closed.
+Full suite: 89 pass, 0 fail.
+
+**`reviews` is unchanged apart from its read rule** (§6g). Its create, update and votes rules
+are as loose as these were, but no client writes there. Fix them with whatever replaces
+`reviews_screen`, against that client's actual writes.
+
 ### R6 · 🟠 `companion_chat` has no rule at all, so Loki's history cannot load
 
 Cross-referencing every collection the client touches against the rules turned up exactly
@@ -1384,7 +1412,7 @@ collection:
 'userEmail': user.email,
 ```
 
-The repo's rule for that collection ([firestore.rules:168-169](firestore.rules#L168-L169)):
+The repo's rule for that collection, as found (`firestore.rules:168-169` at `6a38f56`):
 
 ```
 match /episodeDiscussions/{commentId} {
@@ -1432,14 +1460,15 @@ The client fix stops new comments **from this build** only. Two things it cannot
 **1. Rules: in the repo, not deployed.** Existing documents stay world-readable, and any
 installed APK older than this fix keeps writing `userEmail` until it updates. The rules
 change for both is now in `firestore.rules`
-([:173-191](firestore.rules#L173-L191)):
+([:173-192](firestore.rules#L173-L192) and [:226-232](firestore.rules#L226-L232)):
 
 ```
 match /episodeDiscussions/{commentId} {
   allow read: if request.auth != null;
   allow create: if request.auth != null
     && request.resource.data.userId == request.auth.uid
-    && !('userEmail' in request.resource.data);
+    && !('userEmail' in request.resource.data)
+    // ...then R5's counter and createdAt conditions; see R5 in §6b
 ```
 
 - **`read` → signed-in** costs nothing: the only reader is the discussion screen, which sits
@@ -1460,7 +1489,7 @@ match /episodeDiscussions/{commentId} {
   signing in.**
 - `firestore-tests/episode-discussions.test.js`, 12 tests, proves both halves. Run against
   the previous rules, its six DENIES tests fail and its six ALLOWS tests pass, so the suite
-  tells the old rules from the new. Full suite: 65 pass, 0 fail.
+  tells the old rules from the new. Full suite, with R5's vote tests: 89 pass, 0 fail.
 
 **Yours: the deploy.** Check the console Rules tab against this file first. The deployed
 ruleset is undetermined, and deploying overwrites whatever is live, including anything
