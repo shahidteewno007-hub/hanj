@@ -1555,10 +1555,59 @@ their local part. A deleted account's `getUser` throws, and that comment falls b
 While in the console, open `reviews` too. If it holds documents with `userEmail`, run the
 same script against it, changing only the collection name.
 
-**Deleting an account leaves its comments behind.** `_wipeUserData`
-([delete_account_screen.dart:97-127](lib/features/auth/delete_account_screen.dart#L97-L127))
-clears only subcollections of `users/{uid}`. A deleted user's comments stay, and before the
-backfill each one still carries their email. The same class of gap as R9.
+**Deleting an account left its comments behind. Fixed for comments (2026-10-24), client
+only.** `_wipeUserData`
+([delete_account_screen.dart:99-148](lib/features/auth/delete_account_screen.dart#L99-L148))
+cleared only subcollections of `users/{uid}`, so a deleted user's comments stayed, and before
+the backfill each one still carried their email. The same class of gap as R9. It now starts
+by querying `episodeDiscussions` for `userId == uid` and deleting the matches in batches of
+400, the same pattern as the subcollections below it
+([:103-120](lib/features/auth/delete_account_screen.dart#L103-L120)). A reply is an ordinary
+comment with a `parentId`, so the user's replies go too, and so do comments from before D13
+that still carry `userEmail`. **No rule changed:** read is signed-in
+([firestore.rules:226](firestore.rules#L226)) and delete is author-only
+([:234](firestore.rules#L234)), both as deployed from `9c33b39`.
+
+- **It runs first,** so if it fails, nothing else has been wiped and a retry starts clean. It
+  is deliberately not best-effort: once the Auth account is gone, only the Admin SDK can
+  delete those comments, so a failure here stops the whole deletion.
+- **It asks the server only** (`Source.server`). Offline, a plain `get()` on a query answers
+  from the cache, which holds only the comments this device happened to load, and the
+  deletion would carry on without the rest. Offline, it now fails before deleting anything.
+- The screen's "What will be deleted" list gains "Your discussion comments and replies".
+- `firestore-tests/account-deletion.test.js` (7 tests) runs the client's step against the
+  rules and pins what it leaves behind.
+
+What the deletion still leaves behind:
+
+- **Other users' replies to a deleted comment.** Only their authors can delete them. The
+  screen renders a reply only under a top-level comment it has
+  ([episode_discussion_screen.dart:274](lib/features/episode_discussions/episode_discussion_screen.dart#L274)),
+  so they drop out of view, though the thread query still downloads them. They carry the
+  replier's name, not the deleted user's: a reply records whom it answers only as `parentId`.
+- **The user's votes on other people's comments** (`episodeDiscussions/{id}/votes/{uid}`).
+  Nothing can find them. A vote record holds only `dir` and `votedAt`, and R5 forbids any
+  other field, so the uid exists only as the document id. A collection-group query cannot
+  filter on a bare document id, and the rules have no `{path=**}/votes` match anyway; the
+  only other route is reading `votes/{uid}` under every comment in the collection. Removing
+  them would also mean moving other people's counters, since R5 makes the two move together.
+  Left in place, every counter still matches its records, and nobody can read them: a record
+  is readable only by its voter, and a deleted uid cannot sign in again.
+- **Vote records under each deleted comment.** Other users' votes on it, and the user's own
+  if they voted on their own comment (the screen allows it), stay in its `votes`
+  subcollection, and no client can delete them any more. An un-vote has to move the
+  comment's counters in the same write, and there is no comment left. A bare delete of the
+  record fails too: R5's `countersFollow()` reads the missing parent with `getAfter()`, the
+  read errors, and the rule denies (checked on the emulator). As with R8's stranded arc
+  posts, only the Admin SDK can remove them. They hold `dir` and `votedAt` and nothing else;
+  the console shows their parent as an italic document that does not exist.
+- **Comments from accounts deleted before this build, or from an install older than it.** A
+  client change cannot reach them. A one-off Admin SDK pass can: `getAuth().getUser(userId)`
+  throws for a deleted account, as in the backfill above. The fix that covers every client is
+  an Auth `onDelete` function, which needs a functions deploy, and `aruku` blocks those
+  (S2-5 / §5-E).
+- `reviews` is untouched: no client writes it, and whether it holds any documents is
+  unknown. R9 (Loki chat history) is unchanged too.
 
 **Neither step recalls anything.** If the deployed rules did match the file, treat the
 addresses already in this collection as having been public.
