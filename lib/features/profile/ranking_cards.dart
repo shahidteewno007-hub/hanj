@@ -260,6 +260,9 @@ class _Top9Card extends StatelessWidget {
                         ? CachedNetworkImage(
                             imageUrl: entry.imageUrl!,
                             fit: BoxFit.cover,
+                            // Can't load (offline, never cached): stays blank.
+                            // Unhandled, the failure went to Crashlytics as fatal.
+                            errorWidget: (_, _, _) => const SizedBox.shrink(),
                           )
                         : Container(color: AppTheme.surfaceLight),
 
@@ -846,6 +849,8 @@ class _MonthlyAuraCard extends StatelessWidget {
                                   ? CachedNetworkImage(
                                       imageUrl: a.imageUrl!,
                                       fit: BoxFit.cover,
+                                      errorWidget: (_, _, _) =>
+                                          const SizedBox.shrink(),
                                     )
                                   : Container(
                                       color: AppTheme.surfaceLight),

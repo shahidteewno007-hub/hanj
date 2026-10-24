@@ -179,6 +179,9 @@ class _TrailerButtonState extends State<TrailerButton> {
                         'https://img.youtube.com/vi/$_videoId/hqdefault.jpg'),
                     fit: BoxFit.cover,
                     opacity: 0.7,
+                    // Offline, or a 404 for a removed video: leave the black
+                    // box. Unhandled, the failure went to Crashlytics as fatal.
+                    onError: (_, _) {},
                   ),
                 ),
                 child: Center(

@@ -1055,12 +1055,16 @@ class _HeroCardState extends State<_HeroCard> {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            // Banner or cover image
+            // Banner or cover image. An image that can't load (offline and
+            // never cached) stays blank; with no errorWidget the failure
+            // went to Crashlytics as fatal.
             a.banner.isNotEmpty
                 ? CachedNetworkImage(imageUrl: a.banner, fit: BoxFit.cover,
                     errorWidget: (_, _, _) => CachedNetworkImage(
-                      imageUrl: a.cover, fit: BoxFit.cover))
-                : CachedNetworkImage(imageUrl: a.cover, fit: BoxFit.cover),
+                      imageUrl: a.cover, fit: BoxFit.cover,
+                      errorWidget: (_, _, _) => const SizedBox.shrink()))
+                : CachedNetworkImage(imageUrl: a.cover, fit: BoxFit.cover,
+                    errorWidget: (_, _, _) => const SizedBox.shrink()),
 
             // Gradient
             Container(
@@ -1089,7 +1093,8 @@ class _HeroCardState extends State<_HeroCard> {
                     ClipRRect(
                       borderRadius: BorderRadius.circular(7),
                       child: CachedNetworkImage(
-                        imageUrl: a.cover, width: 50, height: 70, fit: BoxFit.cover),
+                        imageUrl: a.cover, width: 50, height: 70, fit: BoxFit.cover,
+                        errorWidget: (_, _, _) => const SizedBox.shrink()),
                     ),
                     const SizedBox(width: 10),
                     Expanded(
@@ -1287,7 +1292,8 @@ class _HypeMeterRowState extends State<_HypeMeterRow>
                 ClipRRect(
                   borderRadius: BorderRadius.circular(5),
                   child: CachedNetworkImage(
-                    imageUrl: a.cover, width: 34, height: 48, fit: BoxFit.cover),
+                    imageUrl: a.cover, width: 34, height: 48, fit: BoxFit.cover,
+                    errorWidget: (_, _, _) => const SizedBox.shrink()),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
