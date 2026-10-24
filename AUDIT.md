@@ -1366,6 +1366,136 @@ must land after the function**, or claiming breaks for everyone until it does.
 
 ---
 
+## 6g. D13 — episode discussions publish the commenter's email (2026-10-24)
+
+Found by the design audit (`DESIGN.md` D13, uncommitted on
+`claude/hanj-ui-designer-subagent-927762` at time of writing), which flagged it as "not
+design". Verified in code here before changing anything.
+
+### D13 · 🔴 Every discussion comment carried its author's email, in a world-readable collection
+
+[episode_discussion_screen.dart:83](lib/features/episode_discussions/episode_discussion_screen.dart#L83)
+wrote this into every new comment and reply in the top-level `episodeDiscussions`
+collection:
+
+```dart
+'userName':
+    user.displayName ?? user.email?.split('@')[0] ?? 'Anonymous',
+'userEmail': user.email,
+```
+
+The repo's rule for that collection ([firestore.rules:168-169](firestore.rules#L168-L169)):
+
+```
+match /episodeDiscussions/{commentId} {
+  allow read: if true;
+```
+
+As in R1, `if true` means **unauthenticated**. **If the deployed ruleset matches the file**
+(undetermined; see `CLAUDE.md` and `RECON-0907-REPORT.md` A5), anyone with the project id can
+list the collection and collect the email of everyone who has ever commented, keyed to their
+uid. R1's fix (`9be8e59`) moved `users/{uid}` to signed-in-only, but this collection was never
+part of that change.
+
+Two leaks, not one:
+
+- **`userEmail`**: the full address, on every comment.
+- **`userName`**: when Auth has no `displayName`, this fell back to the email's local part.
+  For Gmail and most consumer providers, the local part plus a guessable domain *is* the
+  address. The fallback is narrow, because sign-up sets `displayName` from the username
+  ([auth_service.dart:121](lib/services/auth_service.dart#L121)) and Google sign-in sets it from
+  the Google profile ([:90](lib/services/auth_service.dart#L90)). It is reached only by accounts
+  where neither happened: an empty Google name, a sign-up whose `updateDisplayName` threw, or
+  an account older than both paths.
+
+**Nothing reads `userEmail`.** A grep of `lib/`, `functions/`, `firestore-tests/`,
+`firestore.rules` and `firebase.json` finds the write as the only occurrence. There is no
+`firestore.indexes.json`, and `functions/index.js` never touches `episodeDiscussions`.
+`_CommentTile` displays `userName` only
+([:498](lib/features/episode_discussions/episode_discussion_screen.dart#L498)). The field was
+write-only: it exposed the address and did nothing else.
+
+The screen is reachable, with no gate: anime detail → Overview tab → "Join the discussion"
+([anime_detail_screen.dart:970](lib/features/anime_detail/anime_detail_screen.dart#L970)).
+
+**Fixed** (2026-10-24), client only. The write no longer includes `userEmail`, and `userName`
+is now `user.displayName ?? 'Anonymous'`
+([:91](lib/features/episode_discussions/episode_discussion_screen.dart#L91)). The local-part
+fallback is gone as well, for the reason above. `'Anonymous'` is what `_CommentTile` already
+shows for a missing name, and what `arcs_screen` uses for the same fallback, so nothing new
+appears in the UI. No other field changes.
+
+### What is left: both yours
+
+The client fix stops new comments **from this build** only. Two things it cannot do.
+
+**1. Rules (needs a deploy).** Existing documents stay world-readable, and any installed
+APK older than this fix keeps writing `userEmail` until it updates. Check the console Rules
+tab first to see what is actually live. Recommended:
+
+```
+match /episodeDiscussions/{commentId} {
+  allow read: if request.auth != null;
+  allow create: if request.auth != null
+    && request.resource.data.userId == request.auth.uid
+    && !('userEmail' in request.resource.data);
+  // update, delete and /votes unchanged
+```
+
+- **`read` → signed-in** costs nothing: the only reader is the discussion screen, which sits
+  behind `AuthWrapper`. It does **not** protect existing emails on its own, since anyone can
+  sign up. That is what step 2 is for.
+- **`!('userEmail' in …)`** rejects comments from old clients rather than letting them keep
+  writing the address. Their users see "Failed to post — try again" with their text restored
+  ([:104-111](lib/features/episode_discussions/episode_discussion_screen.dart#L104-L111)). The
+  trade is deliberate: the alternative is that the leak continues until every install updates.
+- **`userId == request.auth.uid`** is R5's impersonation fix. It rides along because it is the
+  same `create` line and the client already complies
+  ([:87](lib/features/episode_discussions/episode_discussion_screen.dart#L87)).
+- Worth adding `firestore-tests/episode-discussions.test.js` alongside, in the pattern of
+  `users-read.test.js`.
+
+**2. Backfill existing documents (Admin SDK, after the rules deploy).** This strips
+`userEmail`, and the local-part `userName`, from comments already written. A client cannot
+do it, because the update rule lets only the author edit content. Run it **after** step 1,
+or an old client can write a fresh `userEmail` behind it. It is a one-off and should not be
+committed. Run it from `functions/` (which has `firebase-admin` ^12) with Application Default
+Credentials:
+
+```js
+// functions/d13-backfill.mjs — one-off, run once
+import { initializeApp } from 'firebase-admin/app';
+import { getAuth } from 'firebase-admin/auth';
+import { getFirestore, FieldValue } from 'firebase-admin/firestore';
+
+initializeApp({ projectId: 'anime-tracker-275cc' });
+const db = getFirestore();
+const writer = db.bulkWriter();
+const snap = await db.collection('episodeDiscussions').get();
+for (const doc of snap.docs) {
+  const { userEmail, userName, userId } = doc.data();
+  if (userEmail === undefined) continue;
+  const update = { userEmail: FieldValue.delete() };
+  // The name came from the email only when Auth had no displayName at post time.
+  if (typeof userEmail === 'string' && userName === userEmail.split('@')[0]) {
+    const user = await getAuth().getUser(userId).catch(() => null);
+    update.userName = user?.displayName || 'Anonymous';
+  }
+  writer.update(doc.ref, update);
+}
+await writer.close();
+```
+
+Re-reading Auth for the name, rather than blanking every match to `'Anonymous'`, keeps the
+name of anyone who has since set a `displayName`, or who deliberately chose one equal to
+their local part. A deleted account's `getUser` throws, and that comment falls back to
+`'Anonymous'`.
+
+**Neither step recalls anything.** If the deployed rules did match the file, treat the
+addresses already in this collection as having been public.
+
+---
+
 ## 7. Dependencies (`flutter pub outdated`) — flagging only
 
 Direct dependencies with a newer major available. **Per the brief, I propose no upgrades

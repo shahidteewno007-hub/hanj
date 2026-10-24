@@ -85,9 +85,10 @@ class _EpisodeDiscussionScreenState extends State<EpisodeDiscussionScreen> {
         'animeTitle': widget.anime.title,
         'episodeNumber': widget.episodeNumber,
         'userId': user.uid,
-        'userName':
-            user.displayName ?? user.email?.split('@')[0] ?? 'Anonymous',
-        'userEmail': user.email,
+        // Comments are publicly readable, so nothing derived from the email
+        // goes in here — not the address, and not its local part, which for
+        // most providers is the address. See AUDIT.md D13.
+        'userName': user.displayName ?? 'Anonymous',
         'commentText': text,
         'containsSpoilers': spoiler,
         'upvotes': 0,
