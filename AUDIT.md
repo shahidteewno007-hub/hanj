@@ -883,6 +883,34 @@ any user can overwrite or delete any other user's vote record.
 not — `reviews_screen` is one of the four screens never recovered — so those rules currently
 guard a feature with no client.
 
+**Fixed for `episodeDiscussions` (2026-10-24), deployed the same day (§6g).** All three halves:
+
+- **Create binds the author.** `userId` must be the caller. This landed with D13 (§6g).
+  Counters must also start at 0, and `createdAt` must equal `request.time`. The thread sorts
+  newest first, so a future timestamp would pin a comment to the top permanently.
+- **Counters follow the caller's own vote record.** An update may touch only `upvotes` and
+  `downvotes`, and only by exactly what the caller's `votes/{uid}` record changes by in the
+  same write ([firestore.rules `isVote`](firestore.rules#L208-L217)). The client already
+  votes this way, in one transaction
+  ([episode_discussion_screen.dart `_vote`](lib/features/episode_discussions/episode_discussion_screen.dart#L118-L159)),
+  unchanged since the root commit, so no build's voting breaks. The author's own update is
+  narrowed to `commentText` and `containsSpoilers`. Before, an author could set their own
+  counters or reassign the comment.
+- **Vote records are the voter's own.** Records are readable and writable only at
+  `votes/{own uid}`, `dir` must be ±1, and a record may change only together with the
+  matching counter move. That mirror condition matters. Without it, planting a record and
+  then "un-voting" drains someone's counter, and deleting your own record lets you vote again.
+
+`firestore-tests/episode-discussion-votes.test.js` (24 tests) replays the client's
+transaction step for step, through all six vote transitions (0→±1, ±1→0, ±1→∓1). Run against
+the previous rules, its 9 ALLOWS tests pass, so client behaviour is unchanged. 13 of its 15
+DENIES tests fail there: those are the holes this closes. The other two were already closed.
+Full suite: 89 pass, 0 fail.
+
+**`reviews` is unchanged apart from its read rule** (§6g). Its create, update and votes rules
+are as loose as these were, but no client writes there. Fix them with whatever replaces
+`reviews_screen`, against that client's actual writes.
+
 ### R6 · 🟠 `companion_chat` has no rule at all, so Loki's history cannot load
 
 Cross-referencing every collection the client touches against the rules turned up exactly
@@ -1363,6 +1391,177 @@ This needs a functions deploy, so it sits behind the `aruku` blocker (§5-E) and
 2026-10-30 window (§5-F). Order: unblock deploys → audit the counter → ship the function →
 tighten the rules once the client no longer needs to write those fields. **The rules change
 must land after the function**, or claiming breaks for everyone until it does.
+
+---
+
+## 6g. D13 — episode discussions publish the commenter's email (2026-10-24)
+
+Found by the design audit (`DESIGN.md` D13, uncommitted on
+`claude/hanj-ui-designer-subagent-927762` at time of writing), which flagged it as "not
+design". Verified in code here before changing anything.
+
+### D13 · 🔴 Every discussion comment carried its author's email, in a world-readable collection
+
+[episode_discussion_screen.dart:83](lib/features/episode_discussions/episode_discussion_screen.dart#L83)
+wrote this into every new comment and reply in the top-level `episodeDiscussions`
+collection:
+
+```dart
+'userName':
+    user.displayName ?? user.email?.split('@')[0] ?? 'Anonymous',
+'userEmail': user.email,
+```
+
+The repo's rule for that collection, as found (`firestore.rules:168-169` at `6a38f56`):
+
+```
+match /episodeDiscussions/{commentId} {
+  allow read: if true;
+```
+
+As in R1, `if true` means **unauthenticated**. **If the deployed ruleset matches the file**
+(undetermined; see `CLAUDE.md` and `RECON-0907-REPORT.md` A5), anyone with the project id can
+list the collection and collect the email of everyone who has ever commented, keyed to their
+uid. R1's fix (`9be8e59`) moved `users/{uid}` to signed-in-only, but this collection was never
+part of that change.
+
+Two leaks, not one:
+
+- **`userEmail`**: the full address, on every comment.
+- **`userName`**: when Auth has no `displayName`, this fell back to the email's local part.
+  For Gmail and most consumer providers, the local part plus a guessable domain *is* the
+  address. The fallback is narrow, because sign-up sets `displayName` from the username
+  ([auth_service.dart:121](lib/services/auth_service.dart#L121)) and Google sign-in sets it from
+  the Google profile ([:90](lib/services/auth_service.dart#L90)). It is reached only by accounts
+  where neither happened: an empty Google name, a sign-up whose `updateDisplayName` threw, or
+  an account older than both paths.
+
+**Nothing reads `userEmail`.** A grep of `lib/`, `functions/`, `firestore-tests/`,
+`firestore.rules` and `firebase.json` finds the write as the only occurrence. There is no
+`firestore.indexes.json`, and `functions/index.js` never touches `episodeDiscussions`.
+`_CommentTile` displays `userName` only
+([:498](lib/features/episode_discussions/episode_discussion_screen.dart#L498)). The field was
+write-only: it exposed the address and did nothing else.
+
+The screen is reachable, with no gate: anime detail → Overview tab → "Join the discussion"
+([anime_detail_screen.dart:970](lib/features/anime_detail/anime_detail_screen.dart#L970)).
+
+**Fixed** (2026-10-24), client only. The write no longer includes `userEmail`, and `userName`
+is now `user.displayName ?? 'Anonymous'`
+([:91](lib/features/episode_discussions/episode_discussion_screen.dart#L91)). The local-part
+fallback is gone as well, for the reason above. `'Anonymous'` is what `_CommentTile` already
+shows for a missing name, and what `arcs_screen` uses for the same fallback, so nothing new
+appears in the UI. No other field changes.
+
+### What is left
+
+The client fix stops new comments **from this build** only. Two things it cannot do.
+
+**1. Rules: deployed 2026-10-24.** Until then, existing documents stayed world-readable, and
+any installed APK older than this fix kept writing `userEmail`. The rules change for both is
+in `firestore.rules`
+([:173-192](firestore.rules#L173-L192) and [:226-232](firestore.rules#L226-L232)):
+
+```
+match /episodeDiscussions/{commentId} {
+  allow read: if request.auth != null;
+  allow create: if request.auth != null
+    && request.resource.data.userId == request.auth.uid
+    && !('userEmail' in request.resource.data)
+    // ...then R5's counter and createdAt conditions; see R5 in §6b
+```
+
+- **`read` → signed-in** costs nothing: the only reader is the discussion screen, which sits
+  behind `AuthWrapper`. It does **not** protect existing emails on its own, since anyone can
+  sign up. That is what step 2 is for.
+- **`!('userEmail' in …)`** rejects comments from old clients rather than letting them keep
+  writing the address, including a `null` one. Their users see "Failed to post — try again"
+  with their text restored
+  ([:104-111](lib/features/episode_discussions/episode_discussion_screen.dart#L104-L111)). The
+  trade is deliberate: the alternative is that the leak continues until every install updates.
+- **`userId == request.auth.uid`** is R5's impersonation fix. It rides along because it is the
+  same `create` line and the client already complies
+  ([:87](lib/features/episode_discussions/episode_discussion_screen.dart#L87)).
+- **`reviews` read → signed-in too** ([:153](firestore.rules#L153)). No client touches
+  `reviews`, so nothing can break. But its rules came from the console, so the lost
+  `reviews_screen` probably wrote there, and may have used the same author fields. Whether
+  any documents exist is unknown. After this, **nothing in the file is readable without
+  signing in.**
+- `firestore-tests/episode-discussions.test.js`, 12 tests, proves both halves. Run against
+  the previous rules, its six DENIES tests fail and its six ALLOWS tests pass, so the suite
+  tells the old rules from the new. Full suite, with R5's vote tests: 89 pass, 0 fail.
+
+**Deployed 2026-10-24** by Shahid, from `9c33b39` (the head of PR #1,
+`claude/vibrant-vaughan-d3a3a3`). The CLI reported "rules file firestore.rules compiled
+successfully" and then "released rules firestore.rules to cloud.firestore". **Verified from
+outside afterwards:** an unauthenticated REST read of `episodeDiscussions`, and one of
+`reviews`, both return `403 PERMISSION_DENIED`. Each read was masked to `animeId` and limited
+to one document, so no address could come back. Whatever was live before is in the console's
+Rules history, if anything ever needs comparing or rolling back.
+
+**How, for next time.** The plain `firebase` command in PowerShell is the standalone
+`firebase.exe` (firepit), and it crashed before reading the rules with `EPERM … lstat
+~/.cache/firebase/firebase-debug.log`. On startup it wipes that folder as a "legacy install",
+and a running firebase-tools MCP server keeps that log file open. The project-local CLI
+(`npm ci` in `firestore-tests/` first) has no such step. Run it from the checkout whose rules
+you mean to ship, because it finds `firebase.json` by walking up from the current directory.
+Rules deploys are not blocked by the `aruku` problem (S2-5 / §5-E); only functions deploys
+are.
+
+```bash
+./firestore-tests/node_modules/.bin/firebase.cmd deploy --only firestore:rules --project anime-tracker-275cc
+```
+
+**2. Backfill existing documents (Admin SDK, after the rules deploy).** This strips
+`userEmail`, and the local-part `userName`, from comments already written. A client cannot
+do it, because the update rule lets only the author edit content. Run it **after** step 1,
+or an old client can write a fresh `userEmail` behind it. It is a one-off and should not be
+committed. Run it from a `functions/` that has `node_modules` (`firebase-admin` ^12) with
+admin credentials. This machine has no `gcloud`, so Application Default Credentials are not
+available. The alternatives are a service-account key, or deleting the field by hand in the
+console if there are only a few comments. For a key: Console → Project settings → Service
+accounts → Generate new private key, and point `GOOGLE_APPLICATION_CREDENTIALS` at the file
+for this one run. Afterwards delete the file and revoke the key.
+
+```js
+// functions/d13-backfill.mjs — one-off, run once
+import { initializeApp } from 'firebase-admin/app';
+import { getAuth } from 'firebase-admin/auth';
+import { getFirestore, FieldValue } from 'firebase-admin/firestore';
+
+initializeApp({ projectId: 'anime-tracker-275cc' });
+const db = getFirestore();
+const writer = db.bulkWriter();
+const snap = await db.collection('episodeDiscussions').get();
+for (const doc of snap.docs) {
+  const { userEmail, userName, userId } = doc.data();
+  if (userEmail === undefined) continue;
+  const update = { userEmail: FieldValue.delete() };
+  // The name came from the email only when Auth had no displayName at post time.
+  if (typeof userEmail === 'string' && userName === userEmail.split('@')[0]) {
+    const user = await getAuth().getUser(userId).catch(() => null);
+    update.userName = user?.displayName || 'Anonymous';
+  }
+  writer.update(doc.ref, update);
+}
+await writer.close();
+```
+
+Re-reading Auth for the name, rather than blanking every match to `'Anonymous'`, keeps the
+name of anyone who has since set a `displayName`, or who deliberately chose one equal to
+their local part. A deleted account's `getUser` throws, and that comment falls back to
+`'Anonymous'`.
+
+While in the console, open `reviews` too. If it holds documents with `userEmail`, run the
+same script against it, changing only the collection name.
+
+**Deleting an account leaves its comments behind.** `_wipeUserData`
+([delete_account_screen.dart:97-127](lib/features/auth/delete_account_screen.dart#L97-L127))
+clears only subcollections of `users/{uid}`. A deleted user's comments stay, and before the
+backfill each one still carries their email. The same class of gap as R9.
+
+**Neither step recalls anything.** If the deployed rules did match the file, treat the
+addresses already in this collection as having been public.
 
 ---
 

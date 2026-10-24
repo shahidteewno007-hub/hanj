@@ -151,7 +151,12 @@ service cloud.firestore {
     }
 
     match /reviews/{reviewId} {
-      allow read: if true;
+      // Signed-in only. No client touches reviews today (reviews_screen was
+      // never recovered), so nothing can break. But this block came from the
+      // console, so the lost screen probably wrote here, and if it used the
+      // same author fields as episodeDiscussions, any documents it left carry
+      // email addresses too. Whether any exist is unknown. AUDIT.md §6g.
+      allow read: if request.auth != null;
       allow create: if request.auth != null;
       // Author can edit/delete their own review. Any signed-in user may update
       // ONLY the vote-count fields (so up/down-voting others' reviews works).
@@ -165,18 +170,92 @@ service cloud.firestore {
         allow read, write: if request.auth != null;
       }
     }
+    // ── Episode discussions ───────────────────────────────────
+    // EpisodeDiscussionScreen: one thread per anime (episodeNumber 0 is the
+    // series thread); a reply is an ordinary comment carrying a parentId.
+    //
+    // Reads: signed-in only. This was `if true`, and every comment written
+    // before the D13 fix also stored its author's email address. The only
+    // reader sits behind AuthWrapper, so nothing logged-out loses anything.
+    // Signing up is free, though: this narrows who can read those older
+    // documents, it does not hide them. The backfill in AUDIT.md §6g does.
+    //
+    // Create: the author must be the caller (R5: a client could post under
+    // someone else's uid), and the document must not carry `userEmail`. That
+    // second condition rejects posts from any install older than the D13 fix
+    // instead of letting it keep publishing the address; the user sees
+    // "Failed to post" with their text restored. Counters start at zero, and
+    // `createdAt` must be the server's own time: the thread sorts newest
+    // first, so a future timestamp would pin a comment to the top for good.
+    //
+    // Votes (R5): see below. Every build in git history votes the same way.
     match /episodeDiscussions/{commentId} {
-      allow read: if true;
-      allow create: if request.auth != null;
-      // Same pattern: author edits content, anyone votes on counts.
-      allow update: if request.auth != null && (
-        request.auth.uid == resource.data.userId ||
-        request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(['upvotes', 'downvotes', 'helpfulCount'])
-      );
+
+      function changedC() { return request.resource.data.diff(resource.data); }
+      function up(dir)    { return dir == 1 ? 1 : 0; }
+      function down(dir)  { return dir == -1 ? 1 : 0; }
+      function myVote() {
+        return /databases/$(database)/documents/episodeDiscussions/$(commentId)/votes/$(request.auth.uid);
+      }
+
+      // A vote. The client votes in one transaction (`_vote` in the screen):
+      // it writes its own record at votes/{uid} ({dir: 1 | -1}, deleted to
+      // un-vote) and moves upvotes/downvotes to match. The counters may move
+      // only by exactly what the caller's own record moves by, in the same
+      // write. New vote, un-vote and switching direction all fit; a counter
+      // write with no matching record change does not. This replaces a rule
+      // that let anyone set either counter to any value on any comment.
+      function isVote() {
+        let before = exists(myVote()) ? get(myVote()).data.dir : 0;
+        let after = existsAfter(myVote()) ? getAfter(myVote()).data.dir : 0;
+        return changedC().affectedKeys().hasOnly(['upvotes', 'downvotes'])
+          && before != after
+          && request.resource.data.upvotes
+               == resource.data.upvotes + up(after) - up(before)
+          && request.resource.data.downvotes
+               == resource.data.downvotes + down(after) - down(before);
+      }
+      // The author editing their own text. Nothing in the app edits comments
+      // today; this keeps the old rule's intent without letting the author
+      // also set their own counters or hand the comment to someone else.
+      function isAuthorEdit() {
+        return resource.data.userId == request.auth.uid
+          && changedC().affectedKeys().hasOnly(['commentText', 'containsSpoilers']);
+      }
+
+      allow read: if request.auth != null;
+      allow create: if request.auth != null
+        && request.resource.data.userId == request.auth.uid
+        && !('userEmail' in request.resource.data)
+        && request.resource.data.upvotes == 0
+        && request.resource.data.downvotes == 0
+        && request.resource.data.createdAt == request.time;
+      allow update: if request.auth != null && (isVote() || isAuthorEdit());
       allow delete: if request.auth != null && request.auth.uid == resource.data.userId;
-      match /votes/{voteId} {
-        allow read, write: if request.auth != null;
+
+      // One record per voter, readable and writable only by that voter, and
+      // writable only together with the matching counter change on the
+      // comment — the mirror of isVote(). Without it, a record written or
+      // deleted on its own would let the next "un-vote" drain someone's
+      // counter, or let the same person vote twice.
+      match /votes/{voterId} {
+        function comment() {
+          return /databases/$(database)/documents/episodeDiscussions/$(commentId);
+        }
+        function countersFollow(after) {
+          let before = resource == null ? 0 : resource.data.dir;
+          let was = get(comment()).data;
+          let now = getAfter(comment()).data;
+          return now.upvotes == was.upvotes + up(after) - up(before)
+            && now.downvotes == was.downvotes + down(after) - down(before);
+        }
+        allow read: if request.auth != null && request.auth.uid == voterId;
+        allow create, update: if request.auth != null && request.auth.uid == voterId
+          && request.resource.data.dir in [1, -1]
+          && request.resource.data.keys().hasOnly(['dir', 'votedAt'])
+          && countersFollow(request.resource.data.dir);
+        allow delete: if request.auth != null && request.auth.uid == voterId
+          && countersFollow(0);
       }
     }
 
