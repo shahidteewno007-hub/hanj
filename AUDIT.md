@@ -159,6 +159,8 @@ trailer launcher stops compiling.
 
 ### S3-A · `setState` after `await` with no `mounted` guard — 18 sites
 
+**Status 2026-10-24: fixed in `6f62e34`. Re-located: 24 sites in 11 files. See §6g.**
+
 The single most common defect in the tree. The signature is distinctive:
 
 ```dart
@@ -233,6 +235,8 @@ in `dispose()`.
 
 ### S3-D · Unawaited future with no error handler → silent data loss
 
+**Status 2026-10-24: fixed in `8d20063`; the write now has `.catchError`. See §6g.**
+
 [home_screen.dart:718](lib/features/home/home_screen.dart#L718), in the status-picker
 sheet:
 
@@ -262,6 +266,9 @@ reads as an oversight rather than a convention. The comment (`fire and forget �
 updated`) shows it was deliberate; the missing `.catchError` is what makes it a bug.
 
 ### S3-E · `Navigator.pop(ctx)` across an async gap
+
+**Status 2026-10-24: fixed in `8d20063`; a sheet dismissed during the delay neither pops nor
+saves. See §6g.**
 
 Same block, [home_screen.dart:716](lib/features/home/home_screen.dart#L716). `ctx` is the
 bottom-sheet context, used after a 180 ms delay with no `mounted` check. If the user
@@ -1366,6 +1373,72 @@ must land after the function**, or claiming breaks for everyone until it does.
 
 ---
 
+## 6g. Fatal-report sweep (2026-10-24)
+
+Commits `907f749`, `31c01e3`, `6f62e34`, `8d20063` and `d163634`, all on `main`. `main.dart`
+records **every** uncaught async error and **every** `FlutterError` as a *fatal* Crashlytics
+report. So ordinary offline failures were being recorded as crashes, most of them with nothing
+in logcat. Each fix below was checked on the CPH2573 with debug builds, before and after,
+except where marked [SRC].
+
+### Firestore reads offline: 42 `.get()` sites classified
+
+Offline, `DocumentReference.get()` throws `[cloud_firestore/unavailable]` when the document
+isn't in the local cache. That happens every time for a title that isn't on the list [LIVE].
+Collection queries return cached results instead, and only a rules rejection makes them throw
+[SRC].
+
+| Site | Status |
+|---|---|
+| `home_screen.dart` `_TonightCardState._loadStatus`, `_TrendingRowState._loadStatus` | **Fixed** in `907f749`. [LIVE] Before the fix: 5 fatal records in one offline session from the trending rows, the first on a plain cold start with no scrolling |
+| `anime_detail_screen.dart` `_loadData` (three `FirestoreService` reads) | **Fixed** in `31c01e3`. [LIVE] Before the fix: 1 fatal record per offline open of a title not on the list. Trending renders offline, so that title is one tap from Home |
+| Own user document (`profile_screen` `_loadAvatarPrefs`, `edit_profile_screen` `_loadSavedColor`, `card_collection_screen` `_PinCardButton`, `NotificationService.getPreferences`) | Left as is. [SRC] Always cached, because `_OnboardingGate` keeps a listener on that document |
+| Unguarded queries (`anime_calendar_screen` `_loadReminders`, `edit_profile_screen` `_showAnimePicker`, `delete_account_screen` `_wipeUserData`) | Left as is. [SRC] Served from the cache offline; only a rules rejection throws |
+| `_NextEpisodeCountdownState._loadReminder` (`anime_detail_screen`) | Left as is. [SRC] The countdown renders only after a live AniList fetch, so this read can't run offline |
+| `arcs_screen` ×3, `tomo_service` | Left as is: arcs is gated by `_comingSoon`, and Loki is locked |
+| `FirestoreService` `getNotes`, `getTags`, `getAnimeDetails`, `getFollowing`, `getAllUserTags`, `getStats`, `getWrappedData` | No callers |
+
+### S3-1, `setState` after `await`: done (`6f62e34`)
+
+The line numbers had drifted, so I re-located the sites by scanning `lib/`: 24 sites in 11
+files. Two of the original 18 were already guarded (`card_share`, `cadre_clash`). One wasn't
+in the audit (`notification_preferences_screen`). The three in arcs are left, because arcs is
+gated. Offline, the write paths are certain to hit this, because an awaited `set()` or
+`delete()` completes only on reconnect. [LIVE] Before the fix, closing Home's Tonight's Watch
+sheet while its throttled search was running recorded `setState() called after dispose():
+_TonightWatchSheetState` as fatal, first try. After: 0 in 3 tries.
+
+### S3-5, the status sheet: done (`8d20063`)
+
+[SRC] only. Reproducing the race on device would save a status to the owner's list.
+
+### Image loads: 48 network images, 7 without an error handler (`d163634`)
+
+An image stream with no error listener reports a failed load through
+`FlutterError.reportError`. `main.dart` records that as fatal, and nothing reaches logcat. 41 of
+the 48 images already had an `errorWidget` or `errorBuilder`. The 7 that didn't:
+
+- `trailer_launcher.dart`: the YouTube thumbnail, a plain `NetworkImage`. It fails on every
+  offline open. A removed video's 404 would make it fail online too [SRC].
+- `discovery_screen.dart`: `_HeroCard` ×3 and `_HypeMeterRow`.
+- `ranking_cards.dart`: `_Top9Card` and `_MonthlyAuraCard`.
+
+[LIVE] Offline, before and after the fix: Ranking Cards (8 posters never cached) went from 8
+fatal records to 0. A title with a trailer went from 1 to 0. Discover's four sites weren't
+exercised, because Discover has no data offline after a cold start [SRC].
+
+### Not done
+
+- **Rejected writes.** Several awaited Firestore writes still have no `catch`:
+  `removeAnimeFromList` on the detail screen, the alert toggles in `upcoming_anime` and
+  `anime_calendar_screen`, and the rating save. A rules rejection would be recorded as a fatal.
+  Offline these writes queue rather than fail, so this is lower priority.
+- **A central rule.** `FlutterError.onError` could record image-load failures (`library ==
+  'image resource service'`) as non-fatal, which would cover images added later. Shahid chose
+  per-site handlers for now; the rule is still an option.
+
+---
+
 ## 7. Dependencies (`flutter pub outdated`) — flagging only
 
 Direct dependencies with a newer major available. **Per the brief, I propose no upgrades
@@ -1469,11 +1542,11 @@ brief's 200-line batch limit.
 | **S2-5** | 🟠 High | **`firebase.json` declares codebase `aruku` with no directory — CONFIRMED, blocks all ten function deploys** (dry run: "could not deploy functions because the `aruku` directory was not found", after `default` analysed cleanly). Rules deploys unaffected. | [firebase.json:14](firebase.json#L14) | ~10 | **Not applied** — gated on your console-vs-source check for orphaned `aruku` functions. See §5-E |
 | **S5-1** | 🔴 Scheduled | **Node.js 20 runtime decommissioned — functions become undeployable entirely** | `functions/package.json` | — | **Deadline 2026-10-30**, ~8 weeks. Sequence in §5-F |
 | **S5-2** | 🟠 Scheduled | **`firebase-functions` outdated, breaking changes on upgrade** | `functions/package.json` (pins `^5.0.0`) | — | Do it as its own deploy, after `aruku` and before the runtime bump |
-| **S3-1** | 🟡 Med | **18 × `setState` after `await` with no `mounted` guard** → `setState() after dispose`, reported as fatal | 14 files, §3-A | ~18 | Mechanical. Check Crashlytics first to rank it |
+| **S3-1** | ✅ **Done** (was 🟡 Med) | **18 × `setState` after `await` with no `mounted` guard** → `setState() after dispose`, reported as fatal. **Re-located 2026-10-24: 24 sites in 11 files.** The `card_share` and `cadre_clash` sites were already guarded; arcs' three are left (gated) | 11 files, §3-A, §6g | 22 | Done — `6f62e34`. Reproduced on device before, clean after (§6g) |
 | **S3-2** | 🟡 Med | **Pulse/Discover SafeArea gap** — banner reserves ~33 px permanently + inset applied twice | [connectivity_service.dart:110](lib/services/connectivity_service.dart#L110), pulse/discovery/home | ~15 | Invisible on web; test on device |
 | **S3-3** | 🟡 Med | **Share-card centring** — unbalanced trailing 26 px spacer pushes art ~13 px high | [card_share.dart:388](lib/features/cards/card_share.dart#L388) | **1** | Fully diagnosed; see §5-A |
 | **S3-4** | ⚪ **Gated** (was 🟡 Med) | **Arc like double-tap inflates `likeCount`** — stale read + non-idempotent increment. **Accurate about the source, but unreachable: `_comingSoon` at [arcs_screen.dart:27](lib/features/social/arcs_screen.dart#L27) is `true` and short-circuits `build()` at `:46`, in every build in git history.** Fixed anyway on `fix/arcs-like-toggle`; becomes live if the flag flips | [arcs_screen.dart:701](lib/features/social/arcs_screen.dart#L701) | ~15 | Done — transaction + guard. Rules already permit the write |
-| **S3-5** | 🟡 Med | **Unawaited list-write + `Navigator.pop` across async gap** — silent data loss; can pop the wrong route | [home_screen.dart:711-718](lib/features/home/home_screen.dart#L711-L718) | ~8 | Two bugs, adjacent lines |
+| **S3-5** | ✅ **Done** (was 🟡 Med) | **Unawaited list-write + `Navigator.pop` across async gap** — silent data loss; can pop the wrong route. The sheet is `showHanjListSheet`, shared by Home's Tonight card, its trending rows and the detail screen | [home_screen.dart:798-811](lib/features/home/home_screen.dart#L798-L811) | 6 | Done — `8d20063`: a dismissed sheet neither pops nor saves, and the write gets `.catchError`. Not reproduced on device (the race would save to the owner's list) |
 | **S3-6** | 🟡 Med | **Startup blocks on the notification permission prompt** (no timeout before `runApp`) | [main.dart:63](lib/main.dart#L63), [notification_service.dart:35](lib/services/notification_service.dart#L35) | ~10 | Candidate for the blank-screen reports |
 | **S3-7** | 🟡 Med | **3 AniList calls with no throttle *and* no timeout** — calendar/import/edit-profile spin forever on a hung connection | calendar, import, edit_profile | ~12 | Same fix as S2-3 |
 | **S4-1** | 🟢 Low | `_animeListRef!` — 18 × check-then-deref of a re-evaluating getter | [firestore_service.dart](lib/services/firestore_service.dart) | ~20 | One local per method |
