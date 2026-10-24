@@ -134,10 +134,16 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
 
   Future<void> _loadData() async {
     final id     = int.parse(widget.anime.id);
-    final status = await _firestoreService.getAnimeStatus(id);
-    final rating = await _firestoreService.getUserRating(id);
-    final ep     = await _firestoreService.getEpisodeProgress(id);
-    if (mounted) setState(() { _currentStatus = status; _userRating = rating; _currentEpisode = ep; });
+    try {
+      final status = await _firestoreService.getAnimeStatus(id);
+      final rating = await _firestoreService.getUserRating(id);
+      final ep     = await _firestoreService.getEpisodeProgress(id);
+      if (mounted) setState(() { _currentStatus = status; _userRating = rating; _currentEpisode = ep; });
+    } catch (_) {
+      // Offline, a title that isn't on the list has no cached animeList doc,
+      // so get() throws `unavailable`. Uncaught, that went to Crashlytics as
+      // fatal on every such open. The screen just shows it as not on the list.
+    }
   }
 
   Future<void> _loadAiringData() async {
