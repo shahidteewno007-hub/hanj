@@ -151,7 +151,12 @@ service cloud.firestore {
     }
 
     match /reviews/{reviewId} {
-      allow read: if true;
+      // Signed-in only. No client touches reviews today (reviews_screen was
+      // never recovered), so nothing can break. But this block came from the
+      // console, so the lost screen probably wrote here, and if it used the
+      // same author fields as episodeDiscussions, any documents it left carry
+      // email addresses too. Whether any exist is unknown. AUDIT.md §6g.
+      allow read: if request.auth != null;
       allow create: if request.auth != null;
       // Author can edit/delete their own review. Any signed-in user may update
       // ONLY the vote-count fields (so up/down-voting others' reviews works).
@@ -165,9 +170,26 @@ service cloud.firestore {
         allow read, write: if request.auth != null;
       }
     }
+    // ── Episode discussions ───────────────────────────────────
+    // EpisodeDiscussionScreen: one thread per anime (episodeNumber 0 is the
+    // series thread); a reply is an ordinary comment carrying a parentId.
+    //
+    // Reads: signed-in only. This was `if true`, and every comment written
+    // before the D13 fix also stored its author's email address. The only
+    // reader sits behind AuthWrapper, so nothing logged-out loses anything.
+    // Signing up is free, though: this narrows who can read those older
+    // documents, it does not hide them. The backfill in AUDIT.md §6g does.
+    //
+    // Create: the author must be the caller (R5: a client could post under
+    // someone else's uid), and the document must not carry `userEmail`. That
+    // second condition rejects posts from any install older than the D13 fix
+    // instead of letting it keep publishing the address; the user sees
+    // "Failed to post" with their text restored.
     match /episodeDiscussions/{commentId} {
-      allow read: if true;
-      allow create: if request.auth != null;
+      allow read: if request.auth != null;
+      allow create: if request.auth != null
+        && request.resource.data.userId == request.auth.uid
+        && !('userEmail' in request.resource.data);
       // Same pattern: author edits content, anyone votes on counts.
       allow update: if request.auth != null && (
         request.auth.uid == resource.data.userId ||
