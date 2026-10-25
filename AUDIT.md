@@ -953,7 +953,7 @@ anyone**, while still being readable. They can only be cleared with the Admin SD
 ### R9 · 🟡 Account deletion does not remove Loki chat history
 
 Not a rules defect, but it surfaced from the same cross-reference.
-`_wipeUserData` ([delete_account_screen.dart:101-110](lib/features/auth/delete_account_screen.dart#L101-L110))
+`_wipeUserData` ([delete_account_screen.dart:131-141](lib/features/auth/delete_account_screen.dart#L131-L141))
 deletes an explicit list of subcollections: `animeList`, `alerts`, `cards`, `pinnedCards`,
 `activity`, `followers`, `following`, `firedAlerts`. **`companion_chat` and `companion_meta`
 are not in it**, so a user's conversations with Loki survive their account deletion. For a
@@ -1555,10 +1555,119 @@ their local part. A deleted account's `getUser` throws, and that comment falls b
 While in the console, open `reviews` too. If it holds documents with `userEmail`, run the
 same script against it, changing only the collection name.
 
-**Deleting an account leaves its comments behind.** `_wipeUserData`
-([delete_account_screen.dart:97-127](lib/features/auth/delete_account_screen.dart#L97-L127))
-clears only subcollections of `users/{uid}`. A deleted user's comments stay, and before the
-backfill each one still carries their email. The same class of gap as R9.
+**Deleting an account left its comments behind. Fixed for comments (2026-10-24), client
+only.** `_wipeUserData`
+([delete_account_screen.dart:109-158](lib/features/auth/delete_account_screen.dart#L109-L158))
+cleared only subcollections of `users/{uid}`, so a deleted user's comments stayed, and before
+the backfill each one still carried their email. The same class of gap as R9. It now starts
+by querying `episodeDiscussions` for `userId == uid` and deleting the matches in batches of
+400, the same pattern as the subcollections below it
+([:113-130](lib/features/auth/delete_account_screen.dart#L113-L130)). A reply is an ordinary
+comment with a `parentId`, so the user's replies go too, and so do comments from before D13
+that still carry `userEmail`. **No rule changed:** read is signed-in
+([firestore.rules:226](firestore.rules#L226)) and delete is author-only
+([:234](firestore.rules#L234)), both as deployed from `9c33b39`.
+
+- **It runs first,** so if it fails, nothing else has been wiped and a retry starts clean. It
+  is deliberately not best-effort: once the Auth account is gone, only the Admin SDK can
+  delete those comments, so a failure here stops the whole deletion.
+- **It asks the server only** (`Source.server`). Offline, a plain `get()` on a query answers
+  from the cache, which holds only the comments this device happened to load, and the
+  deletion would carry on without the rest. Offline, it now fails before deleting anything.
+- The screen's "What will be deleted" list gains "Your discussion comments and replies".
+- `firestore-tests/account-deletion.test.js` (7 tests) runs the client's step against the
+  rules and pins what it leaves behind.
+
+What the deletion still leaves behind:
+
+- **Other users' replies to a deleted comment.** Only their authors can delete them. The
+  screen renders a reply only under a top-level comment it has
+  ([episode_discussion_screen.dart:274](lib/features/episode_discussions/episode_discussion_screen.dart#L274)),
+  so they drop out of view, though the thread query still downloads them. They carry the
+  replier's name, not the deleted user's: a reply records whom it answers only as `parentId`.
+- **The user's votes on other people's comments** (`episodeDiscussions/{id}/votes/{uid}`).
+  Nothing can find them. A vote record holds only `dir` and `votedAt`, and R5 forbids any
+  other field, so the uid exists only as the document id. A collection-group query cannot
+  filter on a bare document id, and the rules have no `{path=**}/votes` match anyway; the
+  only other route is reading `votes/{uid}` under every comment in the collection. Removing
+  them would also mean moving other people's counters, since R5 makes the two move together.
+  Left in place, every counter still matches its records, and nobody can read them: a record
+  is readable only by its voter, and a deleted uid cannot sign in again.
+- **Vote records under each deleted comment.** Other users' votes on it, and the user's own
+  if they voted on their own comment (the screen allows it), stay in its `votes`
+  subcollection, and no client can delete them any more. An un-vote has to move the
+  comment's counters in the same write, and there is no comment left. A bare delete of the
+  record fails too: R5's `countersFollow()` reads the missing parent with `getAfter()`, the
+  read errors, and the rule denies (checked on the emulator). As with R8's stranded arc
+  posts, only the Admin SDK can remove them. They hold `dir` and `votedAt` and nothing else;
+  the console shows their parent as an italic document that does not exist.
+- **Comments from accounts deleted before this build, or from an install older than it.** A
+  client change cannot reach them. A one-off Admin SDK pass can: `getAuth().getUser(userId)`
+  throws for a deleted account, as in the backfill above. The fix that covers every client is
+  an Auth `onDelete` function, which needs a functions deploy, and `aruku` blocks those
+  (S2-5 / §5-E).
+- `reviews` is untouched: no client writes it, and whether it holds any documents is
+  unknown. R9 (Loki chat history) is unchanged too.
+
+**Google users could lose their data and keep their account. Fixed (2026-10-24), client
+only.** `_deleteAccount`
+([delete_account_screen.dart:39-105](lib/features/auth/delete_account_screen.dart#L39-L105))
+reauthenticated only `password` users. Everyone else went straight to `_wipeUserData` and only
+then called `user.delete()`, which Firebase refuses without a recent sign-in. So unless a
+Google user had signed in within the last few minutes, it threw `requires-recent-login` after
+their comments, subcollections and `users/{uid}` were gone. The Auth account survived with no user
+doc, and `_OnboardingGate` ([main.dart:276-285](lib/main.dart#L276-L285)) put them into
+onboarding under a "Please sign out and sign back in" snackbar. The code comment called a
+Google sign-in "usually fresh enough". The bug predates the comment fix above, which is where
+it surfaced.
+
+- **Every non-password user now re-proves a Google sign-in before anything is deleted**
+  ([:61-67](lib/features/auth/delete_account_screen.dart#L61-L67)), through
+  `AuthService.reauthenticateWithGoogle`
+  ([auth_service.dart:166-203](lib/services/auth_service.dart#L166-L203)). Android uses
+  `GoogleSignIn.instance.authenticate()` and `reauthenticateWithCredential`, as sign-in does.
+  Web cannot call `authenticate()`, so it uses `reauthenticateWithPopup(GoogleAuthProvider())`.
+  No new dependency. Google is the app's only other sign-in method, so the branch is a plain
+  `else`: a provider added later would fail the re-auth rather than reach the wipe.
+- **Dismissing the prompt deletes nothing** and shows no message. Any other failure throws
+  before the wipe into the existing handler. Choosing a different Google account
+  (`user-mismatch`) gets "Choose the Google account you signed in with".
+- **Verified on web,** against local Auth and Firestore emulators with `firestore.rules`
+  loaded: a release build with a temporary, uncommitted emulator hookup in `main.dart`, driven
+  in headless Chrome with a fake Google identity. Closing the popup, and choosing another
+  account, each left the Auth user, `users/{uid}`, its `alerts` and `firedAlerts`, and both of
+  its comments in place. Choosing the right account deleted all of them, kept another user's
+  comment, and returned to the login screen. The emulator never raises
+  `requires-recent-login`, so the original failure was not reproduced either.
+- **Checked on Android against real Google (2026-10-26), up to the prompt only.** This ran on
+  the CPH2573 (Android 16), on temporary debug builds of `994ac87` whose `_deleteAccount`
+  stopped with a snackbar right after the re-auth. They were never committed, and no path in
+  them reached `_wipeUserData` or `user.delete()`. Nothing was deleted.
+- **An account with both providers is asked for its password, not Google.** Shahid's account
+  has `google.com` and `password`, so the screen shows "Confirm with password" and the
+  `password` branch runs ([:50](lib/features/auth/delete_account_screen.dart#L50)). Delete with
+  the field empty shows "Enter your password to confirm", and no Google prompt appears. The
+  screen offers no Google alternative and no reset link: a user who has forgotten that password
+  has to sign out and reset it from the login screen first.
+- **The Google re-auth itself works on Android.** A second test build skipped the `password`
+  branch and called `reauthenticateWithGoogle` only if `google.com` was already linked, which
+  it is. Delete opened Google's account chooser (`com.google.android.gms`, "Choose an
+  account · to continue to Hanj"). Back closed it and left the screen as it was, with no
+  message. Choosing the account Hanj is signed in with reached the stub's "re-auth OK"
+  snackbar, so `reauthenticateWithCredential` accepted a real Google ID token. A second run
+  gave the same result, and the list was unchanged afterwards.
+- **Not covered on Android:** the `else` branch for a Google-only account, and the deletion
+  itself. Both need a throwaway Google-only account that Shahid creates. The phone is back on
+  a normal debug build of `994ac87`.
+- **Still open:** `delete()` can still fail after the wipe for other reasons, such as a dropped
+  connection. The account is then left without its data, and the user has to finish
+  onboarding, which offers no way out, before they can delete again. Closing that window
+  needs the wipe to run server-side after the Auth delete, i.e. an Auth `onDelete` function,
+  which `aruku` blocks (S2-5 / §5-E).
+- `login_screen.dart:28` builds its own `AuthService`, so after a sign-in in the same run the
+  re-auth calls `GoogleSignIn.instance.initialize()` a second time, which the plugin calls
+  undefined. On Android (`google_sign_in_android` 7.2.13) `init` only stores its parameters;
+  web's re-auth never calls it. Recheck on a plugin upgrade.
 
 **Neither step recalls anything.** If the deployed rules did match the file, treat the
 addresses already in this collection as having been public.

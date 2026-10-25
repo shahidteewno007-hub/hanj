@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:provider/provider.dart';
 import '../../core/theme/app_theme.dart';
+import '../../services/auth_service.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Account Deletion Screen
@@ -10,7 +12,8 @@ import '../../core/theme/app_theme.dart';
 // Play Store / App Store require an in-app account deletion flow. This:
 //   1. Shows a clear warning about what's deleted
 //   2. Re-authenticates the user (Firebase requires recent auth for deletion)
-//   3. Deletes all Firestore subcollections (animeList, alerts, cards, etc.)
+//   3. Deletes their discussion comments, then all Firestore subcollections
+//      (animeList, alerts, cards, etc.)
 //   4. Deletes the user's auth account
 //   5. Pops to the login screen
 // ─────────────────────────────────────────────────────────────────────────────
@@ -36,6 +39,7 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
   Future<void> _deleteAccount() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
+    final auth = Provider.of<AuthService>(context, listen: false);
 
     setState(() => _busy = true);
 
@@ -54,9 +58,13 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
           password: _passwordCtrl.text.trim(),
         );
         await user.reauthenticateWithCredential(credential);
+      } else {
+        // Everyone else signed in with Google, the app's only other method.
+        // Their sign-in is usually too old for delete(), which would throw
+        // 'requires-recent-login' only after step 2 had wiped their data. So
+        // prove it again here; a dismissed prompt stops with nothing deleted.
+        if (!await auth.reauthenticateWithGoogle(user)) return;
       }
-      // For Google/Apple/etc. sign-in, recent auth is usually fresh enough.
-      // If not, FirebaseAuth throws 'requires-recent-login' and we surface that.
 
       // 2. Delete Firestore data (all subcollections + main doc)
       await _wipeUserData(user.uid);
@@ -82,6 +90,9 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
         case 'requires-recent-login':
           msg = 'Please sign out and sign back in, then try again';
           break;
+        case 'user-mismatch':
+          msg = 'Choose the Google account you signed in with';
+          break;
         default:
           msg = 'Could not delete account: ${e.message ?? e.code}';
       }
@@ -93,10 +104,29 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
     }
   }
 
-  /// Recursively delete all subcollections under users/{uid}, then the user doc
+  /// Delete the user's discussion comments, then recursively delete all
+  /// subcollections under users/{uid}, then the user doc
   Future<void> _wipeUserData(String uid) async {
     final db   = FirebaseFirestore.instance;
     final userRef = db.collection('users').doc(uid);
+
+    // Discussion comments and replies live outside users/{uid}, and each one
+    // carries the author's name (pre-D13 ones their email too). Done first, so
+    // a failure leaves everything else intact for a retry. Server only: a
+    // cached query, offline, would quietly miss comments. Other users' replies
+    // and all vote records are left behind; see AUDIT.md §6g.
+    final comments = await db
+        .collection('episodeDiscussions')
+        .where('userId', isEqualTo: uid)
+        .get(const GetOptions(source: Source.server));
+    for (var i = 0; i < comments.docs.length; i += 400) {
+      final batch = db.batch();
+      final chunk = comments.docs.skip(i).take(400);
+      for (final doc in chunk) {
+        batch.delete(doc.reference);
+      }
+      await batch.commit();
+    }
 
     // Known subcollections — explicit list so nothing is missed
     const subcollections = [
@@ -219,6 +249,7 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
               _bullet('All your Hanj cards and points'),
               _bullet('Your alerts and notification preferences'),
               _bullet('Your followers and following list'),
+              _bullet('Your discussion comments and replies'),
               _bullet('Your profile and account credentials'),
 
               const SizedBox(height: 28),
