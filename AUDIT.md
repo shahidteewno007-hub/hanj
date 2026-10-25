@@ -1632,14 +1632,33 @@ it surfaced.
 - **Dismissing the prompt deletes nothing** and shows no message. Any other failure throws
   before the wipe into the existing handler. Choosing a different Google account
   (`user-mismatch`) gets "Choose the Google account you signed in with".
-- **Verified on web only,** against local Auth and Firestore emulators with `firestore.rules`
+- **Verified on web,** against local Auth and Firestore emulators with `firestore.rules`
   loaded: a release build with a temporary, uncommitted emulator hookup in `main.dart`, driven
   in headless Chrome with a fake Google identity. Closing the popup, and choosing another
   account, each left the Auth user, `users/{uid}`, its `alerts` and `firedAlerts`, and both of
   its comments in place. Choosing the right account deleted all of them, kept another user's
-  comment, and returned to the login screen. **Not verified on Android or against real
-  Google.** The emulator never raises `requires-recent-login`, so the original failure was not
-  reproduced either.
+  comment, and returned to the login screen. The emulator never raises
+  `requires-recent-login`, so the original failure was not reproduced either.
+- **Checked on Android against real Google (2026-10-26), up to the prompt only.** This ran on
+  the CPH2573 (Android 16), on temporary debug builds of `994ac87` whose `_deleteAccount`
+  stopped with a snackbar right after the re-auth. They were never committed, and no path in
+  them reached `_wipeUserData` or `user.delete()`. Nothing was deleted.
+- **An account with both providers is asked for its password, not Google.** Shahid's account
+  has `google.com` and `password`, so the screen shows "Confirm with password" and the
+  `password` branch runs ([:50](lib/features/auth/delete_account_screen.dart#L50)). Delete with
+  the field empty shows "Enter your password to confirm", and no Google prompt appears. The
+  screen offers no Google alternative and no reset link: a user who has forgotten that password
+  has to sign out and reset it from the login screen first.
+- **The Google re-auth itself works on Android.** A second test build skipped the `password`
+  branch and called `reauthenticateWithGoogle` only if `google.com` was already linked, which
+  it is. Delete opened Google's account chooser (`com.google.android.gms`, "Choose an
+  account · to continue to Hanj"). Back closed it and left the screen as it was, with no
+  message. Choosing the account Hanj is signed in with reached the stub's "re-auth OK"
+  snackbar, so `reauthenticateWithCredential` accepted a real Google ID token. A second run
+  gave the same result, and the list was unchanged afterwards.
+- **Not covered on Android:** the `else` branch for a Google-only account, and the deletion
+  itself. Both need a throwaway Google-only account that Shahid creates. The phone is back on
+  a normal debug build of `994ac87`.
 - **Still open:** `delete()` can still fail after the wipe for other reasons, such as a dropped
   connection. The account is then left without its data, and the user has to finish
   onboarding, which offers no way out, before they can delete again. Closing that window
