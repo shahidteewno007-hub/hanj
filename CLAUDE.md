@@ -289,6 +289,13 @@ the shareable cards people post. **Do not propose replacing them, adding a fourt
 substituting anything "cleaner".** Improving typography here means improving how these three
 are used.
 
+**Exception for design-concept work (Shahid, 2026-10-26).** The existing palette, typography
+and component styling stay the default, but they may be questioned. If one of them is
+limiting Hanj, explain why and present an alternative, fonts included, as a clearly labelled
+*optional* direction. State its costs, including the store listing and share cards people have
+already posted. Nothing in the design system or application code changes until Shahid
+explicitly approves a direction. `.claude/agents/hanj-ui-designer.md` quotes the instruction.
+
 > **The drift is resolved — W3, 2026-09.** `AppTheme.sans()` and the `TextTheme` body/title
 > tier resolve to `GoogleFonts.dmSans`. **`GoogleFonts.inter` appears nowhere** in `lib/`,
 > `web/`, `pubspec.yaml` or `android/`, and Noto Serif JP is gone from `tomo_screen.dart` —
