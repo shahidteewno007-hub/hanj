@@ -1004,8 +1004,25 @@ class _EpisodesTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final total   = anime.episodes ?? 12;
+    final total   = anime.episodes;
     final watched = currentEpisode ?? 0;
+    // No count: say so instead of inventing 12 rows. The copy gives no
+    // reason, since AniList having none isn't the only way to get here: a
+    // list-entry stub that hasn't refreshed (or can't) carries a null too.
+    if (total == null || total <= 0) {
+      return Padding(
+        padding: const EdgeInsets.all(40),
+        child: Column(
+          children: [
+            Icon(Icons.format_list_numbered_rounded,
+                color: AppTheme.textMuted.withValues(alpha: 0.5), size: 56),
+            const SizedBox(height: 16),
+            Text('No episode count yet',
+                style: Theme.of(context).textTheme.titleMedium),
+          ],
+        ),
+      );
+    }
     return ListView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
@@ -1031,7 +1048,6 @@ class _EpisodesTab extends StatelessWidget {
             const SizedBox(width: 14),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text('Episode $ep', style: AppTheme.sans(fontSize: 14, weight: FontWeight.w600)),
-              Text('24 min', style: AppTheme.mono(fontSize: 10, color: AppTheme.textMuted)),
             ])),
             if (isWatched) Text('WATCHED', style: AppTheme.mono(fontSize: 9, color: AppTheme.completed, letterSpacing: 0.5)),
           ]),
