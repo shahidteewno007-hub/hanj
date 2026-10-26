@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'core/theme/app_theme.dart';
+import 'features/anime_detail/anime_detail_screen.dart' show HankoDetailHeader;
 import 'widgets/hanko_rating_ruler.dart';
 import 'widgets/hanko_reel.dart';
 import 'widgets/hanko_seal.dart';
@@ -55,6 +56,15 @@ class _Specimen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // ?only=detail shows just Detail's header, for captures on web.
+    if (Uri.base.queryParameters['only'] == 'detail') {
+      return const Scaffold(
+        body: SingleChildScrollView(
+          padding: EdgeInsets.fromLTRB(AppTheme.hankoGutter, 0, AppTheme.hankoGutter, 40),
+          child: _DetailHeaders(),
+        ),
+      );
+    }
     return Scaffold(
       body: SafeArea(
         child: SingleChildScrollView(
@@ -125,6 +135,16 @@ class _Specimen extends StatelessWidget {
                       note: '1 to 10 in half steps, your seal as the thumb, 48 px to touch. '
                           'Drag or tap; these are live.',
                       child: _Rulers(),
+                    ),
+                    const _Section(
+                      title: 'Detail header',
+                      note: 'Stage H3: Detail’s own header widget '
+                          '(anime_detail_screen.dart) at phone width, under a strip '
+                          'standing in for its top bar. Titles, native titles, '
+                          'studios, formats, seasons, episodes, lengths and cover '
+                          'colours are AniList’s, fetched 26–27 October; covers '
+                          'are flat blocks of their colour.',
+                      child: _DetailHeaders(),
                     ),
                     const _Section(
                       title: 'At 1.5× text size',
@@ -797,6 +817,97 @@ class _LargeText extends StatelessWidget {
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Detail header (stage H3) ────────────────────────────────────────────
+
+class _DetailHeaders extends StatelessWidget {
+  const _DetailHeaders();
+
+  static const _frieren = Color(0xFFBBF1A1);
+  static const _reborn = Color(0xFFD6BB78);
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 24,
+      runSpacing: 28,
+      children: [
+        _phone(
+          'Frieren: Beyond Journey’s End (AniList 154587). Finished; its '
+              'native title fits one column.',
+          _frieren,
+          const HankoDetailHeader(
+            title: 'Frieren: Beyond Journey’s End',
+            nativeTitle: '葬送のフリーレン',
+            coverColor: _frieren,
+            studio: 'MADHOUSE',
+            format: 'TV',
+            season: 'FALL',
+            seasonYear: 2023,
+            episodes: 28,
+            duration: 24,
+          ),
+        ),
+        _phone(
+          'Reborn as a Space Mercenary (AniList 186541). Airing; a 41-character '
+              'native title in columns, and an English title past two lines '
+              'split at its colon.',
+          _reborn,
+          const HankoDetailHeader(
+            title: 'Reborn as a Space Mercenary: I Woke Up Piloting the Strongest Starship!',
+            nativeTitle: '目覚めたら最強装備と宇宙船持ちだったので、一戸建て目指して傭兵として自由に生きたい',
+            coverColor: _reborn,
+            studio: 'studio A-CAT',
+            format: 'TV',
+            season: 'FALL',
+            seasonYear: 2026,
+            episodes: 13,
+            duration: 24,
+            airing: true,
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// A 360 px phone column: a 48 px strip in the field's colour where the
+  /// screen's top bar sits, then the header.
+  Widget _phone(String caption, Color cover, Widget header) {
+    final tint = AppTheme.hankoCoverTint(cover);
+    final field = tint == null ? AppTheme.hankoSumi : Color.alphaBlend(tint, AppTheme.hankoSumi);
+    return SizedBox(
+      width: 360,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ColoredBox(
+            color: AppTheme.hankoSumi,
+            child: Column(
+              children: [
+                Container(
+                  height: 48,
+                  color: field,
+                  padding: const EdgeInsets.symmetric(horizontal: 18),
+                  child: const Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Icon(Icons.arrow_back_sharp, color: AppTheme.hankoWashi),
+                      Icon(Icons.ios_share_sharp, color: AppTheme.hankoWashi),
+                    ],
+                  ),
+                ),
+                header,
+                const SizedBox(height: 20),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(caption, style: _cap),
         ],
       ),
     );

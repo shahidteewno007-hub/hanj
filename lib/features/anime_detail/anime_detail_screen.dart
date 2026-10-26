@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -10,6 +12,7 @@ import 'package:gal/gal.dart';
 import 'package:http/http.dart' as http;
 
 import '../../widgets/anilist_saved_note.dart';
+import '../../widgets/hanko_title_slip.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../widgets/confetti_overlay.dart';
@@ -34,6 +37,11 @@ class AnimeDetailScreen extends StatefulWidget {
 
 class _AnimeDetailScreenState extends State<AnimeDetailScreen>
 {
+  // Today's header (the hero, the score row, the action row), switched off
+  // since Hanko's header replaced it in stage H3. Kept, not deleted
+  // (CLAUDE.md); true brings it back as it was. See _classicHeader.
+  static const bool _classicDetail = false;
+
   final _firestoreService = FirestoreService();
   final _aniListService   = AnilistService();
   final _confettiKey      = GlobalKey<ConfettiOverlayState>();
@@ -61,6 +69,11 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
   // per-second update rebuilds only the countdown card, not this whole screen.
   final ValueNotifier<Duration> _timeUntilAiring =
       ValueNotifier<Duration>(Duration.zero);
+
+  // Drives Hanko's top bar: its colour follows the field scrolling under it,
+  // and the title fades in once the header's title has gone. Only the bar
+  // listens, so scrolling never rebuilds the screen.
+  final ScrollController _scroll = ScrollController();
 
   @override
   void initState() {
@@ -115,6 +128,7 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
   void dispose() {
     _countdownTimer?.cancel();
     _timeUntilAiring.dispose();
+    _scroll.dispose();
     super.dispose();
   }
 
@@ -579,7 +593,84 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
       body: Stack(
         children: [
           CustomScrollView(
+            controller: _scroll,
             slivers: [
+              if (_classicDetail)
+                ..._classicHeader(context, anime, screenHeight)
+              else
+                ..._hankoHeader(context, anime),
+
+              // Tab bar
+              SliverPersistentHeader(
+                pinned: true,
+                delegate: _TabBarDelegate(
+                  _SimpleTabBar(
+                    selected: _selectedTab,
+                    onTap: (i) => setState(() => _selectedTab = i),
+                  ),
+                ),
+              ),
+            // Tab content — swipeable via horizontal drag
+            SliverToBoxAdapter(
+              child: GestureDetector(
+                onHorizontalDragEnd: (details) {
+                  if (details.primaryVelocity == null) return;
+                  if (details.primaryVelocity! < -200 && _selectedTab < 3) {
+                    setState(() { _swipeDirection = 1; _selectedTab++; });
+                  } else if (details.primaryVelocity! > 200 && _selectedTab > 0) {
+                    setState(() { _swipeDirection = -1; _selectedTab--; });
+                  }
+                },
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 220),
+                  transitionBuilder: (child, animation) {
+                    final offset = Tween<Offset>(
+                      begin: Offset(_swipeDirection * 0.18, 0),
+                      end: Offset.zero,
+                    ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOut));
+                    return SlideTransition(
+                      position: offset,
+                      child: FadeTransition(opacity: animation, child: child),
+                    );
+                  },
+                  child: KeyedSubtree(
+                    key: ValueKey(_selectedTab),
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                          minHeight: screenHeight * 0.4),
+                      child: _TabContent(
+                        selectedIndex: _selectedTab,
+                        anime: anime,
+                        staffData: _staffData,
+                        isLoadingStaff: _isLoadingStaff,
+                        cleanDescription: _cleanDescription,
+                        currentEpisode: _currentEpisode,
+                        relatedAnime: _relatedAnime,
+                        isLoadingRelated: _isLoadingRelated,
+                        nextAiringAt: _nextAiringAt,
+                        nextEpisodeNum: _nextEpisodeNum,
+                        timeUntilAiring: _timeUntilAiring,
+                        characterImages: _characterImages,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+          ),
+          ConfettiOverlay(key: _confettiKey),
+        ],
+      ),
+    );
+  }
+
+  // ── Today's header, kept behind a flag (stage H3) ──────────
+  // Hanko's header replaced the hero, the score row, the genre chips and
+  // the action row. CLAUDE.md: never delete, so they are kept here, moved
+  // out of build() unchanged, and switched off by _classicDetail. Deletion
+  // candidates, with _HeroPanel and _IconBtn.
+  List<Widget> _classicHeader(BuildContext context, Anime anime, double screenHeight) => [
               // Hero
               SliverAppBar(
                 expandedHeight: screenHeight * 0.50,
@@ -700,6 +791,15 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
                       ),
                       const SizedBox(height: 16),
                       // Action buttons
+                      _classicActions(anime),
+                      const SizedBox(height: 8),
+                    ],
+                  ),
+                ),
+              ),
+      ];
+
+  Widget _classicActions(Anime anime) =>
                       Row(
                         children: [
                           Expanded(
@@ -747,75 +847,576 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
                             badge: _userRating?.toStringAsFixed(1),
                           ),
                         ],
+                      );
+
+  // ── Hanko's header (stage H3) ───────────────────────────────
+
+  /// A MyAnimeList import (D21): keyed by its MyAnimeList id and showing
+  /// MyAnimeList's cover. Until the import fix lands, AniList data looked up
+  /// by that id can belong to another show, so the print keeps the cover the
+  /// row showed, with no sharp cover, tint or slip from AniList (§6c).
+  bool get _isMalImport =>
+      Uri.tryParse(widget.anime.imageUrl ?? '')?.host.contains('myanimelist') ?? false;
+
+  String? get _nativeTitle =>
+      _isMalImport ? null : _staffData?['title']?['native'] as String?;
+  String? get _sharpCover =>
+      _isMalImport ? null : _staffData?['coverImage']?['extraLarge'] as String?;
+  Color? get _coverColor =>
+      _isMalImport ? null : _hexColor(_staffData?['coverImage']?['color'] as String?);
+
+  String? get _studioName {
+    final nodes = _staffData?['studios']?['nodes'] as List?;
+    return nodes != null && nodes.isNotEmpty ? nodes.first['name'] as String? : null;
+  }
+
+  /// AniList's coverImage.color, "#bbf1a1".
+  static Color? _hexColor(String? hex) {
+    if (hex == null || !RegExp(r'^#[0-9a-fA-F]{6}$').hasMatch(hex)) return null;
+    return Color(0xFF000000 | int.parse(hex.substring(1), radix: 16));
+  }
+
+  List<Widget> _hankoHeader(BuildContext context, Anime anime) {
+    final title = anime.titleEnglish ?? anime.title;
+    // The URL the previous screen showed: decoded already, so the print is
+    // there in the first frame.
+    final cover = widget.anime.imageUrl ?? anime.imageUrl;
+    final tint = AppTheme.hankoCoverTint(_coverColor);
+    return [
+      SliverAppBar(
+        pinned: true,
+        toolbarHeight: 48,
+        automaticallyImplyLeading: false,
+        backgroundColor: Colors.transparent,
+        surfaceTintColor: Colors.transparent,
+        shadowColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        systemOverlayStyle: SystemUiOverlayStyle.light,
+        leading: IconButton(
+          tooltip: 'Back',
+          icon: const Icon(Icons.arrow_back_sharp),
+          color: AppTheme.hankoWashi,
+          onPressed: () => Navigator.pop(context),
+        ),
+        actions: [
+          IconButton(
+            tooltip: 'Share',
+            icon: const Icon(Icons.ios_share_sharp),
+            color: AppTheme.hankoWashi,
+            onPressed: () => showShareCard(context,
+                anime: anime, status: _currentStatus, userRating: _userRating),
+          ),
+          const SizedBox(width: 4),
+        ],
+        flexibleSpace: _HankoBar(
+          scroll: _scroll,
+          tint: tint,
+          geometry: HankoDetailHeader.geometryFor(MediaQuery.sizeOf(context).width),
+          title: title,
+        ),
+      ),
+      SliverToBoxAdapter(
+        child: HankoDetailHeader(
+          title: title,
+          nativeTitle: _nativeTitle,
+          coverUrl: cover,
+          sharpCoverUrl: _sharpCover,
+          coverColor: _coverColor,
+          studio: _studioName,
+          format: anime.format,
+          season: anime.season,
+          seasonYear: anime.seasonYear,
+          episodes: anime.episodes,
+          duration: _staffData?['duration'] as int?,
+          airing: anime.status == 'RELEASING',
+          onCover: cover == null
+              ? null
+              : () => _openGallery(context,
+                  _isMalImport || _galleryImages.isEmpty ? [cover] : _galleryImages, 0),
+        ),
+      ),
+      // Today's action row, until the status row and the ruler replace it
+      // (H3 g and c).
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(AppTheme.hankoGutter, 12, AppTheme.hankoGutter, 8),
+          child: _classicActions(anime),
+        ),
+      ),
+    ];
+  }
+}
+
+// ── Hanko header (stage H3) ──────────────────────────────────
+
+/// Detail's header in Hanko (stage H3; `design/mockups/looks/hanko.html`,
+/// frames 2 and 8). The whole cover as a print of about 208 dp on a field
+/// tinted from its own colour, the native title on a slip pasted on it, the
+/// facts beside it like a book's colophon, and the title below, on the field.
+///
+/// It takes plain values and reports through callbacks, so the dev specimen
+/// (`lib/hanko_dev.dart`) can draw it with inline data and no Firebase or
+/// network. Public only for that specimen; the app builds it from
+/// [AnimeDetailScreen] alone.
+class HankoDetailHeader extends StatelessWidget {
+  const HankoDetailHeader({
+    super.key,
+    required this.title,
+    this.nativeTitle,
+    this.coverUrl,
+    this.sharpCoverUrl,
+    this.coverColor,
+    this.studio,
+    this.format,
+    this.season,
+    this.seasonYear,
+    this.episodes,
+    this.duration,
+    this.airing = false,
+    this.onCover,
+  });
+
+  /// The show's name as the app shows it: English, else romaji.
+  final String title;
+
+  /// AniList's `title.native`, for the slip. A title with no Japanese (or
+  /// other CJK) letters gets no slip.
+  final String? nativeTitle;
+
+  /// The cover the previous screen showed (AniList's `large`, 230 px wide).
+  /// It is in the image cache already, so the print is there in the first
+  /// frame.
+  final String? coverUrl;
+
+  /// AniList's `extraLarge` (460 px), crossfading in over [coverUrl].
+  final String? sharpCoverUrl;
+
+  /// AniList's `coverImage.color`: the print's colour until the art loads,
+  /// and at 20% the field behind it, neutral near the seal's hue.
+  final Color? coverColor;
+
+  final String? studio;
+
+  /// AniList's MediaFormat (TV, MOVIE, ONA …) and season (WINTER …).
+  final String? format;
+  final String? season;
+  final int? seasonYear;
+  final int? episodes;
+
+  /// Minutes per episode; a film's whole length.
+  final int? duration;
+
+  /// Still airing (AniList's RELEASING).
+  final bool airing;
+
+  /// Opens the gallery.
+  final VoidCallback? onCover;
+
+  /// The header's sizes at [width]: the print is 208 by 293 from a 360 dp
+  /// phone up, smaller on narrower screens so the facts keep room. The field
+  /// fades out by the title, starting a little past half its height.
+  static ({double printWidth, double printHeight, double titleTop, double fieldHeight, double fadeFrom})
+      geometryFor(double width) {
+    final inner = width - 2 * AppTheme.hankoGutter;
+    final printWidth = math.min(208.0, (inner * 0.65).floorToDouble());
+    final printHeight = (printWidth * 293 / 208).roundToDouble();
+    final titleTop = 4 + printHeight + 12;
+    final fieldHeight = titleTop + 16;
+    return (
+      printWidth: printWidth,
+      printHeight: printHeight,
+      titleTop: titleTop,
+      fieldHeight: fieldHeight,
+      fadeFrom: (fieldHeight * 0.55).roundToDouble(),
+    );
+  }
+
+  /// The colophon's fact lines: "TV, Fall 2023", "28 episodes", "24 min
+  /// each". What's missing is left out, never guessed. A season keeps its
+  /// year on its line ("Fall 2023" never breaks).
+  static List<String> _factsFor({
+    String? format,
+    String? season,
+    int? seasonYear,
+    int? episodes,
+    int? duration,
+    bool airing = false,
+  }) {
+    final film = format == 'MOVIE';
+    final formatWord = switch (format) {
+      null => null,
+      'TV' => 'TV',
+      'TV_SHORT' => 'TV short',
+      'MOVIE' => 'Film',
+      'SPECIAL' => 'Special',
+      'MUSIC' => 'Music video',
+      _ => format.replaceAll('_', ' '),
+    };
+    final seasonWord = [
+      if (season != null && season.isNotEmpty)
+        '${season[0]}${season.substring(1).toLowerCase()}',
+      if (seasonYear != null) '$seasonYear',
+    ].join(' ');
+    final count = film || episodes == null || episodes <= 0
+        ? null
+        : '$episodes ${episodes == 1 ? 'episode' : 'episodes'}';
+    return [
+      [?formatWord, if (seasonWord.isNotEmpty) seasonWord].join(', '),
+      if (airing) count == null ? 'Airing' : '$count, airing' else ?count,
+      if (duration != null && duration > 0)
+        film || episodes == 1 ? '$duration min' : '$duration min each',
+    ].where((s) => s.isNotEmpty).toList();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final g = geometryFor(constraints.maxWidth);
+        return Stack(
+          children: [
+            Positioned(
+              left: 0,
+              right: 0,
+              top: 0,
+              height: g.fieldHeight,
+              child: _HankoField(
+                tint: AppTheme.hankoCoverTint(coverColor),
+                fadeFrom: g.fadeFrom / g.fieldHeight,
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: AppTheme.hankoGutter),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SizedBox(height: 4),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _HankoPrint(
+                        width: g.printWidth,
+                        height: g.printHeight,
+                        title: title,
+                        coverUrl: coverUrl,
+                        sharpCoverUrl: sharpCoverUrl,
+                        coverColor: coverColor,
+                        nativeTitle: nativeTitle,
+                        onTap: onCover,
                       ),
-                      const SizedBox(height: 8),
+                      const SizedBox(width: 20),
+                      Expanded(
+                        child: _HankoColophon(
+                          studio: studio,
+                          facts: _factsFor(
+                            format: format,
+                            season: season,
+                            seasonYear: seasonYear,
+                            episodes: episodes,
+                            duration: duration,
+                            airing: airing,
+                          ),
+                        ),
+                      ),
                     ],
                   ),
-                ),
-              ),
-
-              // Tab bar
-              SliverPersistentHeader(
-                pinned: true,
-                delegate: _TabBarDelegate(
-                  _SimpleTabBar(
-                    selected: _selectedTab,
-                    onTap: (i) => setState(() => _selectedTab = i),
-                  ),
-                ),
-              ),
-            // Tab content — swipeable via horizontal drag
-            SliverToBoxAdapter(
-              child: GestureDetector(
-                onHorizontalDragEnd: (details) {
-                  if (details.primaryVelocity == null) return;
-                  if (details.primaryVelocity! < -200 && _selectedTab < 3) {
-                    setState(() { _swipeDirection = 1; _selectedTab++; });
-                  } else if (details.primaryVelocity! > 200 && _selectedTab > 0) {
-                    setState(() { _swipeDirection = -1; _selectedTab--; });
-                  }
-                },
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 220),
-                  transitionBuilder: (child, animation) {
-                    final offset = Tween<Offset>(
-                      begin: Offset(_swipeDirection * 0.18, 0),
-                      end: Offset.zero,
-                    ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOut));
-                    return SlideTransition(
-                      position: offset,
-                      child: FadeTransition(opacity: animation, child: child),
-                    );
-                  },
-                  child: KeyedSubtree(
-                    key: ValueKey(_selectedTab),
-                    child: ConstrainedBox(
-                      constraints: BoxConstraints(
-                          minHeight: screenHeight * 0.4),
-                      child: _TabContent(
-                        selectedIndex: _selectedTab,
-                        anime: anime,
-                        staffData: _staffData,
-                        isLoadingStaff: _isLoadingStaff,
-                        cleanDescription: _cleanDescription,
-                        currentEpisode: _currentEpisode,
-                        relatedAnime: _relatedAnime,
-                        isLoadingRelated: _isLoadingRelated,
-                        nextAiringAt: _nextAiringAt,
-                        nextEpisodeNum: _nextEpisodeNum,
-                        timeUntilAiring: _timeUntilAiring,
-                        characterImages: _characterImages,
-                      ),
-                    ),
-                  ),
-                ),
+                  const SizedBox(height: 12),
+                  _HankoTitle(title: title),
+                ],
               ),
             ),
           ],
+        );
+      },
+    );
+  }
+}
+
+/// The colour a 20% cover tint gives over sumi, or sumi when there's none.
+Color _hankoFieldColour(Color? tint) =>
+    tint == null ? AppTheme.hankoSumi : Color.alphaBlend(tint, AppTheme.hankoSumi);
+
+/// The tinted field behind the print: solid, then fading to sumi by the
+/// title. The tint arrives with the staff response, so it fades in.
+class _HankoField extends StatelessWidget {
+  const _HankoField({required this.tint, required this.fadeFrom});
+
+  final Color? tint;
+  final double fadeFrom;
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<Color?>(
+      tween: ColorTween(end: _hankoFieldColour(tint)),
+      duration: MediaQuery.disableAnimationsOf(context)
+          ? Duration.zero
+          : const Duration(milliseconds: 300),
+      builder: (context, solid, _) => DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            stops: [0, fadeFrom, 1],
+            colors: [solid!, solid, AppTheme.hankoSumi],
           ),
-          ConfettiOverlay(key: _confettiKey),
+        ),
+      ),
+    );
+  }
+}
+
+/// Hanko's top bar behind back and share. At the top it is the field's
+/// colour, so bar and field read as one; as the field scrolls under it, it
+/// takes the colour passing beneath, and once the header's title has gone,
+/// the title fades in. Only this listens to the scroll.
+class _HankoBar extends StatelessWidget {
+  const _HankoBar({
+    required this.scroll,
+    required this.tint,
+    required this.geometry,
+    required this.title,
+  });
+
+  final ScrollController scroll;
+  final Color? tint;
+  final ({double printWidth, double printHeight, double titleTop, double fieldHeight, double fadeFrom})
+      geometry;
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    final g = geometry;
+    return TweenAnimationBuilder<Color?>(
+      tween: ColorTween(end: _hankoFieldColour(tint)),
+      duration: MediaQuery.disableAnimationsOf(context)
+          ? Duration.zero
+          : const Duration(milliseconds: 300),
+      builder: (context, solid, _) => AnimatedBuilder(
+        animation: scroll,
+        builder: (context, _) {
+          final offset = scroll.hasClients ? scroll.offset : 0.0;
+          final fade = ((offset - g.fadeFrom) / (g.fieldHeight - g.fadeFrom)).clamp(0.0, 1.0);
+          final shown = ((offset - g.titleTop) / 24).clamp(0.0, 1.0);
+          return ColoredBox(
+            color: Color.lerp(solid, AppTheme.hankoSumi, fade)!,
+            child: SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 56),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: shown == 0
+                      ? null
+                      : ExcludeSemantics(
+                          child: Text(
+                            title,
+                            maxLines: 1,
+                            softWrap: false,
+                            overflow: TextOverflow.fade,
+                            style: AppTheme.hankoSerif(
+                              color: AppTheme.hankoWashi.withValues(alpha: shown),
+                            ),
+                          ),
+                        ),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// The print: the whole cover, never cropped to a band, with its native
+/// title on a slip. Tapping it opens the gallery.
+class _HankoPrint extends StatelessWidget {
+  const _HankoPrint({
+    required this.width,
+    required this.height,
+    required this.title,
+    required this.coverUrl,
+    required this.sharpCoverUrl,
+    required this.coverColor,
+    required this.nativeTitle,
+    required this.onTap,
+  });
+
+  final double width;
+  final double height;
+  final String title;
+  final String? coverUrl;
+  final String? sharpCoverUrl;
+  final Color? coverColor;
+  final String? nativeTitle;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final base = coverUrl;
+    final sharp = sharpCoverUrl != null && sharpCoverUrl != base ? sharpCoverUrl : null;
+    Widget none(BuildContext _, String _, Object _) => const SizedBox.shrink();
+    final art = Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(
+        color: coverColor ?? AppTheme.hankoSumi3,
+        borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+        // A 1 px washi ring, so a dark cover keeps its edge on a dark field.
+        boxShadow: [
+          BoxShadow(color: AppTheme.hankoWashi.withValues(alpha: 0.12), spreadRadius: 1),
         ],
       ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            if (base != null)
+              CachedNetworkImage(
+                imageUrl: base,
+                fit: BoxFit.cover,
+                fadeInDuration: Duration.zero,
+                fadeOutDuration: Duration.zero,
+                errorWidget: none,
+              ),
+            if (sharp != null)
+              CachedNetworkImage(
+                imageUrl: sharp,
+                fit: BoxFit.cover,
+                fadeInDuration: MediaQuery.disableAnimationsOf(context)
+                    ? Duration.zero
+                    : const Duration(milliseconds: 250),
+                fadeOutDuration: Duration.zero,
+                placeholder: (_, _) => const SizedBox.shrink(),
+                errorWidget: none,
+              ),
+            if (HankoTitleSlip.shows(nativeTitle))
+              Positioned(
+                left: 10,
+                top: 10,
+                child: HankoTitleSlip(
+                  nativeTitle: nativeTitle,
+                  maxHeight: height - 25,
+                  maxWidth: width - 20,
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+    return Semantics(
+      image: true,
+      button: onTap != null,
+      label: 'Cover of $title',
+      hint: onTap != null ? 'Opens the gallery' : null,
+      child: GestureDetector(onTap: onTap, child: art),
+    );
+  }
+}
+
+/// The facts beside the print, set like a book's colophon: the studio, then
+/// format and season, episodes and their length.
+class _HankoColophon extends StatelessWidget {
+  const _HankoColophon({required this.studio, required this.facts});
+
+  final String? studio;
+  final List<String> facts;
+
+  @override
+  Widget build(BuildContext context) {
+    final studio = this.studio;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (studio != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 2),
+            child: Text(
+              studio,
+              style: AppTheme.hankoSans(
+                fontSize: AppTheme.hankoMetaSize,
+                weight: FontWeight.w500,
+                height: 1.3,
+              ),
+            ),
+          ),
+        for (final (i, fact) in facts.indexed)
+          Padding(
+            padding: EdgeInsets.only(top: i == 0 && studio == null ? 0 : 4),
+            child: Text(
+              fact,
+              style: AppTheme.hankoSans(
+                fontSize: AppTheme.hankoMetaSize,
+                color: AppTheme.hankoStoneHi,
+                height: 1.3,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// The title on the field, Shippori Mincho 24. Past two lines it splits at
+/// its first ": " into a smaller subtitle (the spec's rule), and it fades
+/// rather than ending in "…", which Shippori draws as the centred ⋯.
+class _HankoTitle extends StatelessWidget {
+  const _HankoTitle({required this.title});
+
+  final String title;
+
+  static const double _maxWidth = 280;
+
+  @override
+  Widget build(BuildContext context) {
+    final style = AppTheme.hankoSerif(fontSize: AppTheme.hankoDisplaySize, height: 1.18);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = math.min(_maxWidth, constraints.maxWidth);
+        var main = title;
+        String? sub;
+        final colon = title.indexOf(': ');
+        if (colon > 0) {
+          final painter = TextPainter(
+            text: TextSpan(text: title, style: style),
+            textScaler: MediaQuery.textScalerOf(context),
+            textDirection: TextDirection.ltr,
+          )..layout(maxWidth: width);
+          final lines = painter.computeLineMetrics().length;
+          painter.dispose();
+          if (lines > 2) {
+            main = title.substring(0, colon);
+            sub = title.substring(colon + 2).trim();
+          }
+        }
+        return SizedBox(
+          width: width,
+          child: Semantics(
+            header: true,
+            label: title,
+            child: ExcludeSemantics(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(main, style: style, maxLines: 4, overflow: TextOverflow.fade),
+                  if (sub != null && sub.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 5),
+                      child: Text(
+                        sub,
+                        maxLines: 3,
+                        overflow: TextOverflow.fade,
+                        style: AppTheme.hankoSans(color: AppTheme.hankoStone, height: 1.4),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }
