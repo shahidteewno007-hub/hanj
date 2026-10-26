@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
 import 'core/theme/app_theme.dart';
+import 'widgets/hanko_rating_ruler.dart';
 import 'widgets/hanko_reel.dart';
 import 'widgets/hanko_seal.dart';
+import 'widgets/hanko_seal_register.dart';
 import 'widgets/hanko_title_slip.dart';
 
 /// Dev-only entry point: a specimen of Hanko's foundation, the tokens in
@@ -110,6 +112,19 @@ class _Specimen extends StatelessWidget {
                       note: 'Real AniList native titles, each on a 150 by 293 print '
                           'with the slip 10 px from its corner.',
                       child: _SlipGallery(),
+                    ),
+                    const _Section(
+                      title: 'Seal register',
+                      note: 'Option A from frame 10, on Hanj’s 1–10 scale. Each score’s '
+                          'impression grows in area with its count; the most-given is the '
+                          'filled seal with its number; the caret is the average.',
+                      child: _Registers(),
+                    ),
+                    const _Section(
+                      title: 'Rating ruler',
+                      note: '1 to 10 in half steps, your seal as the thumb, 48 px to touch. '
+                          'Drag or tap; these are live.',
+                      child: _Rulers(),
                     ),
                     const _Section(
                       title: 'At 1.5× text size',
@@ -784,6 +799,151 @@ class _LargeText extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+// ── Seal register and rating ruler ──────────────────────────────────────
+
+Widget _label(String text) => Padding(
+      padding: const EdgeInsets.only(top: 16, bottom: 8),
+      child: Text(text,
+          style: AppTheme.hankoSans(
+              fontSize: AppTheme.hankoLabelSize,
+              weight: FontWeight.w500,
+              color: AppTheme.hankoStone)),
+    );
+
+class _Registers extends StatelessWidget {
+  const _Registers();
+
+  // Aki's 109 ratings, the counts hanko.html draws (illustrative):
+  // average 7.6, most often 8.
+  static final _aki = <double, int>{
+    2: 1, 3: 1, 4: 2, 4.5: 1, 5: 3, 5.5: 2, 6: 7, 6.5: 9, //
+    7: 14, 7.5: 11, 8: 20, 8.5: 15, 9: 11, 9.5: 5, 10: 7,
+  };
+
+  // Frieren's real AniList stats.scoreDistribution (averageScore 91), from
+  // design/mockups/looks/data/anilist.json, inlined: no network.
+  static const _frieren = <int, int>{
+    10: 1159, 20: 224, 30: 406, 40: 665, 50: 1626, //
+    60: 2446, 70: 8184, 80: 21874, 90: 70658, 100: 106581,
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final yours = HankoSealRegister(counts: _aki);
+    final crowd = HankoSealRegister.anilist(_frieren, averageScore: 91);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _label('Your ratings at Profile width (320), with the caption sentence'),
+        Text(yours.summary, style: _note),
+        const SizedBox(height: 10),
+        SizedBox(width: 320, child: yours),
+        _label('The shu option'),
+        SizedBox(width: 320, child: HankoSealRegister(counts: _aki, tone: HankoSealTone.shu)),
+        _label('The crowd at Detail width (112): Frieren on AniList'),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text.rich(
+              TextSpan(
+                text: 'AniList ',
+                children: [
+                  TextSpan(
+                    text: '91',
+                    style: AppTheme.hankoSans(
+                        fontSize: AppTheme.hankoMetaSize,
+                        weight: FontWeight.w500,
+                        color: AppTheme.hankoAi),
+                  ),
+                ],
+              ),
+              style: AppTheme.hankoSans(
+                  fontSize: AppTheme.hankoMetaSize, color: AppTheme.hankoStone),
+            ),
+            const SizedBox(width: 16),
+            SizedBox(width: 112, child: crowd),
+          ],
+        ),
+        const SizedBox(height: 6),
+        Text(crowd.summary, style: _cap),
+        _label('The same crowd at Profile width'),
+        SizedBox(width: 320, child: crowd),
+        _label('A tie, and an average on a whole number: the 8 gives way to the caret'),
+        SizedBox(width: 320, child: HankoSealRegister(counts: {7: 2, 9: 2})),
+        _label('No ratings yet, at both widths'),
+        Wrap(
+          spacing: 24,
+          runSpacing: 16,
+          children: [
+            SizedBox(width: 320, child: HankoSealRegister(counts: const {})),
+            SizedBox(width: 112, child: HankoSealRegister.anilist(const {})),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _Rulers extends StatefulWidget {
+  const _Rulers();
+
+  @override
+  State<_Rulers> createState() => _RulersState();
+}
+
+class _RulersState extends State<_Rulers> {
+  double? _detail = 8.5;
+  double? _unrated;
+  double? _sheet = 8.5;
+
+  @override
+  Widget build(BuildContext context) {
+    final sheet = _sheet;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _label('At 8.5, Detail width (320): every figure'),
+        SizedBox(
+          width: 320,
+          child: HankoRatingRuler(
+            value: _detail,
+            onChanged: (v) => setState(() => _detail = v),
+          ),
+        ),
+        _label('Not rated yet: an empty track'),
+        SizedBox(
+          width: 320,
+          child: HankoRatingRuler(
+            value: _unrated,
+            onChanged: (v) => setState(() => _unrated = v),
+          ),
+        ),
+        _label('The log sheet (248, beside the large seal): even figures'),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            sheet == null ? const HankoSeal.unrated(size: 56) : HankoSeal.score(sheet, size: 56),
+            const SizedBox(width: 16),
+            SizedBox(
+              width: 248,
+              child: HankoRatingRuler(
+                value: sheet,
+                label: 'Rating',
+                onChanged: (v) => setState(() => _sheet = v),
+              ),
+            ),
+          ],
+        ),
+        _label('Shu thumb, read-only, at 7'),
+        const SizedBox(
+          width: 320,
+          child: HankoRatingRuler(value: 7, tone: HankoSealTone.shu),
+        ),
+      ],
     );
   }
 }
