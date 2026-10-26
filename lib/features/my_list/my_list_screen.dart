@@ -372,6 +372,33 @@ class _MyListScreenState extends State<MyListScreen> {
                           color: AppTheme.primary, strokeWidth: 1.5),
                       ),
                     )
+                  // A failed read arrives with no data, so allDocs is empty;
+                  // without this it rendered as "Add some anime to get
+                  // started", as if the list itself were gone.
+                  : snapshot.hasError
+                      ? SliverFillRemaining(
+                          child: Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(Icons.error_outline_rounded,
+                                    color: AppTheme.textMuted, size: 48),
+                                const SizedBox(height: 16),
+                                Text('Your list can\'t load right now',
+                                    style: AppTheme.serif(
+                                        fontSize: 20,
+                                        weight: FontWeight.w600)),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Try again shortly.',
+                                  style: AppTheme.sans(
+                                      fontSize: 14,
+                                      color: AppTheme.textMuted),
+                                ),
+                              ],
+                            ),
+                          ),
+                        )
                   : filtered.isEmpty
                       ? SliverFillRemaining(
                           child: Center(
