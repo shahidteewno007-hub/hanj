@@ -1260,7 +1260,7 @@ class _HanjCardMini extends StatelessWidget {
 
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFF0D0B09),
+        color: const Color(0xFF121110),
         border: Border.all(color: color.withValues(alpha: 0.75), width: 1.5),
         borderRadius: BorderRadius.circular(6),
         boxShadow: [

@@ -193,7 +193,7 @@ class _Top9Card extends StatelessWidget {
 
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFF0D0B09),
+        color: const Color(0xFF121110),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: AppTheme.border),
       ),
@@ -210,7 +210,7 @@ class _Top9Card extends StatelessWidget {
                 gradient: LinearGradient(
                   colors: [
                     AppTheme.primary.withValues(alpha: 0.3),
-                    const Color(0xFF0D0B09),
+                    const Color(0xFF121110),
                   ],
                 ),
               ),
@@ -442,7 +442,7 @@ class _TasteCard extends StatelessWidget {
           end: Alignment.bottomRight,
           colors: [
             Color(0xFF1A0A06),
-            Color(0xFF0D0B09),
+            Color(0xFF121110),
             Color(0xFF0A0614),
           ],
         ),
@@ -710,7 +710,7 @@ class _MonthlyAuraCard extends StatelessWidget {
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
-        color: const Color(0xFF0D0B09),
+        color: const Color(0xFF121110),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
             color: auraColor.withValues(alpha: 0.5)),

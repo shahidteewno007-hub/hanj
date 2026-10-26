@@ -3,12 +3,14 @@ import 'package:google_fonts/google_fonts.dart';
 
 class AppTheme {
   // ── Warm Dark Palette ──────────────────────────────────────
-  static const Color background    = Color(0xFF0A0A0A); // near-black
-  static const Color surface       = Color(0xFF141414); // dark surface
-  static const Color surfaceLight  = Color(0xFF1E1E1E); // lifted surface
-  static const Color surfaceMid    = Color(0xFF272727); // cards, sheets
-  static const Color border        = Color(0xFF333333); // subtle border
-  static const Color cardBorder    = Color(0xFF272727); // card borders
+  // Hanko's sumi steps since the switch (stage H2); was #0A0A0A, #141414,
+  // #1E1E1E, #272727, #333333 and #272727.
+  static const Color background    = hankoSumi;     // sumi
+  static const Color surface       = hankoSumi2;    // sumi 2: nav, sheets
+  static const Color surfaceLight  = hankoSumi2;    // sumi 2: cards, fields
+  static const Color surfaceMid    = hankoSumi3;    // sumi 3: tiles, pills, placeholders
+  static const Color border        = hankoHairline; // subtle border
+  static const Color cardBorder    = hankoHairline; // card borders
 
   // ── Brand ──────────────────────────────────────────────────
   static const Color primary       = Color(0xFFE8624A); // Stride red-coral
@@ -26,10 +28,12 @@ class AppTheme {
   static const Color error         = Color(0xFFCF6679);
 
   // ── Typography Colors ──────────────────────────────────────
-  static const Color textPrimary   = Color(0xFFF3EEE7); // warm ivory — headings
-  static const Color textSecondary = Color(0xFFEAE7E1); // soft white — body
-  static const Color textMuted     = Color(0xFF9A938B); // muted gray — metadata
-  static const Color textInverse   = Color(0xFF0A0A0A); // for light surfaces
+  // Washi, stone and sumi since the switch (stage H2); was #F3EEE7,
+  // #EAE7E1, #9A938B and #0A0A0A.
+  static const Color textPrimary   = hankoWashi; // washi — headings
+  static const Color textSecondary = hankoWashi; // washi — body
+  static const Color textMuted     = hankoStone; // stone — metadata
+  static const Color textInverse   = hankoSumi;  // sumi — on light surfaces
 
   // ── Semantic aliases ───────────────────────────────────────
   static const Color primaryLight  = Color(0xFFED8070);

@@ -244,7 +244,7 @@ class _SocialScreenState extends State<SocialScreen> {
               width: double.infinity,
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
-                color: const Color(0xFF0D0B09),
+                color: const Color(0xFF121110),
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(color: AppTheme.border),
               ),

@@ -27,7 +27,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:gal/gal.dart';
 
 // ── Brand constants ─────────────────────────────────────────────────────────
-const _kBg     = Color(0xFF0A0A0A);
+const _kBg     = Color(0xFF121110);
 const _kIvory  = Color(0xFFF3EEE7);
 const _kCoral  = Color(0xFFF97316);
 const _kCoral2 = Color(0xFFE8624A);

@@ -15,7 +15,7 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'tomo_service.dart';
 
 // Brand tokens (kept local so this file drops in anywhere).
-const _kBg     = Color(0xFF0A0A0A);
+const _kBg     = Color(0xFF121110);
 const _kPanel  = Color(0xFF141312);
 const _kIvory  = Color(0xFFF3EEE7);
 const _kCoral  = Color(0xFFF97316);

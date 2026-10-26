@@ -235,7 +235,7 @@ class AuthWrapper extends StatelessWidget {
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           // Show plain dark screen while Firebase resolves auth state
-          return const Scaffold(backgroundColor: Color(0xFF0D0B09));
+          return const Scaffold(backgroundColor: Color(0xFF121110));
         }
 
         if (snapshot.hasData && snapshot.data != null) {
@@ -277,7 +277,7 @@ class _OnboardingGate extends StatelessWidget {
       stream: FirebaseFirestore.instance.collection('users').doc(uid).snapshots(),
       builder: (context, snap) {
         if (snap.connectionState == ConnectionState.waiting) {
-          return const Scaffold(backgroundColor: Color(0xFF0D0B09));
+          return const Scaffold(backgroundColor: Color(0xFF121110));
         }
         final data = snap.data?.data() as Map<String, dynamic>?;
         final done = data?['onboardingComplete'] == true;

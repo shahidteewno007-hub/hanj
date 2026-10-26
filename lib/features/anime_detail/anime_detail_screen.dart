@@ -767,7 +767,7 @@ class _HeroPanel extends StatelessWidget {
     return Stack(
       fit: StackFit.expand,
       children: [
-        Container(color: const Color(0xFF0D0B09)),
+        Container(color: const Color(0xFF121110)),
 
         Positioned.fill(
           child: Row(

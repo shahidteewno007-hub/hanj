@@ -23,7 +23,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
   static const _coral   = Color(0xFFE8624A);
   static const _magenta = Color(0xFFCA2868);
-  static const _bg      = Color(0xFF0D0B09);
+  static const _bg      = Color(0xFF121110);
   static const _cream   = Color(0xFFF5F0E8);
 
   static const _contentPages = [
