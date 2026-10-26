@@ -53,6 +53,13 @@ flutter:
     # references either and both are the pre-2026-09 mark. Undeclared so they
     # stop shipping; the files stay on disk deliberately (never delete), so
     # re-adding a line here is all it takes to bring one back.
+  fonts:
+    # Hanko's heading face: a Latin-only cut of Shippori Mincho 600 (72 KB;
+    # SIL OFL 1.1, licence beside it in assets/fonts). No CJK glyphs.
+    - family: ShipporiMinchoLatin
+      fonts:
+        - asset: assets/fonts/ShipporiMinchoLatin-SemiBold.ttf
+          weight: 600
 
 
 # ─────────────────────────────────────────────────────────────────────────────
