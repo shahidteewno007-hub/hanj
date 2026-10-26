@@ -35,6 +35,11 @@ class AppTheme {
   static const Color primaryLight  = Color(0xFFED8070);
 
   // ── Typography Helpers ─────────────────────────────────────
+  // Hanko's faces since the switch (stage H2): serif is Shippori Mincho 600,
+  // sans is Jost, mono is Jost with tabular figures. The signatures are
+  // today's, so no call site had to change. Shippori ships one weight and no
+  // italic, so serif sets every weight and style as upright 600 rather than
+  // faking bold or slanting it.
   static TextStyle serif({
     double fontSize = 16,
     FontWeight weight = FontWeight.w400,
@@ -43,13 +48,11 @@ class AppTheme {
     double letterSpacing = 0,
     FontStyle style = FontStyle.normal,
   }) =>
-      GoogleFonts.playfairDisplay(
+      shipporiMincho(
         fontSize: fontSize,
-        fontWeight: weight,
         color: color,
         height: height,
         letterSpacing: letterSpacing,
-        fontStyle: style,
       );
 
   static TextStyle mono({
@@ -58,7 +61,7 @@ class AppTheme {
     Color color = textMuted,
     double letterSpacing = 0.5,
   }) =>
-      GoogleFonts.spaceGrotesk(
+      jostTabular(
         fontSize: fontSize,
         fontWeight: weight,
         color: color,
@@ -71,11 +74,148 @@ class AppTheme {
     Color color = textPrimary,
     double? height,
   }) =>
-      GoogleFonts.dmSans(
+      jost(
         fontSize: fontSize,
         fontWeight: weight,
         color: color,
         height: height,
+      );
+
+  // Drop-in replacements for direct GoogleFonts calls, with the same named
+  // parameters, so a call site moving to Hanko's faces changes only its name:
+  // playfairDisplay -> shipporiMincho, dmSans -> jost, spaceGrotesk ->
+  // jostTabular. Shippori is the bundled Latin cut: weight and style are
+  // accepted and set as upright 600. Jost is held to 400–600, the weights
+  // Hanko ships, so no other weight is ever downloaded.
+  static TextStyle shipporiMincho({
+    TextStyle? textStyle,
+    Color? color,
+    Color? backgroundColor,
+    double? fontSize,
+    FontWeight? fontWeight,
+    FontStyle? fontStyle,
+    double? letterSpacing,
+    double? wordSpacing,
+    TextBaseline? textBaseline,
+    double? height,
+    Locale? locale,
+    Paint? foreground,
+    Paint? background,
+    List<Shadow>? shadows,
+    List<FontFeature>? fontFeatures,
+    TextDecoration? decoration,
+    Color? decorationColor,
+    TextDecorationStyle? decorationStyle,
+    double? decorationThickness,
+  }) =>
+      (textStyle ?? const TextStyle()).copyWith(
+        fontFamily: 'ShipporiMinchoLatin',
+        fontWeight: FontWeight.w600,
+        fontStyle: FontStyle.normal,
+        color: color,
+        backgroundColor: backgroundColor,
+        fontSize: fontSize,
+        letterSpacing: letterSpacing,
+        wordSpacing: wordSpacing,
+        textBaseline: textBaseline,
+        height: height,
+        locale: locale,
+        foreground: foreground,
+        background: background,
+        shadows: shadows,
+        fontFeatures: fontFeatures,
+        decoration: decoration,
+        decorationColor: decorationColor,
+        decorationStyle: decorationStyle,
+        decorationThickness: decorationThickness,
+      );
+
+  static TextStyle jost({
+    TextStyle? textStyle,
+    Color? color,
+    Color? backgroundColor,
+    double? fontSize,
+    FontWeight? fontWeight,
+    FontStyle? fontStyle,
+    double? letterSpacing,
+    double? wordSpacing,
+    TextBaseline? textBaseline,
+    double? height,
+    Locale? locale,
+    Paint? foreground,
+    Paint? background,
+    List<Shadow>? shadows,
+    List<FontFeature>? fontFeatures,
+    TextDecoration? decoration,
+    Color? decorationColor,
+    TextDecorationStyle? decorationStyle,
+    double? decorationThickness,
+  }) =>
+      GoogleFonts.jost(
+        textStyle: textStyle,
+        color: color,
+        backgroundColor: backgroundColor,
+        fontSize: fontSize,
+        fontWeight: fontWeight == null
+            ? null
+            : FontWeight.values.firstWhere((w) => w.value == fontWeight.value.clamp(400, 600)),
+        fontStyle: fontStyle,
+        letterSpacing: letterSpacing,
+        wordSpacing: wordSpacing,
+        textBaseline: textBaseline,
+        height: height,
+        locale: locale,
+        foreground: foreground,
+        background: background,
+        shadows: shadows,
+        fontFeatures: fontFeatures,
+        decoration: decoration,
+        decorationColor: decorationColor,
+        decorationStyle: decorationStyle,
+        decorationThickness: decorationThickness,
+      );
+
+  static TextStyle jostTabular({
+    TextStyle? textStyle,
+    Color? color,
+    Color? backgroundColor,
+    double? fontSize,
+    FontWeight? fontWeight,
+    FontStyle? fontStyle,
+    double? letterSpacing,
+    double? wordSpacing,
+    TextBaseline? textBaseline,
+    double? height,
+    Locale? locale,
+    Paint? foreground,
+    Paint? background,
+    List<Shadow>? shadows,
+    List<FontFeature>? fontFeatures,
+    TextDecoration? decoration,
+    Color? decorationColor,
+    TextDecorationStyle? decorationStyle,
+    double? decorationThickness,
+  }) =>
+      jost(
+        textStyle: textStyle,
+        color: color,
+        backgroundColor: backgroundColor,
+        fontSize: fontSize,
+        fontWeight: fontWeight,
+        fontStyle: fontStyle,
+        letterSpacing: letterSpacing,
+        wordSpacing: wordSpacing,
+        textBaseline: textBaseline,
+        height: height,
+        locale: locale,
+        foreground: foreground,
+        background: background,
+        shadows: shadows,
+        fontFeatures: [...?fontFeatures, const FontFeature.tabularFigures()],
+        decoration: decoration,
+        decorationColor: decorationColor,
+        decorationStyle: decorationStyle,
+        decorationThickness: decorationThickness,
       );
 
   // ── Hanko: palette ─────────────────────────────────────────
@@ -222,39 +362,39 @@ class AppTheme {
       ),
       textTheme: TextTheme(
         // Serif display
-        displayLarge:  GoogleFonts.playfairDisplay(
+        displayLarge:  shipporiMincho(
             color: textPrimary, fontSize: 48, fontWeight: FontWeight.w700),
-        displayMedium: GoogleFonts.playfairDisplay(
+        displayMedium: shipporiMincho(
             color: textPrimary, fontSize: 36, fontWeight: FontWeight.w600),
-        displaySmall:  GoogleFonts.playfairDisplay(
+        displaySmall:  shipporiMincho(
             color: textPrimary, fontSize: 28, fontWeight: FontWeight.w600),
-        headlineLarge: GoogleFonts.playfairDisplay(
+        headlineLarge: shipporiMincho(
             color: textPrimary, fontSize: 32, fontWeight: FontWeight.w700),
-        headlineMedium: GoogleFonts.playfairDisplay(
+        headlineMedium: shipporiMincho(
             color: textPrimary, fontSize: 24, fontWeight: FontWeight.w600),
-        headlineSmall:  GoogleFonts.playfairDisplay(
+        headlineSmall:  shipporiMincho(
             color: textPrimary, fontSize: 20, fontWeight: FontWeight.w600),
         // Sans body
-        titleLarge:  GoogleFonts.dmSans(
+        titleLarge:  jost(
             color: textPrimary,   fontSize: 17, fontWeight: FontWeight.w600),
-        titleMedium: GoogleFonts.dmSans(
+        titleMedium: jost(
             color: textPrimary,   fontSize: 15, fontWeight: FontWeight.w500),
-        titleSmall:  GoogleFonts.dmSans(
+        titleSmall:  jost(
             color: textSecondary, fontSize: 13, fontWeight: FontWeight.w500),
-        bodyLarge:   GoogleFonts.dmSans(
+        bodyLarge:   jost(
             color: textPrimary,   fontSize: 16, height: 1.6),
-        bodyMedium:  GoogleFonts.dmSans(
+        bodyMedium:  jost(
             color: textSecondary, fontSize: 14, height: 1.5),
-        bodySmall:   GoogleFonts.dmSans(
+        bodySmall:   jost(
             color: textMuted,     fontSize: 12, height: 1.4),
         // Mono labels
-        labelLarge:  GoogleFonts.spaceGrotesk(
+        labelLarge:  jostTabular(
             color: textSecondary, fontSize: 12,
             fontWeight: FontWeight.w500, letterSpacing: 0.8),
-        labelMedium: GoogleFonts.spaceGrotesk(
+        labelMedium: jostTabular(
             color: textMuted,     fontSize: 11,
             fontWeight: FontWeight.w400, letterSpacing: 0.6),
-        labelSmall:  GoogleFonts.spaceGrotesk(
+        labelSmall:  jostTabular(
             color: textMuted,     fontSize: 10,
             fontWeight: FontWeight.w400, letterSpacing: 1.0),
       ),
@@ -263,7 +403,7 @@ class AppTheme {
         elevation: 0,
         scrolledUnderElevation: 0,
         centerTitle: false,
-        titleTextStyle: GoogleFonts.playfairDisplay(
+        titleTextStyle: shipporiMincho(
           color: textPrimary,
           fontSize: 22,
           fontWeight: FontWeight.w700,
@@ -275,14 +415,14 @@ class AppTheme {
         indicatorColor: Colors.transparent,
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
-            return GoogleFonts.spaceGrotesk(
+            return jostTabular(
               color: primary,
               fontSize: 10,
               fontWeight: FontWeight.w600,
               letterSpacing: 0.5,
             );
           }
-          return GoogleFonts.spaceGrotesk(
+          return jostTabular(
             color: textMuted,
             fontSize: 10,
             letterSpacing: 0.5,
@@ -331,8 +471,8 @@ class AppTheme {
           borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: error),
         ),
-        hintStyle: GoogleFonts.dmSans(color: textMuted, fontSize: 14),
-        labelStyle: GoogleFonts.dmSans(color: textSecondary),
+        hintStyle: jost(color: textMuted, fontSize: 14),
+        labelStyle: jost(color: textSecondary),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
@@ -341,7 +481,7 @@ class AppTheme {
           minimumSize: const Size(double.infinity, 52),
           shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(30)),
-          textStyle: GoogleFonts.dmSans(
+          textStyle: jost(
               fontSize: 15, fontWeight: FontWeight.w600),
           elevation: 0,
         ),
@@ -353,21 +493,21 @@ class AppTheme {
           minimumSize: const Size(double.infinity, 52),
           shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(30)),
-          textStyle: GoogleFonts.dmSans(
+          textStyle: jost(
               fontSize: 15, fontWeight: FontWeight.w500),
         ),
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
           foregroundColor: primary,
-          textStyle: GoogleFonts.dmSans(
+          textStyle: jost(
               fontSize: 14, fontWeight: FontWeight.w600),
         ),
       ),
       chipTheme: ChipThemeData(
         backgroundColor: surfaceLight,
         selectedColor: primary,
-        labelStyle: GoogleFonts.dmSans(color: textSecondary, fontSize: 13),
+        labelStyle: jost(color: textSecondary, fontSize: 13),
         side: const BorderSide(color: border),
         shape: const StadiumBorder(),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -380,14 +520,14 @@ class AppTheme {
       dialogTheme: DialogThemeData(
         backgroundColor: surfaceMid,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        titleTextStyle: GoogleFonts.playfairDisplay(
+        titleTextStyle: shipporiMincho(
             color: textPrimary, fontSize: 20, fontWeight: FontWeight.w600),
         contentTextStyle:
-            GoogleFonts.dmSans(color: textSecondary, fontSize: 14),
+            jost(color: textSecondary, fontSize: 14),
       ),
       snackBarTheme: SnackBarThemeData(
         backgroundColor: surfaceMid,
-        contentTextStyle: GoogleFonts.dmSans(color: textPrimary, fontSize: 14),
+        contentTextStyle: jost(color: textPrimary, fontSize: 14),
         shape:
             RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         behavior: SnackBarBehavior.floating,
@@ -419,28 +559,28 @@ class AppTheme {
         onSurface:   lightText,
       ),
       textTheme: TextTheme(
-        displayLarge:  GoogleFonts.playfairDisplay(color: lightText, fontSize: 48, fontWeight: FontWeight.w700),
-        displayMedium: GoogleFonts.playfairDisplay(color: lightText, fontSize: 36, fontWeight: FontWeight.w600),
-        displaySmall:  GoogleFonts.playfairDisplay(color: lightText, fontSize: 28, fontWeight: FontWeight.w600),
-        headlineLarge: GoogleFonts.playfairDisplay(color: lightText, fontSize: 32, fontWeight: FontWeight.w700),
-        headlineMedium: GoogleFonts.playfairDisplay(color: lightText, fontSize: 24, fontWeight: FontWeight.w600),
-        headlineSmall:  GoogleFonts.playfairDisplay(color: lightText, fontSize: 20, fontWeight: FontWeight.w600),
-        titleLarge:  GoogleFonts.dmSans(color: lightText,    fontSize: 17, fontWeight: FontWeight.w600),
-        titleMedium: GoogleFonts.dmSans(color: lightText,    fontSize: 15, fontWeight: FontWeight.w500),
-        titleSmall:  GoogleFonts.dmSans(color: lightTextSec, fontSize: 13, fontWeight: FontWeight.w500),
-        bodyLarge:   GoogleFonts.dmSans(color: lightText,    fontSize: 16, height: 1.6),
-        bodyMedium:  GoogleFonts.dmSans(color: lightTextSec, fontSize: 14, height: 1.5),
-        bodySmall:   GoogleFonts.dmSans(color: lightTextMut, fontSize: 12, height: 1.4),
-        labelLarge:  GoogleFonts.spaceGrotesk(color: lightTextSec, fontSize: 12, fontWeight: FontWeight.w500, letterSpacing: 0.8),
-        labelMedium: GoogleFonts.spaceGrotesk(color: lightTextMut, fontSize: 11, letterSpacing: 0.6),
-        labelSmall:  GoogleFonts.spaceGrotesk(color: lightTextMut, fontSize: 10, letterSpacing: 1.0),
+        displayLarge:  shipporiMincho(color: lightText, fontSize: 48, fontWeight: FontWeight.w700),
+        displayMedium: shipporiMincho(color: lightText, fontSize: 36, fontWeight: FontWeight.w600),
+        displaySmall:  shipporiMincho(color: lightText, fontSize: 28, fontWeight: FontWeight.w600),
+        headlineLarge: shipporiMincho(color: lightText, fontSize: 32, fontWeight: FontWeight.w700),
+        headlineMedium: shipporiMincho(color: lightText, fontSize: 24, fontWeight: FontWeight.w600),
+        headlineSmall:  shipporiMincho(color: lightText, fontSize: 20, fontWeight: FontWeight.w600),
+        titleLarge:  jost(color: lightText,    fontSize: 17, fontWeight: FontWeight.w600),
+        titleMedium: jost(color: lightText,    fontSize: 15, fontWeight: FontWeight.w500),
+        titleSmall:  jost(color: lightTextSec, fontSize: 13, fontWeight: FontWeight.w500),
+        bodyLarge:   jost(color: lightText,    fontSize: 16, height: 1.6),
+        bodyMedium:  jost(color: lightTextSec, fontSize: 14, height: 1.5),
+        bodySmall:   jost(color: lightTextMut, fontSize: 12, height: 1.4),
+        labelLarge:  jostTabular(color: lightTextSec, fontSize: 12, fontWeight: FontWeight.w500, letterSpacing: 0.8),
+        labelMedium: jostTabular(color: lightTextMut, fontSize: 11, letterSpacing: 0.6),
+        labelSmall:  jostTabular(color: lightTextMut, fontSize: 10, letterSpacing: 1.0),
       ),
       appBarTheme: AppBarTheme(
         backgroundColor: lightBg,
         elevation: 0,
         scrolledUnderElevation: 0,
         centerTitle: false,
-        titleTextStyle: GoogleFonts.playfairDisplay(
+        titleTextStyle: shipporiMincho(
           color: lightText, fontSize: 22, fontWeight: FontWeight.w700),
         iconTheme: const IconThemeData(color: lightText),
       ),
@@ -449,10 +589,10 @@ class AppTheme {
         indicatorColor: Colors.transparent,
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
-            return GoogleFonts.spaceGrotesk(
+            return jostTabular(
                 color: primary, fontSize: 10, fontWeight: FontWeight.w600, letterSpacing: 0.5);
           }
-          return GoogleFonts.spaceGrotesk(
+          return jostTabular(
               color: lightTextMut, fontSize: 10, letterSpacing: 0.5);
         }),
         iconTheme: WidgetStateProperty.resolveWith((states) {
@@ -497,8 +637,8 @@ class AppTheme {
           borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: error),
         ),
-        hintStyle: GoogleFonts.dmSans(color: lightTextMut, fontSize: 14),
-        labelStyle: GoogleFonts.dmSans(color: lightTextSec),
+        hintStyle: jost(color: lightTextMut, fontSize: 14),
+        labelStyle: jost(color: lightTextSec),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
@@ -506,7 +646,7 @@ class AppTheme {
           foregroundColor: Colors.white,
           minimumSize: const Size(double.infinity, 52),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-          textStyle: GoogleFonts.dmSans(fontSize: 15, fontWeight: FontWeight.w600),
+          textStyle: jost(fontSize: 15, fontWeight: FontWeight.w600),
           elevation: 0,
         ),
       ),
@@ -516,19 +656,19 @@ class AppTheme {
           side: const BorderSide(color: lightBorder),
           minimumSize: const Size(double.infinity, 52),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-          textStyle: GoogleFonts.dmSans(fontSize: 15, fontWeight: FontWeight.w500),
+          textStyle: jost(fontSize: 15, fontWeight: FontWeight.w500),
         ),
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
           foregroundColor: primary,
-          textStyle: GoogleFonts.dmSans(fontSize: 14, fontWeight: FontWeight.w600),
+          textStyle: jost(fontSize: 14, fontWeight: FontWeight.w600),
         ),
       ),
       chipTheme: ChipThemeData(
         backgroundColor: lightSurfaceLight,
         selectedColor: primary.withValues(alpha: 0.15),
-        labelStyle: GoogleFonts.dmSans(color: lightTextSec, fontSize: 13),
+        labelStyle: jost(color: lightTextSec, fontSize: 13),
         side: const BorderSide(color: lightBorder),
         shape: const StadiumBorder(),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -541,13 +681,13 @@ class AppTheme {
       dialogTheme: DialogThemeData(
         backgroundColor: lightSurface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        titleTextStyle: GoogleFonts.playfairDisplay(
+        titleTextStyle: shipporiMincho(
             color: lightText, fontSize: 20, fontWeight: FontWeight.w600),
-        contentTextStyle: GoogleFonts.dmSans(color: lightTextSec, fontSize: 14),
+        contentTextStyle: jost(color: lightTextSec, fontSize: 14),
       ),
       snackBarTheme: SnackBarThemeData(
         backgroundColor: lightText,
-        contentTextStyle: GoogleFonts.dmSans(color: lightBg, fontSize: 14),
+        contentTextStyle: jost(color: lightBg, fontSize: 14),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         behavior: SnackBarBehavior.floating,
       ),
