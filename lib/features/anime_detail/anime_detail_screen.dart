@@ -454,8 +454,19 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
         total: total,
         initial: _currentEpisode ?? 0,
         onSave: (clamped) async {
-          await _firestoreService.updateEpisodeProgress(
-              int.parse(widget.anime.id), clamped);
+          try {
+            await _firestoreService.updateEpisodeProgress(
+                int.parse(widget.anime.id), clamped);
+          } catch (_) {
+            // The dialog doesn't await onSave, so a rejected update() went
+            // to PlatformDispatcher.onError, a fatal Crashlytics report, and
+            // the progress silently didn't save.
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('Your progress didn\'t save. Try again.'),
+            ));
+            return;
+          }
           if (mounted) setState(() => _currentEpisode = clamped);
         },
       ),
