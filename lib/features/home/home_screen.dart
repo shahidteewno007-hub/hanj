@@ -54,7 +54,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _loadData() async {
     if (!mounted) return;
-    setState(() => _isLoading = true);
+    // No setState(_isLoading = true) here. _isLoading starts true, so the
+    // first load still shows the spinner; a later call (pull-to-refresh, or
+    // a Continue card completing a show) updates Home in place instead of
+    // blanking the whole screen and rebuilding every section from scratch.
 
     final isOnline = ConnectivityService.instance.isOnline;
 
