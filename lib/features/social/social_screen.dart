@@ -24,6 +24,15 @@ class _SocialScreenState extends State<SocialScreen> {
   Map<String, dynamic>? _comparisonData;
   bool _isComparing = false;
 
+  // ── Compare lists is hidden ────────────────────────────────
+  // _compareWithFriend never looks the code up: _simulateComparison returns
+  // a made-up "Demo Friend" at 60% overlap whatever is typed. The section's
+  // code is intact below; set this to true once it compares a real list.
+  // With the button hidden, _comparisonData stays null, so the results block
+  // can't show either. The Soulmatch banner on this screen is the real
+  // comparison, and takes the same share code.
+  static const bool _compareEnabled = false;
+
   @override
   void initState() {
     super.initState();
@@ -281,67 +290,69 @@ class _SocialScreenState extends State<SocialScreen> {
               ),
             ),
 
-            const SizedBox(height: 32),
+            // Compare Lists Section (hidden, see _compareEnabled)
+            if (_compareEnabled) ...[
+              const SizedBox(height: 32),
 
-            // Compare Lists Section
-            Row(
-              children: [
-                Container(
-                  width: 4,
-                  height: 24,
-                  decoration: BoxDecoration(
-                    color: AppTheme.secondary,
-                    borderRadius: BorderRadius.circular(2),
+              Row(
+                children: [
+                  Container(
+                    width: 4,
+                    height: 24,
+                    decoration: BoxDecoration(
+                      color: AppTheme.secondary,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                Text('Compare lists', style: AppTheme.serif(fontSize: 22, weight: FontWeight.w600)),
-              ],
-            ),
-
-            const SizedBox(height: 16),
-
-            TextField(
-              controller: _friendCodeController,
-              decoration: InputDecoration(
-                hintText: 'Enter friend\'s code...',
-                prefixIcon: const Icon(Icons.person_add_rounded),
-                filled: true,
-                fillColor: AppTheme.surfaceLight,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
-                ),
+                  const SizedBox(width: 12),
+                  Text('Compare lists', style: AppTheme.serif(fontSize: 22, weight: FontWeight.w600)),
+                ],
               ),
-              textCapitalization: TextCapitalization.characters,
-            ),
 
-            const SizedBox(height: 16),
+              const SizedBox(height: 16),
 
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: _isComparing ? null : _compareWithFriend,
-                icon: _isComparing
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.compare_rounded),
-                label: Text(_isComparing ? 'Comparing...' : 'Compare'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.primary,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
+              TextField(
+                controller: _friendCodeController,
+                decoration: InputDecoration(
+                  hintText: 'Enter friend\'s code...',
+                  prefixIcon: const Icon(Icons.person_add_rounded),
+                  filled: true,
+                  fillColor: AppTheme.surfaceLight,
+                  border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+                textCapitalization: TextCapitalization.characters,
+              ),
+
+              const SizedBox(height: 16),
+
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: _isComparing ? null : _compareWithFriend,
+                  icon: _isComparing
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.compare_rounded),
+                  label: Text(_isComparing ? 'Comparing...' : 'Compare'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primary,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                   ),
                 ),
               ),
-            ),
 
-            const SizedBox(height: 32),
+              const SizedBox(height: 32),
+            ],
 
             // Comparison Results
             if (_comparisonData != null) ...[
