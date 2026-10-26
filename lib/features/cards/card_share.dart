@@ -21,7 +21,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../../core/theme/app_theme.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:gal/gal.dart';
@@ -139,7 +139,7 @@ class _CardSharePreviewScreenState extends State<CardSharePreviewScreen> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(msg, style: GoogleFonts.dmSans(color: _kIvory)),
+        content: Text(msg, style: AppTheme.jost(color: _kIvory)),
         backgroundColor: const Color(0xFF1A1A18),
         behavior: SnackBarBehavior.floating,
       ),
@@ -165,7 +165,7 @@ class _CardSharePreviewScreenState extends State<CardSharePreviewScreen> {
                   const Spacer(),
                   Text(
                     'SHARE CARD',
-                    style: GoogleFonts.spaceGrotesk(
+                    style: AppTheme.jostTabular(
                       color: _kMuted,
                       fontSize: 12,
                       letterSpacing: 3,
@@ -278,7 +278,7 @@ class _ShareCanvas extends StatelessWidget {
               // Eyebrow
               Text(
                 rarityLabel,
-                style: GoogleFonts.spaceGrotesk(
+                style: AppTheme.jostTabular(
                   color: glow,
                   fontSize: 11,
                   letterSpacing: 4,
@@ -333,7 +333,7 @@ class _ShareCanvas extends StatelessWidget {
                         textAlign: TextAlign.center,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.playfairDisplay(
+                        style: AppTheme.shipporiMincho(
                           color: _kIvory,
                           fontSize: 24,
                           fontWeight: FontWeight.w700,
@@ -345,7 +345,7 @@ class _ShareCanvas extends StatelessWidget {
                         const SizedBox(height: 4),
                         Text(
                           '${collectorHandle!}\u2019s collection',
-                          style: GoogleFonts.dmSans(color: _kMuted, fontSize: 12),
+                          style: AppTheme.jost(color: _kMuted, fontSize: 12),
                         ),
                       ],
                     ],
@@ -365,7 +365,7 @@ class _ShareCanvas extends StatelessWidget {
               // Hanj wordmark — the viral hook
               RichText(
                 text: TextSpan(
-                  style: GoogleFonts.playfairDisplay(
+                  style: AppTheme.shipporiMincho(
                     fontSize: 26,
                     fontWeight: FontWeight.w800,
                     letterSpacing: -0.5,
@@ -379,7 +379,7 @@ class _ShareCanvas extends StatelessWidget {
               const SizedBox(height: 4),
               Text(
                 'collect yours',
-                style: GoogleFonts.spaceGrotesk(
+                style: AppTheme.jostTabular(
                   color: _kMuted,
                   fontSize: 9.5,
                   letterSpacing: 3,
@@ -450,7 +450,7 @@ class _ActionButton extends StatelessWidget {
             const SizedBox(width: 9),
             Text(
               label,
-              style: GoogleFonts.spaceGrotesk(
+              style: AppTheme.jostTabular(
                 color: filled ? _kBg : _kIvory,
                 fontSize: 15,
                 fontWeight: FontWeight.w700,

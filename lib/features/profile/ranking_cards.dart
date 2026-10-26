@@ -6,7 +6,6 @@ import 'package:flutter/foundation.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../../widgets/gal_mobile.dart' if (dart.library.html) '../../widgets/gal_stub.dart' as galSaver;
 
@@ -223,7 +222,7 @@ class _Top9Card extends StatelessWidget {
                   ),
                   const SizedBox(width: 8),
                   Text('Hanj',
-                      style: GoogleFonts.playfairDisplay(
+                      style: AppTheme.shipporiMincho(
                           color: Colors.white,
                           fontSize: 14,
                           fontWeight: FontWeight.w700)),
@@ -482,7 +481,7 @@ class _TasteCard extends StatelessWidget {
                       ),
                       const SizedBox(width: 8),
                       Text('Hanj',
-                          style: GoogleFonts.playfairDisplay(
+                          style: AppTheme.shipporiMincho(
                               color: Colors.white,
                               fontSize: 14,
                               fontWeight: FontWeight.w700)),
@@ -500,7 +499,7 @@ class _TasteCard extends StatelessWidget {
                   // Username + archetype
                   Text(
                     username,
-                    style: GoogleFonts.playfairDisplay(
+                    style: AppTheme.shipporiMincho(
                       color: Colors.white,
                       fontSize: 28,
                       fontWeight: FontWeight.w700,
@@ -750,7 +749,7 @@ class _MonthlyAuraCard extends StatelessWidget {
                       ),
                       const SizedBox(width: 8),
                       Text('Hanj',
-                          style: GoogleFonts.playfairDisplay(
+                          style: AppTheme.shipporiMincho(
                               color: Colors.white,
                               fontSize: 14,
                               fontWeight: FontWeight.w700)),
@@ -772,7 +771,7 @@ class _MonthlyAuraCard extends StatelessWidget {
                           letterSpacing: 2)),
                   const SizedBox(height: 4),
                   Text(username,
-                      style: GoogleFonts.playfairDisplay(
+                      style: AppTheme.shipporiMincho(
                           color: Colors.white,
                           fontSize: 26,
                           fontWeight: FontWeight.w700)),

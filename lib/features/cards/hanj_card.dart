@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../../core/theme/app_theme.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HANJ CARD WIDGET
@@ -150,7 +151,7 @@ class _CommonCard extends StatelessWidget {
             child: Center(
               child: Text(
                 card.kanji,
-                style: GoogleFonts.playfairDisplay(
+                style: AppTheme.shipporiMincho(
                   fontSize: w * 0.65,
                   fontWeight: FontWeight.w900,
                   color: const Color(0xFF2A2725),
@@ -190,7 +191,7 @@ class _CommonCard extends StatelessWidget {
                         card.name,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.playfairDisplay(
+                        style: AppTheme.shipporiMincho(
                           fontSize: w * 0.09,
                           fontStyle: FontStyle.italic,
                           color: Colors.white,
@@ -285,7 +286,7 @@ class _RareCard extends StatelessWidget {
                     children: [
                       Text(card.name,
                         maxLines: 2, overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.playfairDisplay(fontSize: w * 0.09, fontStyle: FontStyle.italic, color: Colors.white, fontWeight: FontWeight.w600, height: 1.15)),
+                        style: AppTheme.shipporiMincho(fontSize: w * 0.09, fontStyle: FontStyle.italic, color: Colors.white, fontWeight: FontWeight.w600, height: 1.15)),
                       const SizedBox(height: 4),
                       Text(card.description,
                         maxLines: 2, overflow: TextOverflow.ellipsis,
@@ -378,7 +379,7 @@ class _EpicCard extends StatelessWidget {
                     children: [
                       Text(card.name,
                         maxLines: 2, overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.playfairDisplay(fontSize: w * 0.09, fontStyle: FontStyle.italic, color: Colors.white, fontWeight: FontWeight.w600, height: 1.15)),
+                        style: AppTheme.shipporiMincho(fontSize: w * 0.09, fontStyle: FontStyle.italic, color: Colors.white, fontWeight: FontWeight.w600, height: 1.15)),
                       const SizedBox(height: 4),
                       Text(card.description,
                         maxLines: 2, overflow: TextOverflow.ellipsis,
@@ -449,7 +450,7 @@ class _LegendaryCard extends StatelessWidget {
                     alignment: Alignment.bottomLeft,
                     child: Text(
                       'ONE\nHUNDRED!',
-                      style: GoogleFonts.playfairDisplay(
+                      style: AppTheme.shipporiMincho(
                         fontSize: w * 0.15,
                         fontWeight: FontWeight.w900,
                         color: gold,
@@ -510,7 +511,7 @@ class _LegendaryCard extends StatelessWidget {
                       // Card name
                       Text(
                         card.name,
-                        style: GoogleFonts.playfairDisplay(fontSize: w * 0.10, fontStyle: FontStyle.italic, color: gold, fontWeight: FontWeight.w700, height: 1.1),
+                        style: AppTheme.shipporiMincho(fontSize: w * 0.10, fontStyle: FontStyle.italic, color: gold, fontWeight: FontWeight.w700, height: 1.1),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -699,7 +700,7 @@ class _SeasonalCard extends StatelessWidget {
                         // Card name
                         Text(
                           card.name,
-                          style: GoogleFonts.playfairDisplay(
+                          style: AppTheme.shipporiMincho(
                             fontSize: w * 0.10,
                             fontStyle: FontStyle.italic,
                             color: const Color(0xFFCCEEDD),
@@ -780,7 +781,7 @@ class _LockedCard extends StatelessWidget {
                 const SizedBox(height: 10),
                 Text(
                   '???',
-                  style: GoogleFonts.playfairDisplay(fontSize: 28, fontStyle: FontStyle.italic, color: col.withOpacity(0.5), fontWeight: FontWeight.w600),
+                  style: AppTheme.shipporiMincho(fontSize: 28, fontStyle: FontStyle.italic, color: col.withOpacity(0.5), fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 6),
                 Text(

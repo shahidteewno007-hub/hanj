@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart'
     show GoogleSignInAuthenticationEvent, GoogleSignInAuthenticationEventSignIn;
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:google_fonts/google_fonts.dart';
 import '../../widgets/google_g_logo.dart';
 import '../../core/theme/app_theme.dart';
 
@@ -497,7 +496,7 @@ class _LoginScreenState extends State<LoginScreen>
             children: [
               TextSpan(
                 text: 'Ha',
-                style: GoogleFonts.playfairDisplay(
+                style: AppTheme.shipporiMincho(
                   color: Colors.white,
                   fontSize: 72,
                   fontWeight: FontWeight.w700,
@@ -507,7 +506,7 @@ class _LoginScreenState extends State<LoginScreen>
               ),
               TextSpan(
                 text: 'n',
-                style: GoogleFonts.playfairDisplay(
+                style: AppTheme.shipporiMincho(
                   color: Colors.white,
                   fontSize: 72,
                   fontWeight: FontWeight.w700,
@@ -517,7 +516,7 @@ class _LoginScreenState extends State<LoginScreen>
               ),
               TextSpan(
                 text: 'j',
-                style: GoogleFonts.playfairDisplay(
+                style: AppTheme.shipporiMincho(
                   color: Colors.white,
                   fontSize: 72,
                   fontWeight: FontWeight.w700,

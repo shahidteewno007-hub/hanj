@@ -9,7 +9,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../../core/theme/app_theme.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 
 import 'tomo_service.dart';
@@ -139,7 +139,7 @@ class _TomoScreenState extends State<TomoScreen> {
     Clipboard.setData(ClipboardData(text: text));
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Copied', style: GoogleFonts.dmSans(color: _kIvory)),
+        content: Text('Copied', style: AppTheme.jost(color: _kIvory)),
         backgroundColor: const Color(0xFF1A1A18),
         behavior: SnackBarBehavior.floating,
         duration: const Duration(seconds: 1),
@@ -199,7 +199,7 @@ class _TomoScreenState extends State<TomoScreen> {
             // DM Sans has no CJK coverage. Forcing Noto Serif JP here fetched
             // a 4 MB face to draw this one character. See WEB.md 3.3.
             child: Text('狐',
-                style: GoogleFonts.dmSans(
+                style: AppTheme.jost(
                     color: _kBg, fontSize: 18, fontWeight: FontWeight.w700)),
           ),
           const SizedBox(width: 12),
@@ -208,10 +208,10 @@ class _TomoScreenState extends State<TomoScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text('Loki',
-                    style: GoogleFonts.playfairDisplay(
+                    style: AppTheme.shipporiMincho(
                         color: _kIvory, fontSize: 20, fontWeight: FontWeight.w700)),
                 Text('your anime companion',
-                    style: GoogleFonts.spaceGrotesk(
+                    style: AppTheme.jostTabular(
                         color: _kMuted, fontSize: 11, letterSpacing: 0.5)),
               ],
             ),
@@ -247,20 +247,20 @@ class _TomoScreenState extends State<TomoScreen> {
             // DM Sans has no CJK coverage. Forcing Noto Serif JP here fetched
             // a 4 MB face to draw this one character. See WEB.md 3.3.
             child: Text('狐',
-                style: GoogleFonts.dmSans(
+                style: AppTheme.jost(
                     color: _kBg, fontSize: 34, fontWeight: FontWeight.w700)),
           ),
         ),
         const SizedBox(height: 22),
         Text('Hey, I\u2019m Loki.',
             textAlign: TextAlign.center,
-            style: GoogleFonts.playfairDisplay(
+            style: AppTheme.shipporiMincho(
                 color: _kIvory, fontSize: 26, fontWeight: FontWeight.w700)),
         const SizedBox(height: 8),
         Text(
           'I know your list and I\u2019ve seen everything. Ask me about what you\u2019re watching, what\u2019s airing, theories \u2014 anything. I won\u2019t spoil you.',
           textAlign: TextAlign.center,
-          style: GoogleFonts.dmSans(color: _kMuted, fontSize: 14, height: 1.5),
+          style: AppTheme.jost(color: _kMuted, fontSize: 14, height: 1.5),
         ),
         const SizedBox(height: 30),
         ...prompts.map(_suggestionChip),
@@ -287,7 +287,7 @@ class _TomoScreenState extends State<TomoScreen> {
               const SizedBox(width: 10),
               Expanded(
                 child: Text(text,
-                    style: GoogleFonts.dmSans(color: _kIvory, fontSize: 13.5)),
+                    style: AppTheme.jost(color: _kIvory, fontSize: 13.5)),
               ),
             ],
           ),
@@ -334,7 +334,7 @@ class _TomoScreenState extends State<TomoScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: TextField(
                 controller: _controller,
-                style: GoogleFonts.dmSans(color: _kIvory, fontSize: 15),
+                style: AppTheme.jost(color: _kIvory, fontSize: 15),
                 cursorColor: _kCoral,
                 minLines: 1,
                 maxLines: 5,
@@ -342,7 +342,7 @@ class _TomoScreenState extends State<TomoScreen> {
                 onSubmitted: (_) => _send(),
                 decoration: InputDecoration(
                   hintText: 'Talk to Loki\u2026',
-                  hintStyle: GoogleFonts.dmSans(color: _kMuted, fontSize: 15),
+                  hintStyle: AppTheme.jost(color: _kMuted, fontSize: 15),
                   filled: false,
                   fillColor: Colors.transparent,
                   isCollapsed: true,
@@ -408,7 +408,7 @@ class _Bubble extends StatelessWidget {
               // DM Sans has no CJK coverage. Forcing Noto Serif JP here fetched
               // a 4 MB face to draw this one character. See WEB.md 3.3.
               child: Text('狐',
-                  style: GoogleFonts.dmSans(
+                  style: AppTheme.jost(
                       color: _kBg, fontSize: 13, fontWeight: FontWeight.w700)),
             ),
             const SizedBox(width: 8),
@@ -437,7 +437,7 @@ class _Bubble extends StatelessWidget {
                 child: isUser
                     ? Text(
                         message.text,
-                        style: GoogleFonts.dmSans(
+                        style: AppTheme.jost(
                           color: _kBg, fontSize: 14.5, height: 1.45,
                           fontWeight: FontWeight.w500,
                         ),
@@ -477,7 +477,7 @@ class _MarkdownText extends StatelessWidget {
       } else if (tok.startsWith('`')) {
         children.add(TextSpan(
           text: tok.substring(1, tok.length - 1),
-          style: GoogleFonts.spaceGrotesk(
+          style: AppTheme.jostTabular(
               color: _kCoral, fontSize: 13.5, fontWeight: FontWeight.w500),
         ));
       } else {
@@ -495,7 +495,7 @@ class _MarkdownText extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final base = GoogleFonts.dmSans(
+    final base = AppTheme.jost(
       color: _kIvory, fontSize: 14.5, height: 1.5, fontWeight: FontWeight.w400,
     );
     final lines = raw.split('\n');
@@ -592,7 +592,7 @@ class _TypingBubbleState extends State<_TypingBubble>
             // DM Sans has no CJK coverage. Forcing Noto Serif JP here fetched
             // a 4 MB face to draw this one character. See WEB.md 3.3.
             child: Text('狐',
-                style: GoogleFonts.dmSans(
+                style: AppTheme.jost(
                     color: _kBg, fontSize: 13, fontWeight: FontWeight.w700)),
           ),
           const SizedBox(width: 8),

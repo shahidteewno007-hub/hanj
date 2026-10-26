@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import '../../core/theme/app_theme.dart';
 import 'hanj_card.dart' as hc;
@@ -379,7 +378,7 @@ class _CollectionHeader extends StatelessWidget {
                     const SizedBox(height: 6),
                     Text(
                       'Hanj Cards',
-                      style: GoogleFonts.playfairDisplay(
+                      style: AppTheme.shipporiMincho(
                         color: AppTheme.textPrimary,
                         fontSize: 28,
                         fontWeight: FontWeight.w700,
@@ -724,7 +723,7 @@ class _CardDetailSheet extends StatelessWidget {
           // Name
           Text(
             isUnlocked ? name : (isSecret ? '???' : name),
-            style: GoogleFonts.playfairDisplay(
+            style: AppTheme.shipporiMincho(
               color: Colors.white,
               fontSize: 22,
               fontWeight: FontWeight.w700,
