@@ -346,7 +346,7 @@ class _FilteredAnimeTabState extends State<_FilteredAnimeTab>
                           ),
                         if (_selectedFormat != null)
                           _ActiveFilterChip(
-                            label: _selectedFormat!,
+                            label: HanjFilterSheet.formatLabel(_selectedFormat!),
                             onRemove: () {
                               setState(() => _selectedFormat = null);
                               _load();

@@ -79,10 +79,11 @@ class _SearchScreenState extends State<SearchScreen>
   ];
 
   static const _formats = [
-    ('TV',    'TV Series'),
-    ('MOVIE', 'Movie'),
-    ('ONA',   'ONA'),
-    ('OVA',   'OVA'),
+    ('TV',      'TV Series'),
+    ('MOVIE',   'Movie'),
+    ('ONA',     'ONA'),
+    ('OVA',     'OVA'),
+    ('SPECIAL', 'Special'),
   ];
 
   int get _activeFilterCount =>
@@ -354,7 +355,10 @@ class _SearchScreenState extends State<SearchScreen>
                   ),
                 if (_format != null)
                   _FilterPill(
-                    label: _formats.firstWhere((f) => f.$1 == _format).$2,
+                    // orElse: a value missing from the table used to throw
+                    // StateError here, in the middle of build.
+                    label: _formats.firstWhere((f) => f.$1 == _format,
+                        orElse: () => (_format!, _format!)).$2,
                     onRemove: () { setState(() => _format = null); if (_hasSearched) _search(_textCtrl.text); },
                   ),
                 if (_year != null)
