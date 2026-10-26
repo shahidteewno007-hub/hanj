@@ -74,10 +74,9 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _loadFullAnime();
+      // Stage 1c: one AniList request per open. The gallery, You May Like
+      // and the next episode come from this response; they were three more.
       _loadStaffData();
-      _loadRelatedAnime();
-      _loadAiringData();
-      _loadGalleryImages();
     });
   }
 
@@ -94,9 +93,9 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
       if (full != null && mounted) {
         setState(() => _anime = full);
         OfflineCacheService.instance.cacheAnimeDetail(full);
-        // Re-run fetches now that we have the real status + genres.
-        _loadAiringData();
-        _loadRelatedAnime();
+        // Nothing to re-run (D16): airing and You May Like used to be
+        // fetched again here, the airing query with the same id both times.
+        // Both now come from getAnimeStaff, which needs only the id.
       }
     } catch (_) {}
   }
@@ -146,6 +145,8 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
     }
   }
 
+  // Unused since Stage 1c: getAnimeStaff carries nextAiringEpisode. Kept as a
+  // deletion candidate (CLAUDE.md), with _fetchAiringHttp below.
   Future<void> _loadAiringData() async {
     // Fetch regardless of entry point — when opened from Continue the anime
     // is a stub without a status field, so we can't gate on it. The query
@@ -202,7 +203,7 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
   }
 
   Future<void> _loadStaffData() async {
-    if (mounted) setState(() => _isLoadingStaff = true);
+    if (mounted) setState(() { _isLoadingStaff = true; _isLoadingRelated = true; });
     try {
       final data = await _aniListService.getAnimeStaff(_anime.id);
       if (mounted) {
@@ -212,11 +213,56 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
           final img = e['node']?['image']?['medium'] as String?;
           if (img != null && imgs.length < 8) imgs.add(img);
         }
-        setState(() { _staffData = data; _isLoadingStaff = false; _characterImages = imgs; });
+        // The gallery: the sharp cover and the banner, or at least the cover
+        // already on screen, so it is never empty.
+        final gallery = <String>[
+          if (data?['coverImage']?['extraLarge'] case final String xl) xl,
+          if (data?['bannerImage'] case final String banner) banner,
+        ];
+        if (gallery.isEmpty && widget.anime.imageUrl != null) {
+          gallery.add(widget.anime.imageUrl!);
+        }
+        setState(() {
+          _staffData = data;
+          _isLoadingStaff = false;
+          _characterImages = imgs;
+          _galleryImages = gallery;
+          // You May Like: AniList users' recommendations for this show, not
+          // the top-scored shows of its first genre.
+          _relatedAnime = _aniListService.recommendationsFrom(data);
+          _isLoadingRelated = false;
+        });
+        final next = data?['nextAiringEpisode'];
+        final airingAt = next is Map ? next['airingAt'] as int? : null;
+        if (airingAt != null) {
+          _startCountdown(
+            DateTime.fromMillisecondsSinceEpoch(airingAt * 1000),
+            next['episode'] as int?,
+          );
+        }
       }
-    } catch (_) { if (mounted) setState(() => _isLoadingStaff = false); }
+    } catch (_) {
+      if (mounted) setState(() { _isLoadingStaff = false; _isLoadingRelated = false; });
+    }
   }
 
+  /// The next episode's live countdown, from the staff response.
+  void _startCountdown(DateTime dt, int? episode) {
+    setState(() {
+      _nextAiringAt   = dt;
+      _nextEpisodeNum = episode;
+    });
+    _timeUntilAiring.value = dt.difference(DateTime.now());
+    // Tick every second
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      final diff = dt.difference(DateTime.now());
+      _timeUntilAiring.value = diff.isNegative ? Duration.zero : diff;
+    });
+  }
+
+  // Unused since Stage 1c: getAnimeStaff carries both images. Kept as a
+  // deletion candidate (CLAUDE.md).
   /// Fetches coverImage.extraLarge + bannerImage for the full-screen gallery.
   /// These are higher quality than the imageUrl already on the Anime model
   /// (which uses the 'large' variant). Falls back to the existing imageUrl
@@ -263,6 +309,8 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
     }
   }
 
+  // Unused since Stage 1c: You May Like is AniList's recommendations, from
+  // getAnimeStaff. Kept as a deletion candidate (CLAUDE.md).
   Future<void> _loadRelatedAnime() async {
     setState(() => _isLoadingRelated = true);
     try {
