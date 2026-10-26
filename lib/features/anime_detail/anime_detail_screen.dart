@@ -391,6 +391,14 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
   }
 
   void _showRatingDialog() {
+    // A rating is a field on the list entry and updateRating is an update(),
+    // so a show that isn't on the list has nowhere to keep one.
+    if (_currentStatus == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Add it to your list to rate it.')),
+      );
+      return;
+    }
     double tempRating = _userRating ?? 5.0;
     showDialog(
       context: context,
@@ -412,7 +420,21 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
             TextButton(
               onPressed: () async {
                 Navigator.pop(context);
-                await _firestoreService.updateRating(int.parse(widget.anime.id), tempRating);
+                try {
+                  await _firestoreService.updateRating(int.parse(widget.anime.id), tempRating);
+                } catch (e) {
+                  // update() throws not-found when the entry doesn't exist.
+                  // Uncaught, that reached Crashlytics as fatal and the
+                  // rating silently didn't save.
+                  if (!mounted) return;
+                  final missing = e is FirebaseException && e.code == 'not-found';
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                    content: Text(missing
+                        ? 'Add it to your list to rate it.'
+                        : 'Your rating didn\'t save. Try again.'),
+                  ));
+                  return;
+                }
                 if (!mounted) return;
                 setState(() => _userRating = tempRating);
               },
