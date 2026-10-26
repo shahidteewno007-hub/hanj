@@ -31,6 +31,10 @@ class _SearchScreenState extends State<SearchScreen>
   bool _loading         = false;
   bool _hasSearched     = false;
   String? _error;
+  // Outcome of this screen's own last search (null = AniList answered).
+  // searchAnime returns [] when the request fails too, so without this an
+  // outage read as "No results found".
+  int? _failStatus;
 
   // ── Filters ───────────────────────────────────────────────
   String  _sort        = 'POPULARITY_DESC';
@@ -120,7 +124,7 @@ class _SearchScreenState extends State<SearchScreen>
       return;
     }
 
-    setState(() { _loading = true; _hasSearched = true; _error = null; });
+    setState(() { _loading = true; _hasSearched = true; _error = null; _failStatus = null; });
 
     try {
       List<Anime> results;
@@ -140,7 +144,10 @@ class _SearchScreenState extends State<SearchScreen>
           sort:   _sort,
         );
       }
-      if (mounted) setState(() { _results = results; _loading = false; });
+      // searchAnime and searchByStudio have no await after their request,
+      // so the flag still holds this search's own outcome here.
+      final failStatus = AnilistService.lastFailStatus;
+      if (mounted) setState(() { _results = results; _failStatus = failStatus; _loading = false; });
     } catch (e) {
       if (mounted) setState(() { _error = e.toString(); _loading = false; });
     }
@@ -387,7 +394,9 @@ class _SearchScreenState extends State<SearchScreen>
     if (_loading) return _buildShimmer();
     if (_error != null) return _buildError();
     if (!_hasSearched) return _buildEmptyState();
-    if (_results.isEmpty) return _buildNoResults();
+    if (_results.isEmpty) {
+      return _failStatus != null ? _buildError() : _buildNoResults();
+    }
     return _buildGrid();
   }
 
@@ -487,6 +496,7 @@ class _SearchScreenState extends State<SearchScreen>
   }
 
   Widget _buildError() {
+    final failMessage = AnilistService.messageFor(_failStatus);
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -499,6 +509,12 @@ class _SearchScreenState extends State<SearchScreen>
                   fontSize: 16,
                   color: AppTheme.textSecondary,
                   weight: FontWeight.w600)),
+          if (failMessage != null) ...[
+            const SizedBox(height: 8),
+            Text(failMessage,
+                textAlign: TextAlign.center,
+                style: AppTheme.sans(fontSize: 13, color: AppTheme.textMuted)),
+          ],
           const SizedBox(height: 16),
           ElevatedButton.icon(
             onPressed: () => _search(_textCtrl.text, isStudio: _tabCtrl.index == 1),
