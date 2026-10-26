@@ -67,8 +67,14 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
     super.initState();
     _anime = widget.anime;
     _loadData();
-    // Cache the anime for offline viewing later
-    OfflineCacheService.instance.cacheAnimeDetail(widget.anime);
+    // Cache the anime for offline viewing later. Only a full entry (D18): a
+    // stub from a list row has no synopsis or score, and caching it over a
+    // full copy left that show bare offline, and on Home's "Coming up",
+    // which opens from this cache first. A stub's full entry is cached when
+    // getAnimeById returns it, in _loadFullAnime.
+    if (!_isStub(widget.anime)) {
+      OfflineCacheService.instance.cacheAnimeDetail(widget.anime);
+    }
     // Defer network fetches until after the first frame so the synchronous
     // setState(isLoading=true) calls inside them don't fire during initState.
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -83,9 +89,14 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
   // Enrich the (possibly stub) anime with full details. When opened from
   // Continue, the passed object only has id/title/image/episodes/genres, so
   // score, status, season, romaji, synopsis etc. would be blank without this.
+  /// A list row's stub, rather than an entry from an AniList query: no score
+  /// or no status. An unscored show from Search counts too, and is looked up.
+  static bool _isStub(Anime anime) =>
+      anime.averageScore == null || anime.status == null;
+
   Future<void> _loadFullAnime() async {
     // Skip if we already have rich data (opened from search/trending).
-    if (widget.anime.averageScore != null && widget.anime.status != null) {
+    if (!_isStub(widget.anime)) {
       return;
     }
     try {
