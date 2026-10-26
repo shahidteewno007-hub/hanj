@@ -362,12 +362,61 @@ class AnilistService {
     }
   }
 
+  /// Detail's one request per open (stage 1c). Besides the studio, staff and
+  /// cast, it carries what Detail used to fetch in three more requests: the
+  /// sharp cover and the banner (the gallery), the next airing episode (the
+  /// countdown) and AniList's recommendations (You May Like). It also asks
+  /// for Hanko's print (the native title and the cover's colour), the
+  /// episode length, the score distribution and the official links. Each
+  /// recommendation carries searchAnime's fields, so tapping one opens a full
+  /// entry with no request of its own; see [recommendationsFrom].
+  ///
+  /// `directors` is the first six staff by AniList's relevance, where the
+  /// series director sits; in the default order `staff` can miss them (25
+  /// edges of Frieren's held four kinds of director, not the Director).
+  /// `staff` keeps its own order, which the Cast tab shows.
   Future<Map<String, dynamic>?> getAnimeStaff(String animeId) async {
     const String query = '''
     query (\$id: Int) {
       Media(id: \$id, type: ANIME) {
+        title { native }
+        coverImage { extraLarge color }
+        bannerImage
+        duration
+        nextAiringEpisode { airingAt episode }
+        stats { scoreDistribution { score amount } }
+        externalLinks { site url type }
+        recommendations(sort: RATING_DESC, perPage: 6) {
+          nodes {
+            mediaRecommendation {
+              id
+              type
+              isAdult
+              title { romaji english }
+              coverImage { large }
+              averageScore
+              episodes
+              status
+              seasonYear
+              season
+              format
+              genres
+              description
+              trailer { id site }
+            }
+          }
+        }
         studios(isMain: true) {
           nodes { name id }
+        }
+        directors: staff(sort: [RELEVANCE, ID], perPage: 6) {
+          edges {
+            role
+            node {
+              id
+              name { full }
+            }
+          }
         }
         staff {
           edges {
@@ -410,6 +459,40 @@ class AnilistService {
       print('AniList staff error: $e');
       return null;
     }
+  }
+
+  /// The recommendations in a [getAnimeStaff] response, as entries Detail can
+  /// open directly. Kept to what searchAnime itself returns: anime only, and
+  /// nothing marked adult. A recommendation AniList has since removed comes
+  /// back as null and is skipped.
+  List<Anime> recommendationsFrom(Map<String, dynamic>? media) {
+    final nodes = media?['recommendations']?['nodes'] as List? ?? const [];
+    final out = <Anime>[];
+    for (final node in nodes) {
+      final item = (node as Map?)?['mediaRecommendation'];
+      if (item is! Map<String, dynamic>) continue;
+      if (item['type'] != 'ANIME' || item['isAdult'] == true) continue;
+      out.add(Anime(
+        id: item['id'].toString(),
+        title: item['title']?['romaji'] ?? 'Unknown',
+        titleEnglish: item['title']?['english'],
+        imageUrl: item['coverImage']?['large'],
+        averageScore: item['averageScore'] != null
+            ? (item['averageScore'] as num).toDouble()
+            : null,
+        episodes: item['episodes'] as int?,
+        status: item['status'],
+        seasonYear: item['seasonYear'],
+        season: item['season'],
+        format: item['format'],
+        genres: item['genres'] != null
+            ? List<String>.from(item['genres'])
+            : [],
+        description: item['description'],
+        trailerUrl: _extractTrailerUrl(item['trailer']),
+      ));
+    }
+    return out;
   }
 
   Future<Map<String, dynamic>?> getStaffDetails(int staffId) async {
