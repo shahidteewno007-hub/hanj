@@ -120,6 +120,9 @@ class _AnimeCalendarScreenState extends State<AnimeCalendarScreen> {
       ''';
 
       await AnilistService.throttle();
+      // 15 s, as in AnilistService._post. A stalled connection used to keep
+      // the spinner up for good; now the TimeoutException lands in the
+      // catch below like any other failed load.
       final response = await http.post(
         Uri.parse('https://graphql.anilist.co'),
         headers: {
@@ -127,7 +130,7 @@ class _AnimeCalendarScreenState extends State<AnimeCalendarScreen> {
           'Accept': 'application/json',
         },
         body: jsonEncode({'query': query, 'variables': {'page': 1}}),
-      );
+      ).timeout(const Duration(seconds: 15));
       AnilistService.noteLimits(response.headers);
       if (response.statusCode == 429) {
         AnilistService.backoff(
