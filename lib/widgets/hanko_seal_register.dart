@@ -254,7 +254,11 @@ class _RegisterPainter extends CustomPainter {
 
     final average = stats.average;
     if (stats.total == 0) {
-      final sentence = stats.sentence(owner);
+      // Detail's 112 px fits only a short sentence at 11 px; the screen-reader
+      // label keeps the full one.
+      final sentence = !compact
+          ? stats.sentence(owner)
+          : (owner == HankoRegisterOwner.yours ? 'No ratings yet.' : 'No scores yet.');
       _text(canvas, sentence, AppTheme.hankoSans(
         fontSize: compact ? AppTheme.hankoDataSmallSize : AppTheme.hankoMetaSize,
         color: AppTheme.hankoStone,
