@@ -1772,7 +1772,6 @@ class _TrendingRowState extends State<_TrendingRow>
                             [
                               if (widget.anime.genres.isNotEmpty)
                                 widget.anime.genres.first.toUpperCase(),
-                              if (widget.anime.seasonYear != null) 'S1',
                             ].join(' · '),
                             style: AppTheme.mono(
                                 fontSize: 10,
