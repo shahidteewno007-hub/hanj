@@ -490,38 +490,20 @@ class _LoginScreenState extends State<LoginScreen>
           ),
         ),
         const SizedBox(height: 16),
-        // Hanj wordmark — "Ha" white, "n" coral italic, "j" white
+        // The wordmark (stage H2): "Hanj" in Shippori Mincho, washi, under
+        // the coral wing. One span: Shippori has no italic, and the three
+        // spans were all white already. RichText keeps it at its drawn size
+        // whatever the text-size setting, as before.
         RichText(
           text: TextSpan(
             children: [
               TextSpan(
-                text: 'Ha',
+                text: 'Hanj',
                 style: AppTheme.shipporiMincho(
-                  color: Colors.white,
+                  color: AppTheme.hankoWashi,
                   fontSize: 72,
-                  fontWeight: FontWeight.w700,
                   height: 0.9,
-                  letterSpacing: -2,
-                ),
-              ),
-              TextSpan(
-                text: 'n',
-                style: AppTheme.shipporiMincho(
-                  color: Colors.white,
-                  fontSize: 72,
-                  fontWeight: FontWeight.w700,
-                  height: 0.9,
-                  letterSpacing: -2,
-                ),
-              ),
-              TextSpan(
-                text: 'j',
-                style: AppTheme.shipporiMincho(
-                  color: Colors.white,
-                  fontSize: 72,
-                  fontWeight: FontWeight.w700,
-                  height: 0.9,
-                  letterSpacing: -2,
+                  letterSpacing: -1,
                 ),
               ),
             ],

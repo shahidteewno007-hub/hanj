@@ -285,12 +285,12 @@ class _ShareCard extends StatelessWidget {
                               ),
                             ),
                             const SizedBox(width: 6),
-                            const Text(
+                            // The wordmark in Shippori Mincho (stage H2).
+                            Text(
                               'Hanj',
-                              style: TextStyle(
-                                color: Color(0xFFF5F0E8),
+                              style: AppTheme.shipporiMincho(
+                                color: const Color(0xFFF5F0E8),
                                 fontSize: 12,
-                                fontWeight: FontWeight.w700,
                                 letterSpacing: 0.5,
                               ),
                             ),
