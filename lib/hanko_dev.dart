@@ -18,8 +18,9 @@ import 'widgets/hanko_title_slip.dart';
 /// counts and ratings are illustrative, as in the spec's frames. Compare it
 /// with `design/mockups/looks/hanko.html`.
 ///
-/// It does load fonts: Jost and Shippori Mincho through `google_fonts`, and,
-/// on web, the engine's own CJK fallback for native titles.
+/// Shippori Mincho is the bundled Latin-only cut. It does fetch fonts: Jost
+/// through `google_fonts` and, on web, the engine's own CJK fallback for
+/// native titles.
 void main() {
   runApp(const HankoDevApp());
 }

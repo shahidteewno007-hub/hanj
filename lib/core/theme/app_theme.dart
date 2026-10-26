@@ -127,14 +127,18 @@ class AppTheme {
   static const double hankoDataSmallSize  = 11; // data runs 11–14 in Jost 500: episodes, dates, the crowd
 
   // Shippori Mincho, 600 only: hierarchy comes from size and colour.
-  // The bundled Latin-only Shippori cut replaces this once its download is approved.
+  // A bundled Latin-only cut (assets/fonts, 72 KB): no CJK, so native titles
+  // go through hankoNative. Shippori draws "…" as the centred Japanese
+  // ellipsis (⋯), so one-line Hanko titles use TextOverflow.fade, not
+  // ellipsis, as the mockup does.
   static TextStyle hankoSerif({
     double fontSize = hankoSectionSize,
     Color color = hankoWashi,
     double? height,
     double letterSpacing = 0,
   }) =>
-      GoogleFonts.shipporiMincho(
+      TextStyle(
+        fontFamily: 'ShipporiMinchoLatin',
         fontSize: fontSize,
         fontWeight: FontWeight.w600,
         color: color,
