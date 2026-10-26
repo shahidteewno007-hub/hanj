@@ -97,7 +97,7 @@ class _AnilistImportScreenState extends State<AnilistImportScreen> {
       MediaListCollection(userName: $username, type: ANIME) {
         lists {
           entries {
-            status score progress
+            status score(format: POINT_10_DECIMAL) progress
             media {
               id title { romaji english }
               coverImage { large }
@@ -157,15 +157,25 @@ class _AnilistImportScreenState extends State<AnilistImportScreen> {
                 ? List<String>.from(media['genres']) : [],
           ),
           status: _mapAniListStatus(entry['status'] as String),
-          rating: (entry['score'] as num?) != null &&
-                  (entry['score'] as num) > 0
-              ? (entry['score'] as num).toDouble() : null,
+          rating: _halfStepRating(entry['score'] as num?),
           currentEpisode: entry['progress'] as int?,
         );
         if (mounted) setState(() => _imported++);
       }
     }
     if (mounted) setState(() { _isLoading = false; _isDone = true; });
+  }
+
+  // Hanj rates 1–10 in half steps (Detail's slider: 1.0 to 10.0, 18
+  // divisions). The query above asks for POINT_10_DECIMAL, so every score
+  // arrives on AniList's 0–10 decimal scale whatever format the list's
+  // owner uses (100-point, 10-point, 5-star, 3-smiley). Round it to the
+  // half step and keep it inside 1–10, since a 100-point 3 arrives as 0.3.
+  // 0 or absent means unrated, as before.
+  static double? _halfStepRating(num? score) {
+    if (score == null || score <= 0) return null;
+    final halfStep = (score * 2).round() / 2;
+    return halfStep.clamp(1.0, 10.0).toDouble();
   }
 
   Future<void> _importFromMAL(String username) async {
