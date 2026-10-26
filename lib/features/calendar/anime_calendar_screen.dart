@@ -21,6 +21,9 @@ class AnimeCalendarScreen extends StatefulWidget {
 class _AnimeCalendarScreenState extends State<AnimeCalendarScreen> {
   final _firestoreService = FirestoreService();
   bool _isLoading = true;
+  // Set when the last _loadSchedule failed, so an empty schedule can tell
+  // "nothing airs" apart from "nothing loaded".
+  bool _loadFailed = false;
   Map<String, List<Map<String, dynamic>>> _scheduleByDay = {};
   final Set<String> _remindersOn = {}; // animeId strings
 
@@ -80,7 +83,7 @@ class _AnimeCalendarScreenState extends State<AnimeCalendarScreen> {
   }
 
   Future<void> _loadSchedule() async {
-    setState(() => _isLoading = true);
+    setState(() { _isLoading = true; _loadFailed = false; });
     try {
       // Get user's watching list
       final snapshot =
@@ -183,7 +186,7 @@ class _AnimeCalendarScreenState extends State<AnimeCalendarScreen> {
         _isLoading = false;
       });
     } catch (e) {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) setState(() { _isLoading = false; _loadFailed = true; });
     }
   }
 
@@ -282,22 +285,28 @@ class _AnimeCalendarScreenState extends State<AnimeCalendarScreen> {
     final items = _scheduleByDay[dayKey] ?? [];
 
     if (items.isEmpty) {
+      // Nothing has loaded and the last fetch failed. Without this every
+      // day read "No episodes today", which isn't something the app knows.
+      final failed = _loadFailed && _scheduleByDay.isEmpty;
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             const Text('📅', style: TextStyle(fontSize: 56)),
             const SizedBox(height: 20),
-            const Text(
-              'No episodes today',
-              style: TextStyle(
+            Text(
+              failed ? 'The schedule can\'t load right now' : 'No episodes today',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
                   color: Colors.white,
                   fontSize: 18,
                   fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
             Text(
-              'Check other days or add more\nanime to your watching list',
+              failed
+                  ? 'Try again shortly.'
+                  : 'Check other days or add more\nanime to your watching list',
               textAlign: TextAlign.center,
               style: TextStyle(
                   color: Colors.white.withValues(alpha: 0.5), fontSize: 14),
