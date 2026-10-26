@@ -253,6 +253,10 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
       _nextEpisodeNum = episode;
     });
     _timeUntilAiring.value = dt.difference(DateTime.now());
+    // D17: one timer per screen. A second start used to leave the first
+    // ticking, uncancelled, after the screen closed, since dispose() cancels
+    // only the latest. Cancel before starting, whoever calls this.
+    _countdownTimer?.cancel();
     // Tick every second
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
