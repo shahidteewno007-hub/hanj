@@ -53,6 +53,9 @@ flutter:
     # references either and both are the pre-2026-09 mark. Undeclared so they
     # stop shipping; the files stay on disk deliberately (never delete), so
     # re-adding a line here is all it takes to bring one back.
+    # The bundled font's licence ships with it and shows on the licence page
+    # (registered in main.dart), as the SIL OFL requires.
+    - assets/fonts/ShipporiMincho-OFL.txt
   fonts:
     # Hanko's heading face: a Latin-only cut of Shippori Mincho 600 (72 KB;
     # SIL OFL 1.1, licence beside it in assets/fonts). No CJK glyphs.

@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -184,6 +185,15 @@ Future<void> main() async {
         ));
       });
     }
+  });
+
+  // The bundled Shippori Mincho cut's licence (SIL OFL 1.1) travels with the
+  // font and appears on Flutter's licence page. Read only when that page opens.
+  LicenseRegistry.addLicense(() async* {
+    yield LicenseEntryWithLineBreaks(
+      const ['Shippori Mincho'],
+      await rootBundle.loadString('assets/fonts/ShipporiMincho-OFL.txt'),
+    );
   });
 
   runApp(const HanjApp());
