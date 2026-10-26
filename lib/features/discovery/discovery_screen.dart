@@ -234,6 +234,10 @@ class _FilteredAnimeTabState extends State<_FilteredAnimeTab>
   // Outcome of the last filtered fetch (null = AniList answered), so a
   // failed one doesn't read as "No results found".
   int? _failStatus;
+  // Set when the last unfiltered load came back empty. A sort over all of
+  // AniList always has titles, so that means nothing loaded, not that
+  // nothing matched. Which way it failed isn't known here, see _load.
+  bool _unfilteredFailed = false;
 
   static const _genres = [
     'Action', 'Adventure', 'Comedy', 'Drama', 'Fantasy',
@@ -321,6 +325,11 @@ class _FilteredAnimeTabState extends State<_FilteredAnimeTab>
       }
       _showingFiltered = hasFilters;
       _failStatus = failStatus;
+      // Not read from AnilistService.lastFailStatus. With OfflineCacheService
+      // in between, the flag holds this fetch's outcome only while the cache
+      // never awaits between the request and an empty return, and a 200 that
+      // yields no titles leaves it null anyway.
+      _unfilteredFailed = !hasFilters && results.isEmpty;
       _isLoading = false;
     });
   }
@@ -449,7 +458,11 @@ class _FilteredAnimeTabState extends State<_FilteredAnimeTab>
                       color: AppTheme.primary, strokeWidth: 2))
               : _animeList.isEmpty
                   ? _EmptyState(
-                      failMessage: AnilistService.messageFor(_failStatus))
+                      // Unfiltered there is nothing to adjust, yet this read
+                      // "No results found / Try adjusting your filters".
+                      failMessage: _unfilteredFailed
+                          ? 'Fresh data can\'t load right now. Try again shortly.'
+                          : AnilistService.messageFor(_failStatus))
                   : GridView.builder(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 16, vertical: 4),
