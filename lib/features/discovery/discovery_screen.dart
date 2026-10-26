@@ -22,7 +22,15 @@ import 'emotional_categories.dart';
 
 class DiscoveryScreen extends StatefulWidget {
   final String? initialTab;
-  const DiscoveryScreen({super.key, this.initialTab});
+  /// True when pushed as a route (Home's "MORE →") rather than shown as the
+  /// Discover tab. A pushed copy covers the nav bar and, on web, has no
+  /// system back gesture, so it draws its own way back.
+  final bool showBackButton;
+  const DiscoveryScreen({
+    super.key,
+    this.initialTab,
+    this.showBackButton = false,
+  });
 
   @override
   State<DiscoveryScreen> createState() => _DiscoveryScreenState();
@@ -68,6 +76,13 @@ class _DiscoveryScreenState extends State<DiscoveryScreen>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  if (widget.showBackButton)
+                    IconButton(
+                      icon: const Icon(Icons.arrow_back_rounded,
+                          color: AppTheme.textPrimary, size: 20),
+                      tooltip: 'Back',
+                      onPressed: () => Navigator.pop(context),
+                    ),
                   Text(
                     'Discover',
                     style: AppTheme.serif(

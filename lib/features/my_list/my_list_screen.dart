@@ -9,7 +9,15 @@ import '../../models/anime_model.dart';
 
 class MyListScreen extends StatefulWidget {
   final String? initialStatus;
-  const MyListScreen({super.key, this.initialStatus});
+  /// True when pushed as a route (Home's "SEE ALL →") rather than shown as
+  /// the List tab. A pushed copy covers the nav bar and, on web, has no
+  /// system back gesture, so it draws its own way back.
+  final bool showBackButton;
+  const MyListScreen({
+    super.key,
+    this.initialStatus,
+    this.showBackButton = false,
+  });
 
   @override
   State<MyListScreen> createState() => _MyListScreenState();
@@ -178,6 +186,13 @@ class _MyListScreenState extends State<MyListScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
+                            if (widget.showBackButton)
+                              IconButton(
+                                icon: const Icon(Icons.arrow_back_rounded,
+                                    color: AppTheme.textPrimary, size: 20),
+                                tooltip: 'Back',
+                                onPressed: () => Navigator.pop(context),
+                              ),
                             Text('My List',
                                 style: AppTheme.serif(
                                     fontSize: 28,

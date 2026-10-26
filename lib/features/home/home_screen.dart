@@ -387,7 +387,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         child: GestureDetector(
                           onTap: () => Navigator.push(context,
                               MaterialPageRoute(
-                                  builder: (_) => const MyListScreen(initialStatus: 'WATCHING'))),
+                                  builder: (_) => const MyListScreen(initialStatus: 'WATCHING', showBackButton: true))),
                           child: Text(
                             'SEE ALL →',
                             style: AppTheme.mono(
@@ -448,7 +448,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         child: GestureDetector(
                           onTap: () => Navigator.push(context,
                               MaterialPageRoute(
-                                  builder: (_) => const MyListScreen(initialStatus: 'PLAN_TO_WATCH'))),
+                                  builder: (_) => const MyListScreen(initialStatus: 'PLAN_TO_WATCH', showBackButton: true))),
                           child: Text(
                             'SEE ALL →',
                             style: AppTheme.mono(
@@ -501,7 +501,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                       GestureDetector(
                         onTap: () => Navigator.push(context,
-                            MaterialPageRoute(builder: (_) => const DiscoveryScreen(initialTab: 'TRENDING'))),
+                            MaterialPageRoute(builder: (_) => const DiscoveryScreen(initialTab: 'TRENDING', showBackButton: true))),
                         child: Text('MORE →',
                             style: AppTheme.mono(
                                 fontSize: 11,
