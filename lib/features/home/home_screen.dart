@@ -712,9 +712,11 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       );
     }
+    // count is how many WATCHING shows are on the list, not episodes that
+    // aired, so the headline says that.
     return RichText(
       text: TextSpan(
-        text: '$count new episode${count > 1 ? 's' : ''} aired\ntonight.',
+        text: 'You\'re watching\n$count show${count > 1 ? 's' : ''}.',
         style: AppTheme.serif(
             fontSize: 28,
             weight: FontWeight.w700,
