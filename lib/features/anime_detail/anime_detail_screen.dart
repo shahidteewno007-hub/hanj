@@ -145,9 +145,12 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
   Future<void> _loadData() async {
     final id     = int.parse(widget.anime.id);
     try {
-      final status = await _firestoreService.getAnimeStatus(id);
-      final rating = await _firestoreService.getUserRating(id);
-      final ep     = await _firestoreService.getEpisodeProgress(id);
+      // One read of the list entry (H3 d). It used to be three sequential
+      // reads of this same document, one per field.
+      final entry  = await _firestoreService.getAnimeDetails(id);
+      final status = entry?['status'] as String?;
+      final rating = (entry?['userRating'] as num?)?.toDouble();
+      final ep     = (entry?['currentEpisode'] as num?)?.toInt();
       if (mounted) setState(() { _currentStatus = status; _userRating = rating; _currentEpisode = ep; });
     } catch (_) {
       // Offline, a title that isn't on the list has no cached animeList doc,
