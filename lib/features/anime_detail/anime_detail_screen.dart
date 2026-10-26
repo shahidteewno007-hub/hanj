@@ -12,6 +12,7 @@ import 'package:gal/gal.dart';
 import 'package:http/http.dart' as http;
 
 import '../../widgets/anilist_saved_note.dart';
+import '../../widgets/hanko_seal.dart';
 import '../../widgets/hanko_title_slip.dart';
 
 import '../../core/theme/app_theme.dart';
@@ -51,6 +52,12 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
   String? _currentStatus;
   double? _userRating;
   int?    _currentEpisode;
+  // When the rating was last saved (ratedAt), for the date beside the seal.
+  // Null for ratings made during an import, and for one still saving.
+  DateTime? _ratedAt;
+  // False until the list entry has been read, so the seal's slot and the
+  // status row don't show "not on your list" before anyone knows.
+  bool _entryLoaded = false;
   bool    _isLoading       = false;
   int     _selectedTab     = 0;
   int     _swipeDirection  = 1; // 1 = left-to-right, -1 = right-to-left
@@ -165,11 +172,18 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
       final status = entry?['status'] as String?;
       final rating = (entry?['userRating'] as num?)?.toDouble();
       final ep     = (entry?['currentEpisode'] as num?)?.toInt();
-      if (mounted) setState(() { _currentStatus = status; _userRating = rating; _currentEpisode = ep; });
+      final ratedAt = (entry?['ratedAt'] as Timestamp?)?.toDate();
+      if (mounted) {
+        setState(() {
+          _currentStatus = status; _userRating = rating; _currentEpisode = ep;
+          _ratedAt = ratedAt; _entryLoaded = true;
+        });
+      }
     } catch (_) {
       // Offline, a title that isn't on the list has no cached animeList doc,
       // so get() throws `unavailable`. Uncaught, that went to Crashlytics as
       // fatal on every such open. The screen just shows it as not on the list.
+      if (mounted) setState(() => _entryLoaded = true);
     }
   }
 
@@ -447,7 +461,7 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
       setState(() => _isLoading = true);
       await _firestoreService.removeAnimeFromList(int.parse(widget.anime.id));
       if (!mounted) return;
-      setState(() { _currentStatus = null; _userRating = null; _currentEpisode = null; _isLoading = false; });
+      setState(() { _currentStatus = null; _userRating = null; _currentEpisode = null; _ratedAt = null; _isLoading = false; });
     } else {
       // Sheet already saved to Firestore — just update UI immediately
       setState(() => _currentStatus = result);
@@ -930,6 +944,10 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
           episodes: anime.episodes,
           duration: _staffData?['duration'] as int?,
           airing: anime.status == 'RELEASING',
+          entryLoaded: _entryLoaded,
+          status: _currentStatus,
+          rating: _userRating,
+          ratedAt: _ratedAt,
           onCover: cover == null
               ? null
               : () => _openGallery(context,
@@ -974,6 +992,10 @@ class HankoDetailHeader extends StatelessWidget {
     this.episodes,
     this.duration,
     this.airing = false,
+    this.entryLoaded = true,
+    this.status,
+    this.rating,
+    this.ratedAt,
     this.onCover,
   });
 
@@ -1009,6 +1031,21 @@ class HankoDetailHeader extends StatelessWidget {
 
   /// Still airing (AniList's RELEASING).
   final bool airing;
+
+  /// Whether your list entry has been read. Until it has, the seal's slot
+  /// stays empty rather than guess.
+  final bool entryLoaded;
+
+  /// Your list status (WATCHING, COMPLETED …), or null when the show isn't
+  /// on your list.
+  final String? status;
+
+  /// Your rating as stored. An imported one can be off the 1–10 scale (D20);
+  /// the seal shows it as it is.
+  final double? rating;
+
+  /// When you rated it; null for a rating made during an import.
+  final DateTime? ratedAt;
 
   /// Opens the gallery.
   final VoidCallback? onCover;
@@ -1063,10 +1100,52 @@ class HankoDetailHeader extends StatelessWidget {
         : '$episodes ${episodes == 1 ? 'episode' : 'episodes'}';
     return [
       [?formatWord, if (seasonWord.isNotEmpty) seasonWord].join(', '),
-      if (airing) count == null ? 'Airing' : '$count, airing' else ?count,
+      ?count,
+      if (airing) 'Airing',
       if (duration != null && duration > 0)
         film || episodes == 1 ? '$duration min' : '$duration min each',
     ].where((s) => s.isNotEmpty).toList();
+  }
+
+  static const _months = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  ];
+  static const _monthNames = [
+    'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August',
+    'September', 'October', 'November', 'December',
+  ];
+
+  /// "3 Oct", or "3 Oct 2025" outside this year; [long] spells the month.
+  static String _date(DateTime d, {bool long = false}) {
+    final month = (long ? _monthNames : _months)[d.month - 1];
+    return d.year == DateTime.now().year ? '${d.day} $month' : '${d.day} $month ${d.year}';
+  }
+
+  /// Your seal, pressed across the print's edge: filled with your rating, or
+  /// the empty dashed slot where it will go. Nothing until the entry is read.
+  Widget _seal() {
+    if (!entryLoaded) return const SizedBox.square(dimension: 56);
+    final rating = this.rating;
+    if (status == null) {
+      return const HankoSeal.unrated(size: 56, showAdd: false, semanticLabel: 'Not on your list');
+    }
+    if (rating == null) return const HankoSeal.unrated(size: 56, showAdd: false);
+    final when = ratedAt;
+    return HankoSeal.score(
+      rating,
+      size: 56,
+      semanticLabel: 'Your rating, ${HankoSeal.formatScore(rating)}'
+          '${when == null ? '' : ', rated ${_date(when, long: true)}'}',
+    );
+  }
+
+  /// The words beside the seal: whose it is and when, or what to do.
+  String? get _caption {
+    if (!entryLoaded) return null;
+    if (status == null) return 'Add to your list to rate';
+    if (rating == null) return 'Rate it';
+    final when = ratedAt;
+    return when == null ? 'Your rating' : 'Yours\n${_date(when)}';
   }
 
   @override
@@ -1074,6 +1153,10 @@ class HankoDetailHeader extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final g = geometryFor(constraints.maxWidth);
+        // The caption's top sits 14 px below the seal's, as drawn, whether it
+        // runs to one line or two; larger text lets it grow upward.
+        final captionLine = MediaQuery.textScalerOf(context).scale(AppTheme.hankoDataSmallSize) * 1.35;
+        final caption = _caption;
         return Stack(
           children: [
             Positioned(
@@ -1092,32 +1175,79 @@ class HankoDetailHeader extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const SizedBox(height: 4),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  Stack(
+                    clipBehavior: Clip.none,
                     children: [
-                      _HankoPrint(
-                        width: g.printWidth,
-                        height: g.printHeight,
-                        title: title,
-                        coverUrl: coverUrl,
-                        sharpCoverUrl: sharpCoverUrl,
-                        coverColor: coverColor,
-                        nativeTitle: nativeTitle,
-                        onTap: onCover,
-                      ),
-                      const SizedBox(width: 20),
-                      Expanded(
-                        child: _HankoColophon(
-                          studio: studio,
-                          facts: _factsFor(
-                            format: format,
-                            season: season,
-                            seasonYear: seasonYear,
-                            episodes: episodes,
-                            duration: duration,
-                            airing: airing,
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _HankoPrint(
+                            width: g.printWidth,
+                            height: g.printHeight,
+                            title: title,
+                            coverUrl: coverUrl,
+                            sharpCoverUrl: sharpCoverUrl,
+                            coverColor: coverColor,
+                            nativeTitle: nativeTitle,
+                            onTap: onCover,
                           ),
-                        ),
+                          const SizedBox(width: 20),
+                          Expanded(
+                            // At least the print's height, so the caption can
+                            // sit at its foot beside the seal; taller only if
+                            // large text makes the facts run long.
+                            child: ConstrainedBox(
+                              constraints: BoxConstraints(minHeight: g.printHeight),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  _HankoColophon(
+                                    studio: studio,
+                                    facts: _factsFor(
+                                      format: format,
+                                      season: season,
+                                      seasonYear: seasonYear,
+                                      episodes: episodes,
+                                      duration: duration,
+                                      airing: airing,
+                                    ),
+                                  ),
+                                  Padding(
+                                    // Clear of the seal's 8 px past the print
+                                    // and 10 px from it.
+                                    padding: EdgeInsets.only(
+                                      left: 18,
+                                      top: 8,
+                                      bottom: math.max(0.0, 54 - 2 * captionLine),
+                                    ),
+                                    child: ConstrainedBox(
+                                      constraints: BoxConstraints(minHeight: 2 * captionLine),
+                                      child: caption == null
+                                          ? null
+                                          : ExcludeSemantics(
+                                              excluding: rating != null,
+                                              child: Text(
+                                                caption,
+                                                style: AppTheme.hankoSans(
+                                                  fontSize: AppTheme.hankoDataSmallSize,
+                                                  color: AppTheme.hankoStoneHi,
+                                                  height: 1.35,
+                                                ),
+                                              ),
+                                            ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      Positioned(
+                        left: g.printWidth - 28,
+                        top: g.printHeight - 68,
+                        child: _seal(),
                       ),
                     ],
                   ),

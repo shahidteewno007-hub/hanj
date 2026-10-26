@@ -830,6 +830,7 @@ class _DetailHeaders extends StatelessWidget {
 
   static const _frieren = Color(0xFFBBF1A1);
   static const _reborn = Color(0xFFD6BB78);
+  static const _perfectBlue = Color(0xFF1A356B);
 
   @override
   Widget build(BuildContext context) {
@@ -839,9 +840,10 @@ class _DetailHeaders extends StatelessWidget {
       children: [
         _phone(
           'Frieren: Beyond Journey’s End (AniList 154587). Finished; its '
-              'native title fits one column.',
+              'native title fits one column. Watching and rated 8.5 on 3 '
+              'October: illustrative.',
           _frieren,
-          const HankoDetailHeader(
+          HankoDetailHeader(
             title: 'Frieren: Beyond Journey’s End',
             nativeTitle: '葬送のフリーレン',
             coverColor: _frieren,
@@ -851,12 +853,15 @@ class _DetailHeaders extends StatelessWidget {
             seasonYear: 2023,
             episodes: 28,
             duration: 24,
+            status: 'WATCHING',
+            rating: 8.5,
+            ratedAt: DateTime(2026, 10, 3),
           ),
         ),
         _phone(
           'Reborn as a Space Mercenary (AniList 186541). Airing; a 41-character '
               'native title in columns, and an English title past two lines '
-              'split at its colon.',
+              'split at its colon. On the list, not rated: illustrative.',
           _reborn,
           const HankoDetailHeader(
             title: 'Reborn as a Space Mercenary: I Woke Up Piloting the Strongest Starship!',
@@ -869,6 +874,23 @@ class _DetailHeaders extends StatelessWidget {
             episodes: 13,
             duration: 24,
             airing: true,
+            status: 'PLAN_TO_WATCH',
+          ),
+        ),
+        _phone(
+          'Perfect Blue (AniList 437). A film on a dark cover; its native title '
+              'is Latin, so no slip. Not on the list.',
+          _perfectBlue,
+          const HankoDetailHeader(
+            title: 'Perfect Blue',
+            nativeTitle: 'PERFECT BLUE',
+            coverColor: _perfectBlue,
+            studio: 'MADHOUSE',
+            format: 'MOVIE',
+            season: 'WINTER',
+            seasonYear: 1998,
+            episodes: 1,
+            duration: 82,
           ),
         ),
       ],
