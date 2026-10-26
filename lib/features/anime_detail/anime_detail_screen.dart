@@ -834,6 +834,14 @@ class _TabBarDelegate extends SliverPersistentHeaderDelegate {
 
 // ── Overview Tab ─────────────────────────────────────────────
 class _OverviewTab extends StatelessWidget {
+  // ── Stat tiles are hidden ──────────────────────────────────
+  // "MEMBERS watching" is the average score as a percentage, "TRENDING vs
+  // last wk" a fixed +18% for anything airing, and "EPISODES this season"
+  // the total, which the score row and INFORMATION already show. The row is
+  // kept intact below. Don't set this to true until every tile shows a real
+  // number.
+  static const bool _showStatTiles = false;
+
   final Anime anime;
   final Map<String, dynamic>? staffData;
   final bool isLoadingStaff;
@@ -894,15 +902,17 @@ class _OverviewTab extends StatelessWidget {
           const SizedBox(height: 28),
         ],
 
-        // Stat tiles
-        Row(children: [
-          Expanded(child: _StatBox(value: anime.averageScore != null ? '${(anime.averageScore! / 10 * 10).round()}%' : '—', label: 'MEMBERS\nwatching', dark: true)),
-          const SizedBox(width: 8),
-          Expanded(child: _StatBox(value: anime.episodes != null ? '${anime.episodes}' : '—', label: 'EPISODES\nthis season')),
-          const SizedBox(width: 8),
-          Expanded(child: _StatBox(value: anime.status == 'RELEASING' ? '+18%' : '—', label: 'TRENDING\nvs last wk', accent: true)),
-        ]),
-        const SizedBox(height: 28),
+        // Stat tiles (hidden, see _showStatTiles)
+        if (_showStatTiles) ...[
+          Row(children: [
+            Expanded(child: _StatBox(value: anime.averageScore != null ? '${(anime.averageScore! / 10 * 10).round()}%' : '—', label: 'MEMBERS\nwatching', dark: true)),
+            const SizedBox(width: 8),
+            Expanded(child: _StatBox(value: anime.episodes != null ? '${anime.episodes}' : '—', label: 'EPISODES\nthis season')),
+            const SizedBox(width: 8),
+            Expanded(child: _StatBox(value: anime.status == 'RELEASING' ? '+18%' : '—', label: 'TRENDING\nvs last wk', accent: true)),
+          ]),
+          const SizedBox(height: 28),
+        ],
 
         // Themes
         if (anime.genres.isNotEmpty) ...[
