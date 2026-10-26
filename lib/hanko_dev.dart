@@ -580,16 +580,16 @@ class _Slips extends StatelessWidget {
       runSpacing: 20,
       children: [
         _Hero(
-          label: 'Frieren: Beyond Journey’s End. 8 characters at 17 px; '
-              'ー turns.',
+          label: 'Frieren: Beyond Journey’s End. Eight characters fit one 17 px '
+              'column; the long vowel mark turns.',
           cover: const Color(0xFFBBF1A1),
           nativeTitle: '葬送のフリーレン',
           seal: HankoSeal.score(8.5, size: 56),
           caption: 'Yours\n3 Oct',
         ),
         const _Hero(
-          label: 'Reborn as a Space Mercenary. 41 characters: 13 px in '
-              'columns; 、 takes its vertical form.',
+          label: 'Reborn as a Space Mercenary. 41 characters wrap into 13 px '
+              'columns; the comma takes its vertical form.',
           cover: Color(0xFFD6BB78),
           nativeTitle: '目覚めたら最強装備と宇宙船持ちだったので、一戸建て目指して傭兵として自由に生きたい',
           seal: HankoSeal.unrated(size: 56),
