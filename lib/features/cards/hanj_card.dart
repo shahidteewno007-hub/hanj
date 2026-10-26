@@ -193,7 +193,6 @@ class _CommonCard extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                         style: AppTheme.shipporiMincho(
                           fontSize: w * 0.09,
-                          fontStyle: FontStyle.italic,
                           color: Colors.white,
                           fontWeight: FontWeight.w600,
                           height: 1.15,
@@ -286,7 +285,7 @@ class _RareCard extends StatelessWidget {
                     children: [
                       Text(card.name,
                         maxLines: 2, overflow: TextOverflow.ellipsis,
-                        style: AppTheme.shipporiMincho(fontSize: w * 0.09, fontStyle: FontStyle.italic, color: Colors.white, fontWeight: FontWeight.w600, height: 1.15)),
+                        style: AppTheme.shipporiMincho(fontSize: w * 0.09, color: Colors.white, fontWeight: FontWeight.w600, height: 1.15)),
                       const SizedBox(height: 4),
                       Text(card.description,
                         maxLines: 2, overflow: TextOverflow.ellipsis,
@@ -379,7 +378,7 @@ class _EpicCard extends StatelessWidget {
                     children: [
                       Text(card.name,
                         maxLines: 2, overflow: TextOverflow.ellipsis,
-                        style: AppTheme.shipporiMincho(fontSize: w * 0.09, fontStyle: FontStyle.italic, color: Colors.white, fontWeight: FontWeight.w600, height: 1.15)),
+                        style: AppTheme.shipporiMincho(fontSize: w * 0.09, color: Colors.white, fontWeight: FontWeight.w600, height: 1.15)),
                       const SizedBox(height: 4),
                       Text(card.description,
                         maxLines: 2, overflow: TextOverflow.ellipsis,
@@ -511,7 +510,7 @@ class _LegendaryCard extends StatelessWidget {
                       // Card name
                       Text(
                         card.name,
-                        style: AppTheme.shipporiMincho(fontSize: w * 0.10, fontStyle: FontStyle.italic, color: gold, fontWeight: FontWeight.w700, height: 1.1),
+                        style: AppTheme.shipporiMincho(fontSize: w * 0.10, color: gold, fontWeight: FontWeight.w700, height: 1.1),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -702,7 +701,6 @@ class _SeasonalCard extends StatelessWidget {
                           card.name,
                           style: AppTheme.shipporiMincho(
                             fontSize: w * 0.10,
-                            fontStyle: FontStyle.italic,
                             color: const Color(0xFFCCEEDD),
                             fontWeight: FontWeight.w700,
                             height: 1.1),
@@ -781,7 +779,7 @@ class _LockedCard extends StatelessWidget {
                 const SizedBox(height: 10),
                 Text(
                   '???',
-                  style: AppTheme.shipporiMincho(fontSize: 28, fontStyle: FontStyle.italic, color: col.withOpacity(0.5), fontWeight: FontWeight.w600),
+                  style: AppTheme.shipporiMincho(fontSize: 28, color: col.withOpacity(0.5), fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 6),
                 Text(
