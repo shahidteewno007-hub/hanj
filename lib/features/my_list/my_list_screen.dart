@@ -153,6 +153,10 @@ class _MyListScreenState extends State<MyListScreen> {
         builder: (context, snapshot) {
           final allDocs = snapshot.data?.docs ?? [];
           final filtered = _filterAndSort(allDocs);
+          // No snapshot yet, or the read failed (an error arrives with no
+          // data). allDocs is empty either way, so the counts below would
+          // all be 0 for a list that may well have titles in it.
+          final loaded = snapshot.hasData;
 
           // Count per status
           final counts = <String, int>{'ALL': allDocs.length};
@@ -198,12 +202,20 @@ class _MyListScreenState extends State<MyListScreen> {
                                     fontSize: 28,
                                     weight: FontWeight.w700)),
                             const SizedBox(height: 4),
-                            Text(
-                              '${allDocs.length} TITLES · ${_formatWatchTime(totalEps)}',
-                              style: AppTheme.mono(
-                                  fontSize: 11,
-                                  color: AppTheme.textMuted,
-                                  letterSpacing: 0.8),
+                            // Hidden, not removed, until the list has loaded,
+                            // so the header doesn't jump when it does.
+                            Visibility(
+                              visible: loaded,
+                              maintainSize: true,
+                              maintainAnimation: true,
+                              maintainState: true,
+                              child: Text(
+                                '${allDocs.length} TITLES · ${_formatWatchTime(totalEps)}',
+                                style: AppTheme.mono(
+                                    fontSize: 11,
+                                    color: AppTheme.textMuted,
+                                    letterSpacing: 0.8),
+                              ),
                             ),
                           ],
                         ),
@@ -331,25 +343,33 @@ class _MyListScreenState extends State<MyListScreen> {
                                     ),
                                   ),
                                   const SizedBox(width: 6),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 6, vertical: 2),
-                                    decoration: BoxDecoration(
-                                      color: selected
-                                          ? AppTheme.textInverse
-                                              .withValues(alpha: 0.15)
-                                          : AppTheme.surfaceMid,
-                                      borderRadius:
-                                          BorderRadius.circular(10),
-                                    ),
-                                    child: Text(
-                                      '$count',
-                                      style: AppTheme.mono(
-                                        fontSize: 10,
-                                        weight: FontWeight.w600,
+                                  // Same as the header: no count until the
+                                  // list has loaded, keeping the chip's width.
+                                  Visibility(
+                                    visible: loaded,
+                                    maintainSize: true,
+                                    maintainAnimation: true,
+                                    maintainState: true,
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(
                                         color: selected
                                             ? AppTheme.textInverse
-                                            : AppTheme.textMuted,
+                                                .withValues(alpha: 0.15)
+                                            : AppTheme.surfaceMid,
+                                        borderRadius:
+                                            BorderRadius.circular(10),
+                                      ),
+                                      child: Text(
+                                        '$count',
+                                        style: AppTheme.mono(
+                                          fontSize: 10,
+                                          weight: FontWeight.w600,
+                                          color: selected
+                                              ? AppTheme.textInverse
+                                              : AppTheme.textMuted,
+                                        ),
                                       ),
                                     ),
                                   ),
