@@ -22,7 +22,15 @@ import 'emotional_categories.dart';
 
 class DiscoveryScreen extends StatefulWidget {
   final String? initialTab;
-  const DiscoveryScreen({super.key, this.initialTab});
+  /// True when pushed as a route (Home's "MORE →") rather than shown as the
+  /// Discover tab. A pushed copy covers the nav bar and, on web, has no
+  /// system back gesture, so it draws its own way back.
+  final bool showBackButton;
+  const DiscoveryScreen({
+    super.key,
+    this.initialTab,
+    this.showBackButton = false,
+  });
 
   @override
   State<DiscoveryScreen> createState() => _DiscoveryScreenState();
@@ -68,6 +76,13 @@ class _DiscoveryScreenState extends State<DiscoveryScreen>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  if (widget.showBackButton)
+                    IconButton(
+                      icon: const Icon(Icons.arrow_back_rounded,
+                          color: AppTheme.textPrimary, size: 20),
+                      tooltip: 'Back',
+                      onPressed: () => Navigator.pop(context),
+                    ),
                   Text(
                     'Discover',
                     style: AppTheme.serif(
@@ -210,6 +225,20 @@ class _FilteredAnimeTabState extends State<_FilteredAnimeTab>
   String? _selectedFormat;
   int? _selectedYear;
 
+  // Whether _animeList came from a filtered query. The grid only keeps a
+  // list on screen while it matches the filter chips above it.
+  bool _showingFiltered = false;
+  // Bumped by each _load, so an answer that lands after a newer request
+  // (filters changed again meanwhile) is dropped, not shown.
+  int _loadSeq = 0;
+  // Outcome of the last filtered fetch (null = AniList answered), so a
+  // failed one doesn't read as "No results found".
+  int? _failStatus;
+  // Set when the last unfiltered load came back empty. A sort over all of
+  // AniList always has titles, so that means nothing loaded, not that
+  // nothing matched. Which way it failed isn't known here, see _load.
+  bool _unfilteredFailed = false;
+
   static const _genres = [
     'Action', 'Adventure', 'Comedy', 'Drama', 'Fantasy',
     'Horror', 'Mystery', 'Romance', 'Sci-Fi', 'Slice of Life',
@@ -233,13 +262,19 @@ class _FilteredAnimeTabState extends State<_FilteredAnimeTab>
   }
 
   Future<void> _load() async {
-    // Only show full spinner if we have nothing to display yet
-    if (_animeList.isEmpty) setState(() => _isLoading = true);
+    final seq = ++_loadSeq;
 
     // When no filters are active, use the offline cache (with stale fallback)
     final hasFilters = _selectedGenre != null || _selectedYear != null || _selectedFormat != null;
 
+    // Full spinner when there's nothing to display yet, or when what's on
+    // screen was fetched for other filters than the ones now applied.
+    if (_animeList.isEmpty || hasFilters || _showingFiltered) {
+      setState(() => _isLoading = true);
+    }
+
     List<Anime> results;
+    int? failStatus;
     if (!hasFilters) {
       final cache = OfflineCacheService.instance;
       switch (widget.sort) {
@@ -265,16 +300,36 @@ class _FilteredAnimeTabState extends State<_FilteredAnimeTab>
           format: _selectedFormat,
           sort: widget.sort,
         );
+        // searchAnime has no await after its request, so the flag still
+        // holds this query's own outcome here.
+        failStatus = AnilistService.lastFailStatus;
       } catch (_) {
         results = [];
       }
     }
 
-    if (mounted) setState(() {
-      if (results.isNotEmpty) {
+    // A newer _load started while this one waited; its answer wins.
+    if (!mounted || seq != _loadSeq) return;
+    setState(() {
+      if (hasFilters) {
+        // A filtered answer always replaces the grid, empty or not. Keeping
+        // the previous list here left unfiltered results under the chips.
         _animeList = results;
-        if (!hasFilters) _staticCache[widget.sort] = results;
+      } else if (results.isNotEmpty) {
+        _animeList = results;
+        _staticCache[widget.sort] = results;
+      } else if (_showingFiltered) {
+        // Filters just cleared and nothing came back: fall back to the last
+        // unfiltered list rather than keep the filtered one on screen.
+        _animeList = _staticCache[widget.sort] ?? [];
       }
+      _showingFiltered = hasFilters;
+      _failStatus = failStatus;
+      // Not read from AnilistService.lastFailStatus. With OfflineCacheService
+      // in between, the flag holds this fetch's outcome only while the cache
+      // never awaits between the request and an empty return, and a 200 that
+      // yields no titles leaves it null anyway.
+      _unfilteredFailed = !hasFilters && results.isEmpty;
       _isLoading = false;
     });
   }
@@ -331,7 +386,7 @@ class _FilteredAnimeTabState extends State<_FilteredAnimeTab>
                           ),
                         if (_selectedFormat != null)
                           _ActiveFilterChip(
-                            label: _selectedFormat!,
+                            label: HanjFilterSheet.formatLabel(_selectedFormat!),
                             onRemove: () {
                               setState(() => _selectedFormat = null);
                               _load();
@@ -402,7 +457,12 @@ class _FilteredAnimeTabState extends State<_FilteredAnimeTab>
                   child: CircularProgressIndicator(
                       color: AppTheme.primary, strokeWidth: 2))
               : _animeList.isEmpty
-                  ? _EmptyState()
+                  ? _EmptyState(
+                      // Unfiltered there is nothing to adjust, yet this read
+                      // "No results found / Try adjusting your filters".
+                      failMessage: _unfilteredFailed
+                          ? 'Fresh data can\'t load right now. Try again shortly.'
+                          : AnilistService.messageFor(_failStatus))
                   : GridView.builder(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 16, vertical: 4),
@@ -1732,6 +1792,11 @@ class _AnimeCardState extends State<_AnimeCard> {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _EmptyState extends StatelessWidget {
+  // Set when the fetch behind the empty grid failed (AnilistService
+  // .messageFor), so the grid doesn't claim the query had no matches.
+  final String? failMessage;
+  const _EmptyState({this.failMessage});
+
   @override
   Widget build(BuildContext context) => Center(
         child: Column(
@@ -1740,13 +1805,14 @@ class _EmptyState extends StatelessWidget {
             const Icon(Icons.search_off_rounded,
                 size: 56, color: AppTheme.textMuted),
             const SizedBox(height: 12),
-            Text('No results found',
+            Text(failMessage == null ? 'No results found' : 'Something went wrong',
                 style: AppTheme.sans(
                     fontSize: 15,
                     color: AppTheme.textSecondary,
                     weight: FontWeight.w500)),
             const SizedBox(height: 4),
-            Text('Try adjusting your filters',
+            Text(failMessage ?? 'Try adjusting your filters',
+                textAlign: TextAlign.center,
                 style:
                     AppTheme.mono(fontSize: 11, color: AppTheme.textMuted)),
           ],

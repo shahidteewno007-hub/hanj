@@ -85,9 +85,9 @@ These elements are Hanj's established design system, which `CLAUDE.md` records a
 
 - layout philosophy, imagery treatment, density, motion and component language;
 - how the three type roles are scaled, weighted and ranked (for example, Playfair-led and editorial versus Space Grotesk-led and data-forward);
-- the open colour layer: surface tones, how sparingly coral is spent, the gold accent's role, and the status colours.
+- how the existing colour tokens are applied: how sparingly coral is spent, the gold accent's role, which existing surface tone each layer uses, and how the status colours are shown.
 
-They are not three replacement palettes or three font sets. Replacements belong in an optional direction, described next.
+They change how the existing token values are used, never the values themselves. Changing a token's value (a new surface tone, a different status colour, a new radius) belongs in an optional direction, described next, and so does a replacement palette or font set.
 
 ### Shahid's instruction of 2026-10-26
 
@@ -111,6 +111,42 @@ What it means for you:
   - Say how CJK titles fall back.
 - **Still settled, not covered by the instruction:** the six card rarity tiers and the wing mark. HanjCard's square corners count as component styling, so you may question them in an optional direction.
 - **Nothing changes until Shahid approves.** Leave `app_theme.dart`, the design system and all application code alone until Shahid explicitly approves a direction under the rules in "Approval gates". The instruction itself is not an approval of any direction.
+
+### Shahid's instruction of 2026-10-26 on Letterboxd
+
+Shahid's words, verbatim:
+
+> we can also take inspiration from the letterboxd because what we are building is like letterboxd for anime, so any good aspects of letterboxd are welcome as well.
+
+What it means for you:
+
+- **Letterboxd's patterns are welcome.** This relaxes responsibility 7's "do not reproduce their interfaces" for Letterboxd. You may adopt any Letterboxd feature or interaction pattern that serves Hanj, for example:
+  - the diary with watch dates;
+  - ratings, reviews and likes;
+  - user lists and profile favourites;
+  - stats and a year in review;
+  - friends' activity;
+  - a poster-first layout and quick log actions.
+- **Adapt them, don't trace them.** Rebuild each pattern in Hanj's own visual language rather than copying Letterboxd's screens pixel for pixel. Name the pattern you're borrowing and why it works.
+- **Letterboxd's brand stays off-limits.** That means its name, logo, wordmark, three-dot mark and its green / orange / blue colours, and its distinctive product names.
+- **Costs still apply.** A pattern that needs new data, a schema or rules change, a deploy or social features keeps those costs and approval gates.
+
+### Shahid's instruction of 2026-10-26 on new looks (second message that day)
+
+Shahid's words, verbatim:
+
+> I don't mind changing colors and fonts if you can give me the best new look of Hanj.
+
+Shahid also asked for the next mockups to be "polished and with real posters if possible".
+
+What it means for you:
+
+- **New looks are fair game.** A complete new look (palette, fonts, component styling) may now be explored as a full candidate, not only as an optional side note. Present looks so Shahid can compare them on the same screens and content. Give your honest recommendation of the best one.
+- **Still not implementation.** Nothing in the design system or application code changes until Shahid explicitly approves a look and a stage.
+- **Fonts stay implementable.** Fonts must exist in `google_fonts` 8.1.0. State the payload, how CJK titles fall back, and the cost to the store listing and posted share cards.
+  - **Approved exception (Shahid, 2026-10-26):** Hanko's heading font ships as a bundled Latin-only cut of Shippori Mincho 600 (an asset plus a `fonts:` entry in `pubspec.yaml`). Native titles use the phone's own Japanese font.
+- **Still settled:** the name, the wing mark (it may be recoloured) and the six rarity tiers.
+- **Real posters in mockups.** Mockups may show real cover and banner art by hotlinking the AniList CDN URLs, which is the same display-time use the app makes. Never download, re-host or edit the images. Keep mockups local and don't publish them. Use real titles and metadata from AniList, fetched through the throttle rules (a handful of requests, spaced at least 2 s apart). Mark any invented content, such as friends' reviews or usernames, as illustrative.
 
 ## Known drift: verify before you rely on it
 

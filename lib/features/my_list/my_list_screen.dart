@@ -9,7 +9,15 @@ import '../../models/anime_model.dart';
 
 class MyListScreen extends StatefulWidget {
   final String? initialStatus;
-  const MyListScreen({super.key, this.initialStatus});
+  /// True when pushed as a route (Home's "SEE ALL →") rather than shown as
+  /// the List tab. A pushed copy covers the nav bar and, on web, has no
+  /// system back gesture, so it draws its own way back.
+  final bool showBackButton;
+  const MyListScreen({
+    super.key,
+    this.initialStatus,
+    this.showBackButton = false,
+  });
 
   @override
   State<MyListScreen> createState() => _MyListScreenState();
@@ -145,6 +153,10 @@ class _MyListScreenState extends State<MyListScreen> {
         builder: (context, snapshot) {
           final allDocs = snapshot.data?.docs ?? [];
           final filtered = _filterAndSort(allDocs);
+          // No snapshot yet, or the read failed (an error arrives with no
+          // data). allDocs is empty either way, so the counts below would
+          // all be 0 for a list that may well have titles in it.
+          final loaded = snapshot.hasData;
 
           // Count per status
           final counts = <String, int>{'ALL': allDocs.length};
@@ -178,17 +190,32 @@ class _MyListScreenState extends State<MyListScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
+                            if (widget.showBackButton)
+                              IconButton(
+                                icon: const Icon(Icons.arrow_back_rounded,
+                                    color: AppTheme.textPrimary, size: 20),
+                                tooltip: 'Back',
+                                onPressed: () => Navigator.pop(context),
+                              ),
                             Text('My List',
                                 style: AppTheme.serif(
                                     fontSize: 28,
                                     weight: FontWeight.w700)),
                             const SizedBox(height: 4),
-                            Text(
-                              '${allDocs.length} TITLES · ${_formatWatchTime(totalEps)}',
-                              style: AppTheme.mono(
-                                  fontSize: 11,
-                                  color: AppTheme.textMuted,
-                                  letterSpacing: 0.8),
+                            // Hidden, not removed, until the list has loaded,
+                            // so the header doesn't jump when it does.
+                            Visibility(
+                              visible: loaded,
+                              maintainSize: true,
+                              maintainAnimation: true,
+                              maintainState: true,
+                              child: Text(
+                                '${allDocs.length} TITLES · ${_formatWatchTime(totalEps)}',
+                                style: AppTheme.mono(
+                                    fontSize: 11,
+                                    color: AppTheme.textMuted,
+                                    letterSpacing: 0.8),
+                              ),
                             ),
                           ],
                         ),
@@ -316,25 +343,33 @@ class _MyListScreenState extends State<MyListScreen> {
                                     ),
                                   ),
                                   const SizedBox(width: 6),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 6, vertical: 2),
-                                    decoration: BoxDecoration(
-                                      color: selected
-                                          ? AppTheme.textInverse
-                                              .withValues(alpha: 0.15)
-                                          : AppTheme.surfaceMid,
-                                      borderRadius:
-                                          BorderRadius.circular(10),
-                                    ),
-                                    child: Text(
-                                      '$count',
-                                      style: AppTheme.mono(
-                                        fontSize: 10,
-                                        weight: FontWeight.w600,
+                                  // Same as the header: no count until the
+                                  // list has loaded, keeping the chip's width.
+                                  Visibility(
+                                    visible: loaded,
+                                    maintainSize: true,
+                                    maintainAnimation: true,
+                                    maintainState: true,
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(
                                         color: selected
                                             ? AppTheme.textInverse
-                                            : AppTheme.textMuted,
+                                                .withValues(alpha: 0.15)
+                                            : AppTheme.surfaceMid,
+                                        borderRadius:
+                                            BorderRadius.circular(10),
+                                      ),
+                                      child: Text(
+                                        '$count',
+                                        style: AppTheme.mono(
+                                          fontSize: 10,
+                                          weight: FontWeight.w600,
+                                          color: selected
+                                              ? AppTheme.textInverse
+                                              : AppTheme.textMuted,
+                                        ),
                                       ),
                                     ),
                                   ),
@@ -357,6 +392,33 @@ class _MyListScreenState extends State<MyListScreen> {
                           color: AppTheme.primary, strokeWidth: 1.5),
                       ),
                     )
+                  // A failed read arrives with no data, so allDocs is empty;
+                  // without this it rendered as "Add some anime to get
+                  // started", as if the list itself were gone.
+                  : snapshot.hasError
+                      ? SliverFillRemaining(
+                          child: Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(Icons.error_outline_rounded,
+                                    color: AppTheme.textMuted, size: 48),
+                                const SizedBox(height: 16),
+                                Text('Your list can\'t load right now',
+                                    style: AppTheme.serif(
+                                        fontSize: 20,
+                                        weight: FontWeight.w600)),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Try again shortly.',
+                                  style: AppTheme.sans(
+                                      fontSize: 14,
+                                      color: AppTheme.textMuted),
+                                ),
+                              ],
+                            ),
+                          ),
+                        )
                   : filtered.isEmpty
                       ? SliverFillRemaining(
                           child: Center(

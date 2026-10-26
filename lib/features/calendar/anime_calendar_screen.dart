@@ -21,7 +21,15 @@ class AnimeCalendarScreen extends StatefulWidget {
 class _AnimeCalendarScreenState extends State<AnimeCalendarScreen> {
   final _firestoreService = FirestoreService();
   bool _isLoading = true;
+  // Set when the last _loadSchedule failed, so an empty schedule can tell
+  // "nothing airs" apart from "nothing loaded".
+  bool _loadFailed = false;
   Map<String, List<Map<String, dynamic>>> _scheduleByDay = {};
+  // Airing time of the last entry on a full page: the query fetches the next
+  // 50 airings across all of AniList, a few days' worth, so the schedule says
+  // nothing about later. Null when the page wasn't full (AniList had nothing
+  // further scheduled) or nothing was fetched.
+  DateTime? _scheduleEnds;
   final Set<String> _remindersOn = {}; // animeId strings
 
   static const _days = [
@@ -31,6 +39,11 @@ class _AnimeCalendarScreenState extends State<AnimeCalendarScreen> {
 
   static const _dayLabels = [
     'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'
+  ];
+
+  static const _dayNames = [
+    'Monday', 'Tuesday', 'Wednesday', 'Thursday',
+    'Friday', 'Saturday', 'Sunday'
   ];
 
   int _selectedDay = DateTime.now().weekday - 1; // 0=Mon
@@ -80,7 +93,7 @@ class _AnimeCalendarScreenState extends State<AnimeCalendarScreen> {
   }
 
   Future<void> _loadSchedule() async {
-    setState(() => _isLoading = true);
+    setState(() { _isLoading = true; _loadFailed = false; });
     try {
       // Get user's watching list
       final snapshot =
@@ -117,6 +130,9 @@ class _AnimeCalendarScreenState extends State<AnimeCalendarScreen> {
       ''';
 
       await AnilistService.throttle();
+      // 15 s, as in AnilistService._post. A stalled connection used to keep
+      // the spinner up for good; now the TimeoutException lands in the
+      // catch below like any other failed load.
       final response = await http.post(
         Uri.parse('https://graphql.anilist.co'),
         headers: {
@@ -124,7 +140,7 @@ class _AnimeCalendarScreenState extends State<AnimeCalendarScreen> {
           'Accept': 'application/json',
         },
         body: jsonEncode({'query': query, 'variables': {'page': 1}}),
-      );
+      ).timeout(const Duration(seconds: 15));
       AnilistService.noteLimits(response.headers);
       if (response.statusCode == 429) {
         AnilistService.backoff(
@@ -177,13 +193,19 @@ class _AnimeCalendarScreenState extends State<AnimeCalendarScreen> {
         }
       }
 
+      final ends = schedules.length >= 50
+          ? DateTime.fromMillisecondsSinceEpoch(
+              schedules.last['airingAt'] * 1000)
+          : null;
+
       if (!mounted) return;
       setState(() {
         _scheduleByDay = byDay;
+        _scheduleEnds = ends;
         _isLoading = false;
       });
     } catch (e) {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) setState(() { _isLoading = false; _loadFailed = true; });
     }
   }
 
@@ -282,22 +304,45 @@ class _AnimeCalendarScreenState extends State<AnimeCalendarScreen> {
     final items = _scheduleByDay[dayKey] ?? [];
 
     if (items.isEmpty) {
+      // Nothing has loaded and the last fetch failed. Without this every
+      // day read "No episodes today", which isn't something the app knows.
+      final failed = _loadFailed && _scheduleByDay.isEmpty;
+      // The copy names the selected day (it said "today" on every day), and
+      // says "No episodes" only if the loaded schedule runs past the end of
+      // that day's next occurrence. Beyond that the app hasn't looked.
+      final now = DateTime.now();
+      final isToday = _selectedDay == now.weekday - 1;
+      final dayName = isToday ? 'today' : _dayNames[_selectedDay];
+      final daysAhead = (_selectedDay - (now.weekday - 1)) % 7;
+      final dayEnds = DateTime(now.year, now.month, now.day + daysAhead + 1);
+      final unseen = _scheduleEnds != null && _scheduleEnds!.isBefore(dayEnds);
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             const Text('📅', style: TextStyle(fontSize: 56)),
             const SizedBox(height: 20),
-            const Text(
-              'No episodes today',
-              style: TextStyle(
+            Text(
+              failed
+                  ? 'The schedule can\'t load right now'
+                  : unseen
+                      ? 'Nothing to show for $dayName yet'
+                      : isToday
+                          ? 'No episodes today'
+                          : 'No episodes on $dayName',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
                   color: Colors.white,
                   fontSize: 18,
                   fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
             Text(
-              'Check other days or add more\nanime to your watching list',
+              failed
+                  ? 'Try again shortly.'
+                  : unseen
+                      ? 'The calendar only looks a few days ahead.\nCheck back closer to the day.'
+                      : 'Check other days or add more\nanime to your watching list',
               textAlign: TextAlign.center,
               style: TextStyle(
                   color: Colors.white.withValues(alpha: 0.5), fontSize: 14),

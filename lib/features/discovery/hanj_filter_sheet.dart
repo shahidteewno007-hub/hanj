@@ -14,6 +14,11 @@ class HanjFilterSheet extends StatefulWidget {
 
   @override
   State<HanjFilterSheet> createState() => _HanjFilterSheetState();
+
+  /// The sheet's label for a format value onApply returned ('MOVIE' →
+  /// 'Movie'), for a caller's active-filter chip. Unknown values show as is.
+  static String formatLabel(String value) => _HanjFilterSheetState._formats
+      .firstWhere((f) => f.$1 == value, orElse: () => (value, value)).$2;
 }
 
 class _HanjFilterSheetState extends State<HanjFilterSheet> {
@@ -26,7 +31,16 @@ class _HanjFilterSheetState extends State<HanjFilterSheet> {
     'Mystery','Romance','Sci-Fi','Slice of Life','Sports',
     'Supernatural','Thriller','Mecha','Music','Psychological',
   ];
-  static const _formats = ['TV', 'Movie', 'ONA', 'OVA', 'Special'];
+  // (value, label). The value is what onApply hands back, and both callers
+  // pass it straight to AniList's MediaFormat variable, whose members are
+  // upper case. Sending the labels made 'Movie' and 'Special' invalid.
+  static const _formats = [
+    ('TV', 'TV'),
+    ('MOVIE', 'Movie'),
+    ('ONA', 'ONA'),
+    ('OVA', 'OVA'),
+    ('SPECIAL', 'Special'),
+  ];
   final _currentYear = DateTime.now().year;
 
   @override
@@ -98,9 +112,9 @@ class _HanjFilterSheetState extends State<HanjFilterSheet> {
                   Wrap(
                     spacing: 8, runSpacing: 8,
                     children: _formats.map((f) => _FilterChip(
-                      label: f,
-                      selected: _format == f,
-                      onTap: () => setState(() => _format = _format == f ? null : f),
+                      label: f.$2,
+                      selected: _format == f.$1,
+                      onTap: () => setState(() => _format = _format == f.$1 ? null : f.$1),
                     )).toList(),
                   ),
                   const SizedBox(height: 20),

@@ -391,6 +391,14 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
   }
 
   void _showRatingDialog() {
+    // A rating is a field on the list entry and updateRating is an update(),
+    // so a show that isn't on the list has nowhere to keep one.
+    if (_currentStatus == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Add it to your list to rate it.')),
+      );
+      return;
+    }
     double tempRating = _userRating ?? 5.0;
     showDialog(
       context: context,
@@ -412,7 +420,21 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
             TextButton(
               onPressed: () async {
                 Navigator.pop(context);
-                await _firestoreService.updateRating(int.parse(widget.anime.id), tempRating);
+                try {
+                  await _firestoreService.updateRating(int.parse(widget.anime.id), tempRating);
+                } catch (e) {
+                  // update() throws not-found when the entry doesn't exist.
+                  // Uncaught, that reached Crashlytics as fatal and the
+                  // rating silently didn't save.
+                  if (!mounted) return;
+                  final missing = e is FirebaseException && e.code == 'not-found';
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                    content: Text(missing
+                        ? 'Add it to your list to rate it.'
+                        : 'Your rating didn\'t save. Try again.'),
+                  ));
+                  return;
+                }
                 if (!mounted) return;
                 setState(() => _userRating = tempRating);
               },
@@ -432,8 +454,19 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
         total: total,
         initial: _currentEpisode ?? 0,
         onSave: (clamped) async {
-          await _firestoreService.updateEpisodeProgress(
-              int.parse(widget.anime.id), clamped);
+          try {
+            await _firestoreService.updateEpisodeProgress(
+                int.parse(widget.anime.id), clamped);
+          } catch (_) {
+            // The dialog doesn't await onSave, so a rejected update() went
+            // to PlatformDispatcher.onError, a fatal Crashlytics report, and
+            // the progress silently didn't save.
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('Your progress didn\'t save. Try again.'),
+            ));
+            return;
+          }
           if (mounted) setState(() => _currentEpisode = clamped);
         },
       ),
@@ -834,6 +867,14 @@ class _TabBarDelegate extends SliverPersistentHeaderDelegate {
 
 // ── Overview Tab ─────────────────────────────────────────────
 class _OverviewTab extends StatelessWidget {
+  // ── Stat tiles are hidden ──────────────────────────────────
+  // "MEMBERS watching" is the average score as a percentage, "TRENDING vs
+  // last wk" a fixed +18% for anything airing, and "EPISODES this season"
+  // the total, which the score row and INFORMATION already show. The row is
+  // kept intact below. Don't set this to true until every tile shows a real
+  // number.
+  static const bool _showStatTiles = false;
+
   final Anime anime;
   final Map<String, dynamic>? staffData;
   final bool isLoadingStaff;
@@ -894,15 +935,17 @@ class _OverviewTab extends StatelessWidget {
           const SizedBox(height: 28),
         ],
 
-        // Stat tiles
-        Row(children: [
-          Expanded(child: _StatBox(value: anime.averageScore != null ? '${(anime.averageScore! / 10 * 10).round()}%' : '—', label: 'MEMBERS\nwatching', dark: true)),
-          const SizedBox(width: 8),
-          Expanded(child: _StatBox(value: anime.episodes != null ? '${anime.episodes}' : '—', label: 'EPISODES\nthis season')),
-          const SizedBox(width: 8),
-          Expanded(child: _StatBox(value: anime.status == 'RELEASING' ? '+18%' : '—', label: 'TRENDING\nvs last wk', accent: true)),
-        ]),
-        const SizedBox(height: 28),
+        // Stat tiles (hidden, see _showStatTiles)
+        if (_showStatTiles) ...[
+          Row(children: [
+            Expanded(child: _StatBox(value: anime.averageScore != null ? '${(anime.averageScore! / 10 * 10).round()}%' : '—', label: 'MEMBERS\nwatching', dark: true)),
+            const SizedBox(width: 8),
+            Expanded(child: _StatBox(value: anime.episodes != null ? '${anime.episodes}' : '—', label: 'EPISODES\nthis season')),
+            const SizedBox(width: 8),
+            Expanded(child: _StatBox(value: anime.status == 'RELEASING' ? '+18%' : '—', label: 'TRENDING\nvs last wk', accent: true)),
+          ]),
+          const SizedBox(height: 28),
+        ],
 
         // Themes
         if (anime.genres.isNotEmpty) ...[
@@ -994,8 +1037,25 @@ class _EpisodesTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final total   = anime.episodes ?? 12;
+    final total   = anime.episodes;
     final watched = currentEpisode ?? 0;
+    // No count: say so instead of inventing 12 rows. The copy gives no
+    // reason, since AniList having none isn't the only way to get here: a
+    // list-entry stub that hasn't refreshed (or can't) carries a null too.
+    if (total == null || total <= 0) {
+      return Padding(
+        padding: const EdgeInsets.all(40),
+        child: Column(
+          children: [
+            Icon(Icons.format_list_numbered_rounded,
+                color: AppTheme.textMuted.withValues(alpha: 0.5), size: 56),
+            const SizedBox(height: 16),
+            Text('No episode count yet',
+                style: Theme.of(context).textTheme.titleMedium),
+          ],
+        ),
+      );
+    }
     return ListView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
@@ -1021,7 +1081,6 @@ class _EpisodesTab extends StatelessWidget {
             const SizedBox(width: 14),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text('Episode $ep', style: AppTheme.sans(fontSize: 14, weight: FontWeight.w600)),
-              Text('24 min', style: AppTheme.mono(fontSize: 10, color: AppTheme.textMuted)),
             ])),
             if (isWatched) Text('WATCHED', style: AppTheme.mono(fontSize: 9, color: AppTheme.completed, letterSpacing: 0.5)),
           ]),

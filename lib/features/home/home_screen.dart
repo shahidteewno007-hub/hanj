@@ -54,7 +54,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _loadData() async {
     if (!mounted) return;
-    setState(() => _isLoading = true);
+    // No setState(_isLoading = true) here. _isLoading starts true, so the
+    // first load still shows the spinner; a later call (pull-to-refresh, or
+    // a Continue card completing a show) updates Home in place instead of
+    // blanking the whole screen and rebuilding every section from scratch.
 
     final isOnline = ConnectivityService.instance.isOnline;
 
@@ -384,7 +387,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         child: GestureDetector(
                           onTap: () => Navigator.push(context,
                               MaterialPageRoute(
-                                  builder: (_) => const MyListScreen(initialStatus: 'WATCHING'))),
+                                  builder: (_) => const MyListScreen(initialStatus: 'WATCHING', showBackButton: true))),
                           child: Text(
                             'SEE ALL →',
                             style: AppTheme.mono(
@@ -445,7 +448,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         child: GestureDetector(
                           onTap: () => Navigator.push(context,
                               MaterialPageRoute(
-                                  builder: (_) => const MyListScreen(initialStatus: 'PLAN_TO_WATCH'))),
+                                  builder: (_) => const MyListScreen(initialStatus: 'PLAN_TO_WATCH', showBackButton: true))),
                           child: Text(
                             'SEE ALL →',
                             style: AppTheme.mono(
@@ -498,7 +501,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                       GestureDetector(
                         onTap: () => Navigator.push(context,
-                            MaterialPageRoute(builder: (_) => const DiscoveryScreen(initialTab: 'TRENDING'))),
+                            MaterialPageRoute(builder: (_) => const DiscoveryScreen(initialTab: 'TRENDING', showBackButton: true))),
                         child: Text('MORE →',
                             style: AppTheme.mono(
                                 fontSize: 11,
@@ -712,9 +715,11 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       );
     }
+    // count is how many WATCHING shows are on the list, not episodes that
+    // aired, so the headline says that.
     return RichText(
       text: TextSpan(
-        text: '$count new episode${count > 1 ? 's' : ''} aired\ntonight.',
+        text: 'You\'re watching\n$count show${count > 1 ? 's' : ''}.',
         style: AppTheme.serif(
             fontSize: 28,
             weight: FontWeight.w700,
@@ -1772,7 +1777,6 @@ class _TrendingRowState extends State<_TrendingRow>
                             [
                               if (widget.anime.genres.isNotEmpty)
                                 widget.anime.genres.first.toUpperCase(),
-                              if (widget.anime.seasonYear != null) 'S1',
                             ].join(' · '),
                             style: AppTheme.mono(
                                 fontSize: 10,
