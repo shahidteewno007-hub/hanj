@@ -150,6 +150,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
         stream: _firestoreService.getAnimeList(),
         builder: (context, snapshot) {
           final docs = snapshot.data?.docs ?? [];
+          // The list's state (stage H5). Until the first snapshot, or while
+          // the only answer is an empty one from the device's cache (a
+          // first load offline, or the moment before the server replies),
+          // the list isn't known, and Profile claims nothing about it: no
+          // "0 titles" for someone with a long list. A failed read says so.
+          final listFailed = snapshot.hasError;
+          final listKnown = !listFailed &&
+              snapshot.hasData &&
+              !(docs.isEmpty && snapshot.data!.metadata.isFromCache);
 
           // Compute stats
           int totalAnime = docs.length;
@@ -322,8 +331,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 child: _column(_buildHeader(user, initial)),
               ),
 
+              // ── The list couldn't be read ────────────────
+              if (listFailed)
+                SliverToBoxAdapter(
+                  key: const ValueKey('profile-list-failed'),
+                  child: _column(_buildListFailed()),
+                ),
+
               // ── Favourites (Hanko stage H5, item c) ──────
-              if (totalAnime > 0)
+              if (listKnown && totalAnime > 0)
                 SliverToBoxAdapter(
                   key: const ValueKey('profile-favourites'),
                   child: _column(_buildFavourites(_topRated(entries))),
@@ -331,28 +347,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
               // ── The counts (Hanko stage H5, item e) ──────
               // In words, in place of the four stat tiles, "By status" and
-              // "Top genres".
-              SliverToBoxAdapter(
-                key: const ValueKey('profile-counts'),
-                child: _column(_buildCounts(
-                  titles: totalAnime,
-                  episodes: totalEpisodes,
-                  watching: watching,
-                  completed: completed,
-                  planned: planToWatch,
-                  dropped: dropped,
-                  genres: topGenres,
-                )),
-              ),
+              // "Top genres". With an empty list, the page's one sentence.
+              if (listKnown)
+                SliverToBoxAdapter(
+                  key: const ValueKey('profile-counts'),
+                  child: _column(_buildCounts(
+                    titles: totalAnime,
+                    episodes: totalEpisodes,
+                    watching: watching,
+                    completed: completed,
+                    planned: planToWatch,
+                    dropped: dropped,
+                    genres: topGenres,
+                  )),
+                ),
 
               // ── Your ratings (Hanko stage H5, item d) ────
-              SliverToBoxAdapter(
-                key: const ValueKey('profile-ratings'),
-                child: _column(_buildRatings(ratings)),
-              ),
+              if (listKnown && totalAnime > 0)
+                SliverToBoxAdapter(
+                  key: const ValueKey('profile-ratings'),
+                  child: _column(_buildRatings(ratings)),
+                ),
 
               // ── Recent diary (Hanko stage H5, item f) ────
-              if (totalAnime > 0)
+              if (listKnown && totalAnime > 0)
                 SliverToBoxAdapter(
                   key: const ValueKey('profile-diary'),
                   child: _column(_buildDiary(_diary(entries))),
@@ -361,7 +379,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               // ── Shelves (Hanko stage H5, item g) ─────────
               // Only once a shelf exists: nothing in the app makes one
               // until stage H7, so for now this never shows.
-              if (shelves.isNotEmpty)
+              if (listKnown && shelves.isNotEmpty)
                 SliverToBoxAdapter(
                   key: const ValueKey('profile-shelves'),
                   child: _column(_buildShelves(shelves)),
@@ -1022,6 +1040,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(sentence, style: AppTheme.hankoSerif(fontSize: 17, height: 1.5)),
+          if (titles == 0) ...[
+            const SizedBox(height: 6),
+            Text('Add a show from Discover or Search to start your journal.',
+                style: quiet),
+          ],
           if (statuses.isNotEmpty) ...[
             const SizedBox(height: 6),
             Text('${statuses.join(', ')}.', style: quiet),
@@ -1030,6 +1053,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
             const SizedBox(height: 2),
             Text('Top genres: ${_inList(genres)}.', style: quiet),
           ],
+        ],
+      ),
+    );
+  }
+
+  /// The list couldn't be read: say so, naming no cause the app can't
+  /// verify (ANILIST-OFFLINE-0908-REPORT.md's rule), rather than showing an
+  /// empty record. Retry rebuilds, which listens to the list afresh.
+  Widget _buildListFailed() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+          AppTheme.hankoGutter, 22, AppTheme.hankoGutter, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Couldn\'t load your list just now.',
+              style: AppTheme.hankoSerif(fontSize: 17, height: 1.5)),
+          const SizedBox(height: 12),
+          _TextTile(label: 'Retry', onTap: () => setState(() {})),
         ],
       ),
     );
@@ -1411,6 +1453,51 @@ class _EntryRow extends StatelessWidget {
                 const Icon(Icons.chevron_right_sharp,
                     size: 20, color: AppTheme.hankoStone),
               ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A Hanko secondary tile with a word on it ("Retry"), as Home's: sumi 3
+/// with a 1 px edge outline, Jost 600 15 washi, 48 dp tall.
+class _TextTile extends StatelessWidget {
+  const _TextTile({required this.label, required this.onTap});
+
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      child: Material(
+        color: AppTheme.hankoSumi3,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+          side: const BorderSide(color: AppTheme.hankoEdge),
+        ),
+        child: InkWell(
+          onTap: onTap,
+          splashFactory: NoSplash.splashFactory,
+          highlightColor: AppTheme.hankoPressWash,
+          hoverColor: AppTheme.hankoPressWash,
+          borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: AppTheme.hankoTouch),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 18),
+              child: Center(
+                widthFactor: 1,
+                heightFactor: 1,
+                child: Text(
+                  label,
+                  style: AppTheme.hankoSans(
+                      fontSize: 15, weight: FontWeight.w600, height: 1),
+                ),
+              ),
             ),
           ),
         ),
