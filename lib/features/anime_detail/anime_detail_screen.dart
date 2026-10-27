@@ -545,26 +545,36 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
   /// dialog used, caught so a rejected write never reaches Crashlytics as a
   /// fatal. A re-rate offers Undo for 4 s; a first rating has none, since
   /// that would need a write that clears the rating.
-  Future<void> _rate(double rating) async {
+  Future<void> _rate(double rating) async => _applyRating(rating, offerUndo: true);
+
+  /// The rating shows at once and saves in the background (H3 e), the way
+  /// Home's +1 works. A refused save puts the previous rating back, unless a
+  /// newer one has been made since. Offline, the save waits for the
+  /// connection and the new rating stays.
+  void _applyRating(double rating, {required bool offerUndo}) {
     final previous = _userRating;
+    final previousAt = _ratedAt;
     if (rating == previous) return;
-    if (!await _saveRating(rating)) return;
-    if (!mounted) return;
     setState(() { _userRating = rating; _ratedAt = DateTime.now(); });
-    if (previous == null) return;
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(
-        duration: const Duration(seconds: 4),
-        content: Text('Rated ${HankoSeal.formatScore(rating)}.'),
-        action: SnackBarAction(
-          label: 'Undo',
-          onPressed: () async {
-            if (!await _saveRating(previous) || !mounted) return;
-            setState(() { _userRating = previous; _ratedAt = DateTime.now(); });
-          },
-        ),
-      ));
+    if (offerUndo && previous != null) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(
+          duration: const Duration(seconds: 4),
+          content: Text('Rated ${HankoSeal.formatScore(rating)}.'),
+          action: SnackBarAction(
+            label: 'Undo',
+            onPressed: () {
+              if (mounted) _applyRating(previous, offerUndo: false);
+            },
+          ),
+        ));
+    }
+    unawaited(_saveRating(rating).then((saved) {
+      if (!saved && mounted && _userRating == rating) {
+        setState(() { _userRating = previous; _ratedAt = previousAt; });
+      }
+    }));
   }
 
   /// updateRating, caught: says what went wrong and returns false.
