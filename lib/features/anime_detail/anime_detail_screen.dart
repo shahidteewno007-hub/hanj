@@ -12,6 +12,7 @@ import 'package:gal/gal.dart';
 import 'package:http/http.dart' as http;
 
 import '../../widgets/anilist_saved_note.dart';
+import '../../widgets/hanko_rating_ruler.dart';
 import '../../widgets/hanko_seal.dart';
 import '../../widgets/hanko_title_slip.dart';
 
@@ -540,6 +541,51 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
     );
   }
 
+  /// Saves a rating from the ruler (H3 c), with the same updateRating the
+  /// dialog used, caught so a rejected write never reaches Crashlytics as a
+  /// fatal. A re-rate offers Undo for 4 s; a first rating has none, since
+  /// that would need a write that clears the rating.
+  Future<void> _rate(double rating) async {
+    final previous = _userRating;
+    if (rating == previous) return;
+    if (!await _saveRating(rating)) return;
+    if (!mounted) return;
+    setState(() { _userRating = rating; _ratedAt = DateTime.now(); });
+    if (previous == null) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        duration: const Duration(seconds: 4),
+        content: Text('Rated ${HankoSeal.formatScore(rating)}.'),
+        action: SnackBarAction(
+          label: 'Undo',
+          onPressed: () async {
+            if (!await _saveRating(previous) || !mounted) return;
+            setState(() { _userRating = previous; _ratedAt = DateTime.now(); });
+          },
+        ),
+      ));
+  }
+
+  /// updateRating, caught: says what went wrong and returns false.
+  Future<bool> _saveRating(double rating) async {
+    try {
+      await _firestoreService.updateRating(int.parse(widget.anime.id), rating);
+      return true;
+    } catch (e) {
+      // update() throws not-found when the entry doesn't exist.
+      if (mounted) {
+        final missing = e is FirebaseException && e.code == 'not-found';
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(missing
+              ? 'Add it to your list to rate it.'
+              : 'Your rating didn\'t save. Try again.'),
+        ));
+      }
+      return false;
+    }
+  }
+
   void _showEpisodeDialog() {
     final total = _anime.episodes;
     showDialog(
@@ -948,6 +994,7 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
           status: _currentStatus,
           rating: _userRating,
           ratedAt: _ratedAt,
+          onRate: _rate,
           onCover: cover == null
               ? null
               : () => _openGallery(context,
@@ -977,7 +1024,7 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
 /// (`lib/hanko_dev.dart`) can draw it with inline data and no Firebase or
 /// network. Public only for that specimen; the app builds it from
 /// [AnimeDetailScreen] alone.
-class HankoDetailHeader extends StatelessWidget {
+class HankoDetailHeader extends StatefulWidget {
   const HankoDetailHeader({
     super.key,
     required this.title,
@@ -997,6 +1044,7 @@ class HankoDetailHeader extends StatelessWidget {
     this.rating,
     this.ratedAt,
     this.onCover,
+    this.onRate,
   });
 
   /// The show's name as the app shows it: English, else romaji.
@@ -1049,6 +1097,10 @@ class HankoDetailHeader extends StatelessWidget {
 
   /// Opens the gallery.
   final VoidCallback? onCover;
+
+  /// Saves a rating from the ruler, once your finger lets go. The seal keeps
+  /// showing the new rating until this completes, then shows [rating].
+  final Future<void> Function(double rating)? onRate;
 
   /// The header's sizes at [width]: the print is 208 by 293 from a 360 dp
   /// phone up, smaller on narrower screens so the facts keep room. The field
@@ -1121,11 +1173,12 @@ class HankoDetailHeader extends StatelessWidget {
     return d.year == DateTime.now().year ? '${d.day} $month' : '${d.day} $month ${d.year}';
   }
 
-  /// Your seal, pressed across the print's edge: filled with your rating, or
-  /// the empty dashed slot where it will go. Nothing until the entry is read.
-  Widget _seal() {
+  /// Your seal, pressed across the print's edge: filled with [shown] (your
+  /// rating, or the one under your finger), or the empty dashed slot where it
+  /// will go. Nothing until the entry is read.
+  Widget _seal(double? shown) {
     if (!entryLoaded) return const SizedBox.square(dimension: 56);
-    final rating = this.rating;
+    final rating = shown;
     if (status == null) {
       return const HankoSeal.unrated(size: 56, showAdd: false, semanticLabel: 'Not on your list');
     }
@@ -1149,14 +1202,43 @@ class HankoDetailHeader extends StatelessWidget {
   }
 
   @override
+  State<HankoDetailHeader> createState() => _HankoDetailHeaderState();
+}
+
+class _HankoDetailHeaderState extends State<HankoDetailHeader> {
+  // The rating under your finger while you drag the ruler, and after you let
+  // go until the save is through. Only the seal listens, so a drag never
+  // rebuilds the screen (a whole-screen rebuild costs 17–19 ms, PERF.md).
+  final ValueNotifier<double?> _preview = ValueNotifier<double?>(null);
+
+  // Counts ratings made here, so the seal's press replays for each one.
+  int _presses = 0;
+
+  @override
+  void dispose() {
+    _preview.dispose();
+    super.dispose();
+  }
+
+  Future<void> _release(double rating) async {
+    _preview.value = rating;
+    if (rating != widget.rating) setState(() => _presses++);
+    await widget.onRate?.call(rating);
+    if (mounted) _preview.value = null;
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final widget = this.widget;
+    final still = MediaQuery.disableAnimationsOf(context);
     return LayoutBuilder(
       builder: (context, constraints) {
-        final g = geometryFor(constraints.maxWidth);
+        final g = HankoDetailHeader.geometryFor(constraints.maxWidth);
         // The caption's top sits 14 px below the seal's, as drawn, whether it
         // runs to one line or two; larger text lets it grow upward.
         final captionLine = MediaQuery.textScalerOf(context).scale(AppTheme.hankoDataSmallSize) * 1.35;
-        final caption = _caption;
+        final caption = widget._caption;
+        final onList = widget.entryLoaded && widget.status != null;
         return Stack(
           children: [
             Positioned(
@@ -1165,7 +1247,7 @@ class HankoDetailHeader extends StatelessWidget {
               top: 0,
               height: g.fieldHeight,
               child: _HankoField(
-                tint: AppTheme.hankoCoverTint(coverColor),
+                tint: AppTheme.hankoCoverTint(widget.coverColor),
                 fadeFrom: g.fadeFrom / g.fieldHeight,
               ),
             ),
@@ -1184,12 +1266,12 @@ class HankoDetailHeader extends StatelessWidget {
                           _HankoPrint(
                             width: g.printWidth,
                             height: g.printHeight,
-                            title: title,
-                            coverUrl: coverUrl,
-                            sharpCoverUrl: sharpCoverUrl,
-                            coverColor: coverColor,
-                            nativeTitle: nativeTitle,
-                            onTap: onCover,
+                            title: widget.title,
+                            coverUrl: widget.coverUrl,
+                            sharpCoverUrl: widget.sharpCoverUrl,
+                            coverColor: widget.coverColor,
+                            nativeTitle: widget.nativeTitle,
+                            onTap: widget.onCover,
                           ),
                           const SizedBox(width: 20),
                           Expanded(
@@ -1203,14 +1285,14 @@ class HankoDetailHeader extends StatelessWidget {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   _HankoColophon(
-                                    studio: studio,
-                                    facts: _factsFor(
-                                      format: format,
-                                      season: season,
-                                      seasonYear: seasonYear,
-                                      episodes: episodes,
-                                      duration: duration,
-                                      airing: airing,
+                                    studio: widget.studio,
+                                    facts: HankoDetailHeader._factsFor(
+                                      format: widget.format,
+                                      season: widget.season,
+                                      seasonYear: widget.seasonYear,
+                                      episodes: widget.episodes,
+                                      duration: widget.duration,
+                                      airing: widget.airing,
                                     ),
                                   ),
                                   Padding(
@@ -1226,7 +1308,7 @@ class HankoDetailHeader extends StatelessWidget {
                                       child: caption == null
                                           ? null
                                           : ExcludeSemantics(
-                                              excluding: rating != null,
+                                              excluding: widget.rating != null,
                                               child: Text(
                                                 caption,
                                                 style: AppTheme.hankoSans(
@@ -1247,12 +1329,35 @@ class HankoDetailHeader extends StatelessWidget {
                       Positioned(
                         left: g.printWidth - 28,
                         top: g.printHeight - 68,
-                        child: _seal(),
+                        // Rating presses the seal in, 1.06 to 1.0 in 120 ms;
+                        // with Remove animations on, it simply appears.
+                        child: TweenAnimationBuilder<double>(
+                          key: ValueKey(_presses),
+                          tween: Tween(begin: _presses == 0 || still ? 1.0 : AppTheme.hankoSealPressScale, end: 1.0),
+                          duration: AppTheme.hankoSealPress,
+                          curve: Curves.easeOut,
+                          builder: (context, scale, seal) => Transform.scale(scale: scale, child: seal),
+                          child: ValueListenableBuilder<double?>(
+                            valueListenable: _preview,
+                            builder: (context, preview, _) => widget._seal(preview ?? widget.rating),
+                          ),
+                        ),
                       ),
                     ],
                   ),
                   const SizedBox(height: 12),
-                  _HankoTitle(title: title),
+                  _HankoTitle(title: widget.title),
+                  // The ruler rates, 1 to 10 in half steps, saving when you
+                  // let go. Only for a show on your list: a rating lives on
+                  // the list entry (no D4).
+                  if (onList) ...[
+                    const SizedBox(height: 10),
+                    HankoRatingRuler(
+                      value: widget.rating,
+                      onChanged: (v) => _preview.value = v,
+                      onChangeEnd: _release,
+                    ),
+                  ],
                 ],
               ),
             ),

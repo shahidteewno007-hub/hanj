@@ -841,22 +841,9 @@ class _DetailHeaders extends StatelessWidget {
         _phone(
           'Frieren: Beyond Journey’s End (AniList 154587). Finished; its '
               'native title fits one column. Watching and rated 8.5 on 3 '
-              'October: illustrative.',
+              'October: illustrative. The ruler is live here.',
           _frieren,
-          HankoDetailHeader(
-            title: 'Frieren: Beyond Journey’s End',
-            nativeTitle: '葬送のフリーレン',
-            coverColor: _frieren,
-            studio: 'MADHOUSE',
-            format: 'TV',
-            season: 'FALL',
-            seasonYear: 2023,
-            episodes: 28,
-            duration: 24,
-            status: 'WATCHING',
-            rating: 8.5,
-            ratedAt: DateTime(2026, 10, 3),
-          ),
+          const _LiveFrieren(),
         ),
         _phone(
           'Reborn as a Space Mercenary (AniList 186541). Airing; a 41-character '
@@ -932,6 +919,42 @@ class _DetailHeaders extends StatelessWidget {
           Text(caption, style: _cap),
         ],
       ),
+    );
+  }
+}
+
+/// Frieren's header with a rating kept in memory, so the ruler and the
+/// seal's press can be tried here. Nothing is saved.
+class _LiveFrieren extends StatefulWidget {
+  const _LiveFrieren();
+
+  @override
+  State<_LiveFrieren> createState() => _LiveFrierenState();
+}
+
+class _LiveFrierenState extends State<_LiveFrieren> {
+  double? _rating = 8.5;
+  DateTime? _ratedAt = DateTime(2026, 10, 3);
+
+  @override
+  Widget build(BuildContext context) {
+    return HankoDetailHeader(
+      title: 'Frieren: Beyond Journey’s End',
+      nativeTitle: '葬送のフリーレン',
+      coverColor: _DetailHeaders._frieren,
+      studio: 'MADHOUSE',
+      format: 'TV',
+      season: 'FALL',
+      seasonYear: 2023,
+      episodes: 28,
+      duration: 24,
+      status: 'WATCHING',
+      rating: _rating,
+      ratedAt: _ratedAt,
+      onRate: (v) async => setState(() {
+        _rating = v;
+        _ratedAt = DateTime.now();
+      }),
     );
   }
 }
