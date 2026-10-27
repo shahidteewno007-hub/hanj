@@ -315,123 +315,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 child: _column(_buildHeader(user, initial)),
               ),
 
-              // ── Collection Hero Card ─────────────────────
-              SliverToBoxAdapter(
-                key: const ValueKey('profile-collection'),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-                  child: Container(
-                    padding: const EdgeInsets.fromLTRB(24, 20, 16, 20),
-                    decoration: BoxDecoration(
-                      color: AppTheme.surfaceLight,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: AppTheme.border),
-                    ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        // Left — stats
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'COLLECTION',
-                                style: AppTheme.mono(
-                                  fontSize: 10,
-                                  color: AppTheme.textMuted,
-                                  letterSpacing: 1.4,
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              Row(
-                                crossAxisAlignment: CrossAxisAlignment.baseline,
-                                textBaseline: TextBaseline.alphabetic,
-                                children: [
-                                  Text(
-                                    '$totalAnime',
-                                    style: AppTheme.mono(
-                                      fontSize: 52,
-                                      weight: FontWeight.w700,
-                                      color: AppTheme.textPrimary,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    'Titles',
-                                    style: AppTheme.serif(
-                                      fontSize: 18,
-                                      weight: FontWeight.w600,
-                                      color: AppTheme.textMuted,
-                                      style: FontStyle.italic,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                'Tracked on Hanj',
-                                style: AppTheme.sans(
-                                  fontSize: 12,
-                                  color: AppTheme.textMuted,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        // Right — real HanjCard or faint logo
-                        if (_featuredCard != null)
-                          GestureDetector(
-                            onTap: () => Navigator.push(context,
-                                MaterialPageRoute(builder: (_) => const CardCollectionScreen())),
-                            // Square corners: HanjCard is square by design
-                            // (_CardShell paints square, HanjCard clips with
-                            // ClipRect). This was the only place one got
-                            // rounded off.
-                            child: ClipRect(
-                              child: SizedBox(
-                                width:  hc.HanjCard.kWidth  * 0.52,
-                                height: hc.HanjCard.kHeight * 0.52,
-                                // Render the card at its natural 200x300 and scale the
-                                // whole thing down. The card has fixed-pixel internals
-                                // (footer text, paddings) that don't shrink on their own,
-                                // so sizing it directly overflows at small sizes.
-                                child: FittedBox(
-                                  fit: BoxFit.contain,
-                                  child: hc.HanjCard(
-                                    isUnlocked: true,
-                                    card: hc.HanjCardData(
-                                      id: (_featuredCard!['id'] as String?) ?? '',
-                                      name: ((_featuredCard!['name'] ?? _featuredCard!['cardName']) as String?) ?? '',
-                                      description: (_featuredCard!['description'] as String?) ?? '',
-                                      rarity: hc.CardRarity.values.firstWhere(
-                                        (r) => r.name == ((_featuredCard!['rarity'] as String?) ?? 'common'),
-                                        orElse: () => hc.CardRarity.common,
-                                      ),
-                                      category: ((_featuredCard!['category'] as String?) ?? 'ÆTHER').toUpperCase(),
-                                      kanji: (_featuredCard!['kanji'] as String?) ?? '道',
-                                      cardNumber: (_featuredCard!['cardNumber'] as int?) ?? 0,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          )
-                        else
-                          Opacity(
-                            opacity: 0.07,
-                            child: Image.asset(
-                              'assets/images/hanj_wing_transparent.png',
-                              width: 78, height: 78,
-                              fit: BoxFit.contain,
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-
               // ── The counts (Hanko stage H5, item e) ──────
               // In words, in place of the four stat tiles, "By status" and
               // "Top genres".
@@ -603,23 +486,95 @@ class _ProfileScreenState extends State<ProfileScreen> {
             );
     });
 
+    final editable = Semantics(
+      hint: 'Edit profile',
+      child: InkWell(
+        onTap: () async {
+          await Navigator.push(context,
+              MaterialPageRoute(
+                  builder: (_) =>
+                      const EditProfileScreen()));
+          _loadAvatarPrefs();
+        },
+        splashFactory: NoSplash.splashFactory,
+        highlightColor: AppTheme.hankoPressWash,
+        hoverColor: AppTheme.hankoPressWash,
+        child: identity,
+      ),
+    );
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(
           AppTheme.hankoGutter, 4, AppTheme.hankoGutter, 0),
-      child: Semantics(
-        hint: 'Edit profile',
-        child: InkWell(
-          onTap: () async {
-            await Navigator.push(context,
-                MaterialPageRoute(
-                    builder: (_) =>
-                        const EditProfileScreen()));
-            _loadAvatarPrefs();
-          },
-          splashFactory: NoSplash.splashFactory,
-          highlightColor: AppTheme.hankoPressWash,
-          hoverColor: AppTheme.hankoPressWash,
-          child: identity,
+      // Your pinned Hanj Card stands beside your name (item b), as
+      // hanko.html places it, at the right of the header.
+      child: _featuredCard == null
+          ? editable
+          : Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(child: editable),
+                const SizedBox(width: 16),
+                _pinnedCard(_featuredCard!),
+              ],
+            ),
+    );
+  }
+
+  /// Your pinned Hanj Card (Hanko stage H5, item b), drawn at 0.7 of its
+  /// 200 x 300 (140 x 210), so its name sets at about 12.6 px; at the old
+  /// 0.52 it was about 9.4 px, below one device pixel per hairline on the
+  /// CPH2573 (DESIGN.md §3.3.2). Tapping it opens your collection, as
+  /// before.
+  ///
+  /// It is the live card, glow and all, as before. PERF.md S2-3 measured
+  /// Profile's worst raster frame (40.1 ms) on this card at 0.52; at 0.7
+  /// and in the header it needs measuring again on the phone.
+  static const double _pinnedScale = 0.7;
+
+  Widget _pinnedCard(Map<String, dynamic> card) {
+    final name = ((card['name'] ?? card['cardName']) as String?) ?? '';
+    return Semantics(
+      button: true,
+      label: name.isEmpty
+          ? 'Your pinned Hanj Card'
+          : 'Your pinned Hanj Card, $name',
+      hint: 'Opens your collection',
+      excludeSemantics: true,
+      child: GestureDetector(
+        onTap: () => Navigator.push(context,
+            MaterialPageRoute(builder: (_) => const CardCollectionScreen())),
+        // Square corners: HanjCard is square by design
+        // (_CardShell paints square, HanjCard clips with
+        // ClipRect). This was the only place one got
+        // rounded off.
+        child: ClipRect(
+          child: SizedBox(
+            width:  hc.HanjCard.kWidth  * _pinnedScale,
+            height: hc.HanjCard.kHeight * _pinnedScale,
+            // Render the card at its natural 200x300 and scale the
+            // whole thing down. The card has fixed-pixel internals
+            // (footer text, paddings) that don't shrink on their own,
+            // so sizing it directly overflows at small sizes.
+            child: FittedBox(
+              fit: BoxFit.contain,
+              child: hc.HanjCard(
+                isUnlocked: true,
+                card: hc.HanjCardData(
+                  id: (card['id'] as String?) ?? '',
+                  name: name,
+                  description: (card['description'] as String?) ?? '',
+                  rarity: hc.CardRarity.values.firstWhere(
+                    (r) => r.name == ((card['rarity'] as String?) ?? 'common'),
+                    orElse: () => hc.CardRarity.common,
+                  ),
+                  category: ((card['category'] as String?) ?? 'ÆTHER').toUpperCase(),
+                  kanji: (card['kanji'] as String?) ?? '道',
+                  cardNumber: (card['cardNumber'] as int?) ?? 0,
+                ),
+              ),
+            ),
+          ),
         ),
       ),
     );
