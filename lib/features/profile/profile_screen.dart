@@ -150,15 +150,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
         stream: _firestoreService.getAnimeList(),
         builder: (context, snapshot) {
           final docs = snapshot.data?.docs ?? [];
-          // The list's state (stage H5). Until the first snapshot, or while
-          // the only answer is an empty one from the device's cache (a
-          // first load offline, or the moment before the server replies),
-          // the list isn't known, and Profile claims nothing about it: no
-          // "0 titles" for someone with a long list. A failed read says so.
+          // The list's state (stage H5). Until the first snapshot the list
+          // isn't known, and Profile claims nothing about it: no "0 titles"
+          // for someone with a long list. A failed read says so.
+          //
+          // An empty answer from the device's cache counts as known. It
+          // can't be told from an unread list, but every setState here
+          // makes a new stream (getAnimeList() in build), and the listener
+          // that replaces the first one answers from the cache at once and
+          // never hears the server confirm an empty result (that change is
+          // metadata only), so waiting for it left an empty list blank
+          // forever. Only a first load offline with nothing cached could
+          // say "Nothing logged yet." wrongly, as the old "0 Titles" did.
           final listFailed = snapshot.hasError;
-          final listKnown = !listFailed &&
-              snapshot.hasData &&
-              !(docs.isEmpty && snapshot.data!.metadata.isFromCache);
+          final listKnown = !listFailed && snapshot.hasData;
 
           // Compute stats
           int totalAnime = docs.length;
@@ -512,8 +517,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         children: [
           Semantics(
             header: true,
-            child: Text(name,
-                style: AppTheme.hankoSerif(fontSize: 28, height: 1.15)),
+            child: Text(name, style: _nameStyle),
           ),
           if (founder) ...[
             const SizedBox(height: 8),
@@ -533,8 +537,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ],
       );
       final monogram = _Monogram(initial: initial, imageUrl: _avatarImageUrl);
-      final beside =
-          constraints.maxWidth - _Monogram.size - 14 >= 200;
+      // Beside the monogram when there are 200 px there and the name's
+      // longest word fits them; otherwise under it.
+      final room = constraints.maxWidth - _Monogram.size - 14;
+      final beside = room >= 200 && _longestWord(context, name) <= room;
       return beside
           ? Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -571,23 +577,65 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
     );
 
+    final card = _featuredCard;
     return Padding(
       padding: const EdgeInsets.fromLTRB(
           AppTheme.hankoGutter, 4, AppTheme.hankoGutter, 0),
       // Your pinned Hanj Card stands beside your name (item b), as
-      // hanko.html places it, at the right of the header.
-      child: _featuredCard == null
+      // hanko.html places it, at the right of the header. When the column
+      // left beside it can't hold the name's longest word (large text, a
+      // long name), the card moves under the name instead, so no word is
+      // ever broken in the middle.
+      child: card == null
           ? editable
-          : Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(child: editable),
-                const SizedBox(width: 16),
-                _pinnedCard(_featuredCard!),
-              ],
-            ),
+          : LayoutBuilder(builder: (context, constraints) {
+              const cardWidth = hc.HanjCard.kWidth * _pinnedScale;
+              final column = constraints.maxWidth - 16 - cardWidth;
+              if (_longestWord(context, name) > column) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    editable,
+                    const SizedBox(height: 16),
+                    _pinnedCard(card),
+                  ],
+                );
+              }
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: editable),
+                  const SizedBox(width: 16),
+                  _pinnedCard(card),
+                ],
+              );
+            }),
     );
   }
+
+  /// How wide the name's longest word sets, at the text size in use, so the
+  /// header can keep every word whole. A line may break after a hyphen, so
+  /// "Kristoffersen-Okonkwo" counts as two words.
+  static double _longestWord(BuildContext context, String name) {
+    final painter = TextPainter(
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+      maxLines: 1,
+    );
+    var longest = 0.0;
+    for (final word in name.replaceAll('-', '- ').split(RegExp(r'\s+'))) {
+      painter
+        ..text = TextSpan(text: word, style: _nameStyle)
+        ..layout();
+      if (painter.width > longest) longest = painter.width;
+    }
+    painter.dispose();
+    return longest;
+  }
+
+  /// The name's style: Shippori 28, as hanko.html sets it.
+  static final TextStyle _nameStyle =
+      AppTheme.hankoSerif(fontSize: 28, height: 1.15);
 
   /// Your pinned Hanj Card (Hanko stage H5, item b), drawn at 0.7 of its
   /// 200 x 300 (140 x 210), so its name sets at about 12.6 px; at the old
@@ -624,21 +672,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
             // whole thing down. The card has fixed-pixel internals
             // (footer text, paddings) that don't shrink on their own,
             // so sizing it directly overflows at small sizes.
+            // The card is drawn like a picture, so the text-size setting
+            // doesn't reach inside it: at 1.3x its footer wrapped and was
+            // cut off. Its name is in the spoken label above.
             child: FittedBox(
               fit: BoxFit.contain,
-              child: hc.HanjCard(
-                isUnlocked: true,
-                card: hc.HanjCardData(
-                  id: (card['id'] as String?) ?? '',
-                  name: name,
-                  description: (card['description'] as String?) ?? '',
-                  rarity: hc.CardRarity.values.firstWhere(
-                    (r) => r.name == ((card['rarity'] as String?) ?? 'common'),
-                    orElse: () => hc.CardRarity.common,
+              child: MediaQuery.withNoTextScaling(
+                child: hc.HanjCard(
+                  isUnlocked: true,
+                  card: hc.HanjCardData(
+                    id: (card['id'] as String?) ?? '',
+                    name: name,
+                    description: (card['description'] as String?) ?? '',
+                    rarity: hc.CardRarity.values.firstWhere(
+                      (r) => r.name == ((card['rarity'] as String?) ?? 'common'),
+                      orElse: () => hc.CardRarity.common,
+                    ),
+                    category: ((card['category'] as String?) ?? 'ÆTHER').toUpperCase(),
+                    kanji: (card['kanji'] as String?) ?? '道',
+                    cardNumber: (card['cardNumber'] as int?) ?? 0,
                   ),
-                  category: ((card['category'] as String?) ?? 'ÆTHER').toUpperCase(),
-                  kanji: (card['kanji'] as String?) ?? '道',
-                  cardNumber: (card['cardNumber'] as int?) ?? 0,
                 ),
               ),
             ),
@@ -895,17 +948,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Wrap(
-          alignment: WrapAlignment.spaceBetween,
-          crossAxisAlignment: WrapCrossAlignment.end,
-          spacing: 12,
-          runSpacing: 2,
-          children: [
-            Text(shelf.name,
-                style: AppTheme.hankoSerif(
-                    fontSize: AppTheme.hankoListTitleSize, height: 1.25)),
-            Text(count == 1 ? '1 title' : '$count titles', style: quiet),
-          ],
+        SizedBox(
+          width: double.infinity,
+          child: Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.end,
+            spacing: 12,
+            runSpacing: 2,
+            children: [
+              Text(shelf.name,
+                  style: AppTheme.hankoSerif(
+                      fontSize: AppTheme.hankoListTitleSize, height: 1.25)),
+              Text(count == 1 ? '1 title' : '$count titles', style: quiet),
+            ],
+          ),
         ),
         const SizedBox(height: 10),
         Row(
@@ -1338,22 +1394,27 @@ class _SectionHead extends StatelessWidget {
     );
     return Padding(
       padding: EdgeInsets.only(bottom: bottom),
+      // The Wrap takes the full width, or it would shrink to its children
+      // and spaceBetween would leave the aside beside the head.
       child: aside == null
           ? head
-          : Wrap(
-              alignment: WrapAlignment.spaceBetween,
-              crossAxisAlignment: WrapCrossAlignment.end,
-              spacing: 12,
-              runSpacing: 2,
-              children: [
-                head,
-                Text(aside,
-                    style: AppTheme.hankoSans(
-                      fontSize: AppTheme.hankoLabelSize,
-                      color: AppTheme.hankoStone,
-                      height: 1.3,
-                    )),
-              ],
+          : SizedBox(
+              width: double.infinity,
+              child: Wrap(
+                alignment: WrapAlignment.spaceBetween,
+                crossAxisAlignment: WrapCrossAlignment.end,
+                spacing: 12,
+                runSpacing: 2,
+                children: [
+                  head,
+                  Text(aside,
+                      style: AppTheme.hankoSans(
+                        fontSize: AppTheme.hankoLabelSize,
+                        color: AppTheme.hankoStone,
+                        height: 1.3,
+                      )),
+                ],
+              ),
             ),
     );
   }
@@ -1458,6 +1519,67 @@ class _EntryRow extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// A Shippori title on up to [maxLines] lines whose last line fades out at
+/// its end when the title runs longer, instead of an ellipsis: Shippori
+/// draws "…" as the centred Japanese ⋯ (AppTheme.hankoSerif). Flutter's own
+/// TextOverflow.fade on a multi-line Text fades the bottom half of the last
+/// line instead, so the title is split after its last full line and that
+/// line is set on its own, one line with TextOverflow.fade.
+///
+/// The same as Home's (stage H4, home_screen.dart on its branch), which this
+/// file can't import: widgets are private to their file, and a shared one
+/// needs its own approval. It finds the last line's start with
+/// getPositionForOffset, because on CanvasKit getLineBoundary at a line's
+/// first offset answers with the line before (H4's emulator run).
+class _FadeTitle extends StatelessWidget {
+  const _FadeTitle(this.text, {required this.style, required this.maxLines});
+
+  final String text;
+  final TextStyle style;
+  final int maxLines;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(builder: (context, constraints) {
+      final painter = TextPainter(
+        text: TextSpan(text: text, style: style),
+        textDirection: Directionality.of(context),
+        textScaler: MediaQuery.textScalerOf(context),
+        maxLines: maxLines,
+      )..layout(maxWidth: constraints.maxWidth);
+      final overflows = painter.didExceedMaxLines;
+      final lines = overflows ? painter.computeLineMetrics() : null;
+      final lastStart = lines == null || lines.length < maxLines
+          ? 0
+          : painter
+              .getPositionForOffset(Offset(
+                  0, lines[maxLines - 1].baseline - lines[maxLines - 1].ascent / 2))
+              .offset;
+      painter.dispose();
+      if (!overflows || lastStart <= 0) {
+        return Text(text,
+            style: style,
+            maxLines: maxLines,
+            softWrap: maxLines > 1,
+            overflow: TextOverflow.fade);
+      }
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(text.substring(0, lastStart).trimRight(),
+              style: style, maxLines: maxLines - 1),
+          Text(text.substring(lastStart).trimLeft(),
+              style: style,
+              maxLines: 1,
+              softWrap: false,
+              overflow: TextOverflow.fade),
+        ],
+      );
+    });
   }
 }
 
@@ -1632,11 +1754,9 @@ class _DiaryRow extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
+                _FadeTitle(
                   title,
-                  maxLines: 1,
-                  softWrap: false,
-                  overflow: TextOverflow.fade,
+                  maxLines: 2,
                   style: AppTheme.hankoSerif(
                       fontSize: AppTheme.hankoListTitleSize, height: 1.25),
                 ),
@@ -1644,8 +1764,7 @@ class _DiaryRow extends StatelessWidget {
                   const SizedBox(height: 3),
                   Text(
                     meta,
-                    maxLines: 1,
-                    softWrap: false,
+                    maxLines: 2,
                     overflow: TextOverflow.fade,
                     style: AppTheme.hankoSans(
                       fontSize: AppTheme.hankoLabelSize,
