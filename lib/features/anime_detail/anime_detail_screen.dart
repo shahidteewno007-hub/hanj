@@ -13,6 +13,7 @@ import 'package:http/http.dart' as http;
 
 import '../../widgets/anilist_saved_note.dart';
 import '../../widgets/hanko_rating_ruler.dart';
+import '../../widgets/hanko_reel.dart';
 import '../../widgets/hanko_seal.dart';
 import '../../widgets/hanko_title_slip.dart';
 
@@ -1062,6 +1063,8 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
           rating: _userRating,
           ratedAt: _ratedAt,
           currentEpisode: _currentEpisode,
+          nextEpisode: _nextEpisodeNum,
+          nextAiringAt: _nextAiringAt,
           busy: _isLoading,
           onRate: _rate,
           onStatus: _showAddToListSheet,
@@ -1108,6 +1111,8 @@ class HankoDetailHeader extends StatefulWidget {
     this.rating,
     this.ratedAt,
     this.currentEpisode,
+    this.nextEpisode,
+    this.nextAiringAt,
     this.busy = false,
     this.onCover,
     this.onRate,
@@ -1165,6 +1170,11 @@ class HankoDetailHeader extends StatefulWidget {
 
   /// The episode you're on, from your list entry.
   final int? currentEpisode;
+
+  /// AniList's next airing episode and when it airs, for an airing show: the
+  /// reel outlines what has aired, and a line says when the next one does.
+  final int? nextEpisode;
+  final DateTime? nextAiringAt;
 
   /// A change to your list is under way (removing the show): the status
   /// button shows a spinner and doesn't open the sheet.
@@ -1271,6 +1281,31 @@ class HankoDetailHeader extends StatefulWidget {
       semanticLabel: 'Your rating, ${HankoSeal.formatScore(rating)}'
           '${when == null ? '' : ', rated ${_date(when, long: true)}'}',
     );
+  }
+
+  static const _weekdays = [
+    'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday',
+  ];
+
+  /// "Episode 8 on Saturday": today, tomorrow, a weekday within the week,
+  /// else the date. Worked out once per build, so nothing ticks; the live
+  /// countdown stays in Overview.
+  String? get _nextLine {
+    final at = nextAiringAt;
+    final episode = nextEpisode;
+    if (at == null || episode == null) return null;
+    final now = DateTime.now();
+    final day = DateTime(at.year, at.month, at.day)
+        .difference(DateTime(now.year, now.month, now.day))
+        .inDays;
+    final when = switch (day) {
+      < 0 => 'is out',
+      0 => 'today',
+      1 => 'tomorrow',
+      < 7 => 'on ${_weekdays[at.weekday - 1]}',
+      _ => 'on ${_date(at)}',
+    };
+    return 'Episode $episode $when';
   }
 
   /// The words beside the seal: whose it is and when, or what to do.
@@ -1467,6 +1502,13 @@ class _HankoDetailHeaderState extends State<HankoDetailHeader> {
                     _HankoEpisodes(
                       watched: watched,
                       total: widget.episodes,
+                      // Aired so far: up to the next episode of an airing
+                      // show; nothing known past what you've watched when
+                      // it airs with no date; all of them otherwise.
+                      aired: widget.nextEpisode != null
+                          ? widget.nextEpisode! - 1
+                          : (widget.airing ? watched : null),
+                      nextLine: widget._nextLine,
                       // +1 while watching, until the last episode.
                       action: widget.status == 'WATCHING' &&
                               (widget.episodes == null ||
@@ -1626,18 +1668,30 @@ class _HankoStatusButton extends StatelessWidget {
 }
 
 /// Where you are in the show: "Episode", then "7 of 28" (the number in
-/// Mincho, the total in Jost), with the +1 beside it while you're watching.
+/// Mincho, the total in Jost), the reel, and when the next episode airs,
+/// with the +1 beside it while you're watching.
 class _HankoEpisodes extends StatelessWidget {
-  const _HankoEpisodes({required this.watched, required this.total, required this.action});
+  const _HankoEpisodes({
+    required this.watched,
+    required this.total,
+    required this.aired,
+    required this.nextLine,
+    required this.action,
+  });
 
   final int watched;
   final int? total;
+
+  /// Episodes aired so far, or null when every one has.
+  final int? aired;
+  final String? nextLine;
   final Widget? action;
 
   @override
   Widget build(BuildContext context) {
     final total = this.total != null && this.total! > 0 ? this.total : null;
     final action = this.action;
+    final nextLine = this.nextLine;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
@@ -1667,6 +1721,21 @@ class _HankoEpisodes extends StatelessWidget {
                 ),
                 style: AppTheme.hankoSerif(fontSize: 30, height: 1),
               ),
+              // The reel: one tick per episode, watched solid, aired and
+              // waiting outlined, still to air short (a line past 30).
+              const SizedBox(height: 10),
+              HankoReel(watched: watched, total: total, aired: aired),
+              if (nextLine != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  nextLine,
+                  style: AppTheme.hankoSans(
+                    fontSize: AppTheme.hankoLabelSize,
+                    color: AppTheme.hankoStone,
+                    height: 1.3,
+                  ),
+                ),
+              ],
             ],
           ),
         ),

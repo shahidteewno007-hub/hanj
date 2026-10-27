@@ -846,11 +846,12 @@ class _DetailHeaders extends StatelessWidget {
           const _LiveFrieren(),
         ),
         _phone(
-          'Reborn as a Space Mercenary (AniList 186541). Airing; a 41-character '
-              'native title in columns, and an English title past two lines '
-              'split at its colon. On the list, not rated: illustrative.',
+          'Reborn as a Space Mercenary (AniList 186541). Airing, episode 5 on 1 '
+              'November (AniList’s nextAiringEpisode); a 41-character native '
+              'title in columns, and an English title past two lines split at its '
+              'colon. Watching at 3, not rated: illustrative.',
           _reborn,
-          const HankoDetailHeader(
+          HankoDetailHeader(
             title: 'Reborn as a Space Mercenary: I Woke Up Piloting the Strongest Starship!',
             nativeTitle: '目覚めたら最強装備と宇宙船持ちだったので、一戸建て目指して傭兵として自由に生きたい',
             coverColor: _reborn,
@@ -861,7 +862,10 @@ class _DetailHeaders extends StatelessWidget {
             episodes: 13,
             duration: 24,
             airing: true,
-            status: 'PLAN_TO_WATCH',
+            status: 'WATCHING',
+            currentEpisode: 3,
+            nextEpisode: 5,
+            nextAiringAt: DateTime.fromMillisecondsSinceEpoch(1793536200 * 1000),
           ),
         ),
         _phone(
