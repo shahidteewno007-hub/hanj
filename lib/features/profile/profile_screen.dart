@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/responsive.dart';
 import '../../core/theme/app_theme.dart';
+import '../../models/anime_model.dart';
 import '../../widgets/hanko_seal.dart';
 import '../../widgets/hanko_seal_register.dart';
 import '../../services/auth_service.dart';
@@ -23,6 +25,7 @@ import '../profile/taste_profile.dart';
 import '../profile/ranking_cards.dart';
 import '../cards/card_collection_screen.dart';
 import '../cards/hanj_card.dart' as hc;
+import '../anime_detail/anime_detail_screen.dart';
 import '../../cadre/screens/cadre_lobby_screen.dart';
 import '../auth/delete_account_screen.dart';
 
@@ -163,9 +166,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
           Map<String, int> genreCounts = {};
           // Every rating as stored, for the seal register (item d).
           final ratings = <double>[];
+          // The entries themselves, for favourites (item c).
+          final entries = <Map<String, dynamic>>[];
 
           for (final doc in docs) {
             final data = doc.data() as Map<String, dynamic>;
+            entries.add(data);
             switch (data['status']) {
               case 'COMPLETED':
                 completed++;
@@ -314,6 +320,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 key: const ValueKey('profile-header'),
                 child: _column(_buildHeader(user, initial)),
               ),
+
+              // ── Favourites (Hanko stage H5, item c) ──────
+              if (totalAnime > 0)
+                SliverToBoxAdapter(
+                  key: const ValueKey('profile-favourites'),
+                  child: _column(_buildFavourites(_topRated(entries))),
+                ),
 
               // ── The counts (Hanko stage H5, item e) ──────
               // In words, in place of the four stat tiles, "By status" and
@@ -580,6 +593,144 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  /// Favourites (Hanko stage H5, item c; question 26): three covers across,
+  /// filled from your top-rated shows, since hand-picking them needs a
+  /// field on your user document that isn't approved yet. They are the art
+  /// for "what you chose", so they carry no words; the aside says how they
+  /// were chosen, and each says its title and rating to a screen reader.
+  ///
+  /// Three across fill the column: 101 x 143 on a 360 px phone, at the
+  /// covers' own 230 : 325, so nothing is cropped. Fewer than three rated:
+  /// the rest are empty dashed slots, Hanko's mark for "not yet". None: the
+  /// three slots and a line saying how to fill them. A cover opens its show.
+  Widget _buildFavourites(List<Map<String, dynamic>> favourites) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+          AppTheme.hankoGutter, 26, AppTheme.hankoGutter, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const _SectionHead('Favourites', aside: 'Your highest rated'),
+          LayoutBuilder(builder: (context, constraints) {
+            const gap = 8.0;
+            final width = (constraints.maxWidth - 2 * gap) / 3;
+            final height = width * 325 / 230;
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (var i = 0; i < 3; i++) ...[
+                  if (i > 0) const SizedBox(width: gap),
+                  if (i < favourites.length)
+                    _favourite(favourites[i], width, height)
+                  else
+                    HankoSeal.unrated(
+                      size: height,
+                      width: width,
+                      showAdd: false,
+                      semanticLabel: 'Empty favourite',
+                    ),
+                ],
+              ],
+            );
+          }),
+          if (favourites.isEmpty) ...[
+            const SizedBox(height: 10),
+            Text(
+              'Rate shows on their pages to fill these.',
+              style: AppTheme.hankoSans(
+                fontSize: AppTheme.hankoMetaSize,
+                color: AppTheme.hankoStone,
+                height: 1.4,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _favourite(Map<String, dynamic> entry, double width, double height) {
+    final title = entry['title'] as String? ?? 'Unknown';
+    final rating = HankoSeal.formatScore((entry['userRating'] as num).toDouble());
+    return Semantics(
+      button: true,
+      label: 'Favourite: $title, your rating $rating',
+      excludeSemantics: true,
+      child: GestureDetector(
+        onTap: () => _openEntry(entry),
+        child: _Cover(
+            url: entry['imageUrl'] as String?, width: width, height: height),
+      ),
+    );
+  }
+
+  /// Your top three for Favourites. Candidates are shows you rated on
+  /// Hanj's 1–10 scale that you are watching or have finished: a show on
+  /// your watchlist isn't seen yet, a dropped one isn't a favourite, and an
+  /// imported rating on another scale (D20) can't be compared. Ties break
+  /// in this order:
+  ///  1. the higher rating;
+  ///  2. a finished show before one still in progress, since a verdict on
+  ///     the whole show is the firmer one;
+  ///  3. the more recent rating, with undated ones (imports) last;
+  ///  4. the title, A to Z, so the order never shuffles between visits.
+  static List<Map<String, dynamic>> _topRated(
+      List<Map<String, dynamic>> entries) {
+    final rated = [
+      for (final e in entries)
+        if (e['userRating'] is num &&
+            _onScale((e['userRating'] as num).toDouble()) &&
+            (e['status'] == 'COMPLETED' || e['status'] == 'WATCHING'))
+          e,
+    ];
+    rated.sort((a, b) {
+      final byRating =
+          (b['userRating'] as num).compareTo(a['userRating'] as num);
+      if (byRating != 0) return byRating;
+      final aDone = a['status'] == 'COMPLETED', bDone = b['status'] == 'COMPLETED';
+      if (aDone != bDone) return aDone ? -1 : 1;
+      final aAt = _when(a['ratedAt']), bAt = _when(b['ratedAt']);
+      if (aAt != bAt) {
+        if (aAt == null) return 1;
+        if (bAt == null) return -1;
+        final byDate = bAt.compareTo(aAt);
+        if (byDate != 0) return byDate;
+      }
+      return ((a['title'] as String?) ?? '')
+          .toLowerCase()
+          .compareTo(((b['title'] as String?) ?? '').toLowerCase());
+    });
+    return rated.take(3).toList();
+  }
+
+  /// Whether a stored rating lands on Hanj's 1–10 scale at its nearest
+  /// half step, as the seal register places it.
+  static bool _onScale(double rating) {
+    final step = (rating * 2).round() / 2;
+    return step >= 1 && step <= 10;
+  }
+
+  /// A Firestore timestamp as a date; null when missing or still pending.
+  static DateTime? _when(Object? value) =>
+      value is Timestamp ? value.toDate() : null;
+
+  /// Opens a list entry's show, as My List's rows do.
+  void _openEntry(Map<String, dynamic> data) {
+    final id = data['animeId']?.toString() ?? '';
+    if (id.isEmpty) return;
+    final anime = Anime(
+      id: id,
+      title: data['title'] as String? ?? 'Unknown',
+      imageUrl: data['imageUrl'] as String?,
+      episodes: (data['episodes'] as num?)?.toInt(),
+      genres: (data['genres'] as List<dynamic>?)?.whereType<String>().toList() ??
+          const [],
+      averageScore: (data['averageScore'] as num?)?.toDouble(),
+    );
+    Navigator.push(context,
+        MaterialPageRoute(builder: (_) => AnimeDetailScreen(anime: anime)));
+  }
+
   /// The counts you can trust now (Hanko stage H5, item e), in words: titles
   /// all time and episodes, as one sentence in Shippori, then the statuses
   /// and the top genres in Jost. "This year" and hours wait for completion
@@ -656,10 +807,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   /// many. With no ratings at all, the register's own empty ruler says
   /// "No ratings yet." and no caption repeats it.
   Widget _buildRatings(List<double> ratings) {
-    final offScale = ratings.where((r) {
-      final step = (r * 2).round() / 2;
-      return step < 1 || step > 10;
-    }).length;
+    final offScale = ratings.where((r) => !_onScale(r)).length;
     final drawn = ratings.length - offScale;
     final register = HankoSealRegister.fromRatings(ratings);
     final quiet = AppTheme.hankoSans(
@@ -880,24 +1028,79 @@ class _Monogram extends StatelessWidget {
   }
 }
 
-/// A Hanko section head (hanko.html's .sec-h): Shippori 16 in washi.
+/// A Hanko section head (hanko.html's .sec-h): Shippori 16 in washi, with
+/// an optional aside in Jost 12 stone at the line's end. The aside wraps
+/// under the head when the line is too short, so large text never pushes
+/// it off the edge.
 class _SectionHead extends StatelessWidget {
-  const _SectionHead(this.title, {this.bottom = 12});
+  const _SectionHead(this.title, {this.aside, this.bottom = 12});
 
   final String title;
+  final String? aside;
 
   /// Space below the head; 8 where a caption follows it.
   final double bottom;
 
   @override
   Widget build(BuildContext context) {
+    final aside = this.aside;
+    final head = Semantics(
+      header: true,
+      child: Text(title,
+          style: AppTheme.hankoSerif(
+              fontSize: AppTheme.hankoSectionSize, height: 1.3)),
+    );
     return Padding(
       padding: EdgeInsets.only(bottom: bottom),
-      child: Semantics(
-        header: true,
-        child: Text(title,
-            style: AppTheme.hankoSerif(
-                fontSize: AppTheme.hankoSectionSize, height: 1.3)),
+      child: aside == null
+          ? head
+          : Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.end,
+              spacing: 12,
+              runSpacing: 2,
+              children: [
+                head,
+                Text(aside,
+                    style: AppTheme.hankoSans(
+                      fontSize: AppTheme.hankoLabelSize,
+                      color: AppTheme.hankoStone,
+                      height: 1.3,
+                    )),
+              ],
+            ),
+    );
+  }
+}
+
+/// A cover from the list entry's stored URL (AniList's `large`, 230 px
+/// wide), with Hanko's 2 px corners on a sumi 3 ground, which is also what
+/// shows while it loads or when it fails.
+class _Cover extends StatelessWidget {
+  const _Cover({required this.url, required this.width, required this.height});
+
+  final String? url;
+  final double width;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    final u = url;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+      child: SizedBox(
+        width: width,
+        height: height,
+        child: ColoredBox(
+          color: AppTheme.hankoSumi3,
+          child: u == null || u.isEmpty
+              ? const SizedBox.expand()
+              : CachedNetworkImage(
+                  imageUrl: u,
+                  fit: BoxFit.cover,
+                  errorWidget: (_, _, _) => const SizedBox.expand(),
+                ),
+        ),
       ),
     );
   }
