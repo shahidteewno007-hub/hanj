@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -1505,6 +1506,9 @@ class _HankoDetailHeaderState extends State<HankoDetailHeader> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   _HankoColophon(
+                                    // The seal's top (keyline included):
+                                    // see the Positioned seal below.
+                                    sealTop: g.printHeight - 68 - AppTheme.hankoKeyline,
                                     studio: widget.studio,
                                     onStudio: widget.onStudio,
                                     director: widget.director,
@@ -2105,6 +2109,7 @@ class _HankoColophon extends StatelessWidget {
     required this.director,
     required this.onDirector,
     required this.facts,
+    this.sealTop = double.infinity,
   });
 
   final String? studio;
@@ -2113,12 +2118,16 @@ class _HankoColophon extends StatelessWidget {
   final VoidCallback? onDirector;
   final List<String> facts;
 
+  /// Where the seal's keyline starts, from the colophon's top. A line that
+  /// would run into it steps right, clear of the seal's corner.
+  final double sealTop;
+
   @override
   Widget build(BuildContext context) {
     final studio = this.studio;
     final director = this.director;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return _ClearOfSeal(
+      sealTop: sealTop,
       children: [
         if (studio != null)
           _HankoLink(label: studio, semanticLabel: 'Studio, $studio', onTap: onStudio),
@@ -2149,6 +2158,123 @@ class _HankoColophon extends StatelessWidget {
       ],
     );
   }
+}
+
+/// The colophon's lines, top to bottom like a start-aligned Column, except
+/// that a line which would run into the seal steps right by [indent]. The
+/// seal reaches 10 px past the print into the colophon's column (with its
+/// keyline), so when large text or long names make the facts run long, the
+/// last lines would pass under it; at 1.3× the dashed seal crossed the
+/// director's name. Lines above the seal keep their full width, so the
+/// usual layout doesn't change. A line counts as running into the seal
+/// once it passes [sealTop] by more than [slack] (a link's 48 dp target is
+/// mostly air around its text).
+class _ClearOfSeal extends MultiChildRenderObjectWidget {
+  const _ClearOfSeal({required this.sealTop, required super.children});
+
+  final double sealTop;
+  static const double indent = 18; // past the seal's 10 px, as its caption does
+  static const double slack = 4;
+
+  @override
+  _RenderClearOfSeal createRenderObject(BuildContext context) => _RenderClearOfSeal(sealTop);
+
+  @override
+  void updateRenderObject(BuildContext context, _RenderClearOfSeal renderObject) {
+    renderObject.sealTop = sealTop;
+  }
+}
+
+class _ClearOfSealParentData extends ContainerBoxParentData<RenderBox> {}
+
+class _RenderClearOfSeal extends RenderBox
+    with
+        ContainerRenderObjectMixin<RenderBox, _ClearOfSealParentData>,
+        RenderBoxContainerDefaultsMixin<RenderBox, _ClearOfSealParentData> {
+  _RenderClearOfSeal(this._sealTop);
+
+  double _sealTop;
+  set sealTop(double value) {
+    if (value == _sealTop) return;
+    _sealTop = value;
+    markNeedsLayout();
+  }
+
+  @override
+  void setupParentData(RenderBox child) {
+    if (child.parentData is! _ClearOfSealParentData) {
+      child.parentData = _ClearOfSealParentData();
+    }
+  }
+
+  Size _lay(BoxConstraints constraints, {required bool dry}) {
+    final full = BoxConstraints(maxWidth: constraints.maxWidth);
+    final narrow = BoxConstraints(
+        maxWidth: math.max(0.0, constraints.maxWidth - _ClearOfSeal.indent));
+    Size sized(RenderBox child, BoxConstraints c) {
+      if (dry) return child.getDryLayout(c);
+      child.layout(c, parentUsesSize: true);
+      return child.size;
+    }
+
+    var y = 0.0;
+    var width = 0.0;
+    var child = firstChild;
+    while (child != null) {
+      final data = child.parentData! as _ClearOfSealParentData;
+      var size = sized(child, full);
+      var x = 0.0;
+      if (y + size.height - _ClearOfSeal.slack > _sealTop) {
+        size = sized(child, narrow);
+        x = _ClearOfSeal.indent;
+      }
+      if (!dry) data.offset = Offset(x, y);
+      y += size.height;
+      width = math.max(width, x + size.width);
+      child = data.nextSibling;
+    }
+    return constraints.constrain(Size(width, y));
+  }
+
+  @override
+  Size computeDryLayout(covariant BoxConstraints constraints) => _lay(constraints, dry: true);
+
+  @override
+  void performLayout() {
+    size = _lay(constraints, dry: false);
+  }
+
+  @override
+  double computeMinIntrinsicWidth(double height) {
+    var width = 0.0;
+    for (var c = firstChild; c != null; c = childAfter(c)) {
+      width = math.max(width, c.getMinIntrinsicWidth(double.infinity));
+    }
+    return width;
+  }
+
+  @override
+  double computeMaxIntrinsicWidth(double height) {
+    var width = 0.0;
+    for (var c = firstChild; c != null; c = childAfter(c)) {
+      width = math.max(width, c.getMaxIntrinsicWidth(double.infinity));
+    }
+    return width;
+  }
+
+  @override
+  double computeMinIntrinsicHeight(double width) =>
+      _lay(BoxConstraints(maxWidth: width), dry: true).height;
+
+  @override
+  double computeMaxIntrinsicHeight(double width) => computeMinIntrinsicHeight(width);
+
+  @override
+  void paint(PaintingContext context, Offset offset) => defaultPaint(context, offset);
+
+  @override
+  bool hitTestChildren(BoxHitTestResult result, {required Offset position}) =>
+      defaultHitTestChildren(result, position: position);
 }
 
 /// A name that opens its page: washi 500 with Hanko's link underline (the
