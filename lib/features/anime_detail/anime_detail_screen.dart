@@ -1567,8 +1567,11 @@ class _HankoDetailHeaderState extends State<HankoDetailHeader> {
                   ],
                   // Where you are: while watching, and for any show you've
                   // watched some of. Completed with no count stored means
-                  // every episode.
-                  if (onList && (widget.status == 'WATCHING' || watched > 0)) ...[
+                  // every episode. A film or other one-episode work shows no
+                  // "1 of 1" unless you're watching it.
+                  if (onList &&
+                      (widget.status == 'WATCHING' ||
+                          (watched > 0 && widget.episodes != 1))) ...[
                     const SizedBox(height: 10),
                     _HankoEpisodes(
                       watched: watched,
