@@ -949,6 +949,7 @@ class _LiveFrierenState extends State<_LiveFrieren> {
       episodes: 28,
       duration: 24,
       status: 'WATCHING',
+      currentEpisode: 7,
       rating: _rating,
       ratedAt: _ratedAt,
       onRate: (v) async => setState(() {

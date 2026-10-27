@@ -1004,21 +1004,17 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
           status: _currentStatus,
           rating: _userRating,
           ratedAt: _ratedAt,
+          currentEpisode: _currentEpisode,
+          busy: _isLoading,
           onRate: _rate,
+          onStatus: _showAddToListSheet,
           onCover: cover == null
               ? null
               : () => _openGallery(context,
                   _isMalImport || _galleryImages.isEmpty ? [cover] : _galleryImages, 0),
         ),
       ),
-      // Today's action row, until the status row and the ruler replace it
-      // (H3 g and c).
-      SliverToBoxAdapter(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(AppTheme.hankoGutter, 12, AppTheme.hankoGutter, 8),
-          child: _classicActions(anime),
-        ),
-      ),
+      const SliverToBoxAdapter(child: SizedBox(height: 16)),
     ];
   }
 }
@@ -1053,8 +1049,11 @@ class HankoDetailHeader extends StatefulWidget {
     this.status,
     this.rating,
     this.ratedAt,
+    this.currentEpisode,
+    this.busy = false,
     this.onCover,
     this.onRate,
+    this.onStatus,
   });
 
   /// The show's name as the app shows it: English, else romaji.
@@ -1105,12 +1104,22 @@ class HankoDetailHeader extends StatefulWidget {
   /// When you rated it; null for a rating made during an import.
   final DateTime? ratedAt;
 
+  /// The episode you're on, from your list entry.
+  final int? currentEpisode;
+
+  /// A change to your list is under way (removing the show): the status
+  /// button shows a spinner and doesn't open the sheet.
+  final bool busy;
+
   /// Opens the gallery.
   final VoidCallback? onCover;
 
   /// Saves a rating from the ruler, once your finger lets go. The seal keeps
   /// showing the new rating until this completes, then shows [rating].
   final Future<void> Function(double rating)? onRate;
+
+  /// Opens the status sheet: the status word, or "Add to list".
+  final VoidCallback? onStatus;
 
   /// The header's sizes at [width]: the print is 208 by 293 from a 360 dp
   /// phone up, smaller on narrower screens so the facts keep room. The field
@@ -1249,6 +1258,8 @@ class _HankoDetailHeaderState extends State<HankoDetailHeader> {
         final captionLine = MediaQuery.textScalerOf(context).scale(AppTheme.hankoDataSmallSize) * 1.35;
         final caption = widget._caption;
         final onList = widget.entryLoaded && widget.status != null;
+        final watched = widget.currentEpisode ??
+            (widget.status == 'COMPLETED' ? widget.episodes ?? 0 : 0);
         return Stack(
           children: [
             Positioned(
@@ -1357,16 +1368,41 @@ class _HankoDetailHeaderState extends State<HankoDetailHeader> {
                   ),
                   const SizedBox(height: 12),
                   _HankoTitle(title: widget.title),
+                  const SizedBox(height: 8),
+                  // The status row (H3 g): "Add to list" as the screen's one
+                  // main action, or your status as a word that opens the
+                  // sheet. Its height is kept while the entry is read.
+                  if (!widget.entryLoaded)
+                    const SizedBox(height: AppTheme.hankoTouch)
+                  else if (widget.status == null)
+                    _HankoMainAction(
+                      label: 'Add to list',
+                      icon: Icons.add_sharp,
+                      onTap: widget.onStatus,
+                    )
+                  else
+                    _HankoStatusButton(
+                      status: widget.status!,
+                      busy: widget.busy,
+                      onTap: widget.onStatus,
+                    ),
                   // The ruler rates, 1 to 10 in half steps, saving when you
                   // let go. Only for a show on your list: a rating lives on
                   // the list entry (no D4).
                   if (onList) ...[
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 4),
                     HankoRatingRuler(
                       value: widget.rating,
                       onChanged: (v) => _preview.value = v,
                       onChangeEnd: _release,
                     ),
+                  ],
+                  // Where you are: while watching, and for any show you've
+                  // watched some of. Completed with no count stored means
+                  // every episode.
+                  if (onList && (widget.status == 'WATCHING' || watched > 0)) ...[
+                    const SizedBox(height: 10),
+                    _HankoEpisodes(watched: watched, total: widget.episodes),
                   ],
                 ],
               ),
@@ -1374,6 +1410,173 @@ class _HankoDetailHeaderState extends State<HankoDetailHeader> {
           ],
         );
       },
+    );
+  }
+}
+
+/// The screen's one main action: a washi tile with sumi words (15.34:1),
+/// 2 px corners, pressed with an 8% wash and no ripple.
+class _HankoMainAction extends StatelessWidget {
+  const _HankoMainAction({
+    required this.label,
+    required this.onTap,
+    required this.icon,
+  });
+
+  final String label;
+  final VoidCallback? onTap;
+  final IconData? icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final icon = this.icon;
+    return Semantics(
+      button: true,
+      child: Material(
+        color: AppTheme.hankoWashi,
+        borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+          splashFactory: NoSplash.splashFactory,
+          highlightColor: AppTheme.hankoSumi.withValues(alpha: 0.08),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minWidth: AppTheme.hankoTouch, minHeight: AppTheme.hankoTouch),
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: icon == null ? 14 : 18),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  if (icon != null) ...[
+                    Icon(icon, size: 20, color: AppTheme.hankoSumi),
+                    const SizedBox(width: 6),
+                  ],
+                  Text(
+                    label,
+                    style: AppTheme.hankoSans(
+                      fontSize: 15,
+                      weight: FontWeight.w600,
+                      color: AppTheme.hankoSumi,
+                      height: 1,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// What the show is to you, as a word you can change: the status sheet opens
+/// from it, for every status, as today's pill did.
+class _HankoStatusButton extends StatelessWidget {
+  const _HankoStatusButton({required this.status, required this.busy, required this.onTap});
+
+  final String status;
+  final bool busy;
+  final VoidCallback? onTap;
+
+  static (IconData, String) _look(String status) => switch (status) {
+        'WATCHING' => (Icons.play_circle_sharp, 'Watching'),
+        'PLAN_TO_WATCH' => (Icons.bookmark_sharp, 'Plan to watch'),
+        'COMPLETED' => (Icons.check_circle_sharp, 'Completed'),
+        'DROPPED' => (Icons.cancel_sharp, 'Dropped'),
+        _ => (Icons.circle_outlined, status),
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    final (icon, word) = _look(status);
+    return Semantics(
+      button: true,
+      label: 'Status: $word',
+      hint: 'Change status',
+      excludeSemantics: true,
+      child: InkWell(
+        onTap: busy ? null : onTap,
+        borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+        splashFactory: NoSplash.splashFactory,
+        highlightColor: AppTheme.hankoPressWash,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: AppTheme.hankoTouch),
+          child: Padding(
+            padding: const EdgeInsets.only(right: 6),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox.square(
+                  dimension: 20,
+                  child: busy
+                      ? const Padding(
+                          padding: EdgeInsets.all(2),
+                          child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.hankoWashi),
+                        )
+                      : Icon(icon, size: 20, color: AppTheme.hankoWashi),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  word,
+                  style: AppTheme.hankoSans(fontSize: 15, weight: FontWeight.w500, height: 1),
+                ),
+                const SizedBox(width: 4),
+                const Icon(Icons.expand_more_sharp, size: 20, color: AppTheme.hankoStone),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Where you are in the show: "Episode", then "7 of 28" (the number in
+/// Mincho, the total in Jost).
+class _HankoEpisodes extends StatelessWidget {
+  const _HankoEpisodes({required this.watched, required this.total});
+
+  final int watched;
+  final int? total;
+
+  @override
+  Widget build(BuildContext context) {
+    final total = this.total != null && this.total! > 0 ? this.total : null;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Episode',
+                style: AppTheme.hankoSans(
+                  fontSize: AppTheme.hankoLabelSize,
+                  color: AppTheme.hankoStone,
+                  height: 1,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text.rich(
+                TextSpan(
+                  text: '$watched',
+                  children: [
+                    if (total != null)
+                      TextSpan(
+                        text: ' of $total',
+                        style: AppTheme.hankoSans(fontSize: 15, color: AppTheme.hankoStone, height: 1),
+                      ),
+                  ],
+                ),
+                style: AppTheme.hankoSerif(fontSize: 30, height: 1),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
