@@ -411,6 +411,27 @@ class _LegendaryCard extends StatelessWidget {
     const gold    = Color(0xFFD4A96A);
     const darkBg  = Color(0xFF0A0805);
 
+    // The name fits its face: Shippori Mincho runs about 8% wider than the
+    // Playfair it replaced, so "Year of Anime" no longer fitted the grid's
+    // 158 px card. One line at the face's size, scaled down when it must be,
+    // but never below 80% of that size; a longer name ("Ghost of Seasons
+    // Past") takes two lines at 80%, and the description gives up its third
+    // line for it. Larger reader text grows the name only where it has room.
+    final nameStyle = AppTheme.shipporiMincho(fontSize: w * 0.10, color: gold, fontWeight: FontWeight.w700, height: 1.1);
+    final nameRoom = w - 28 - w * 0.13; // the panel's padding and the kanji's column
+    final scaler = MediaQuery.maybeTextScalerOf(context) ?? TextScaler.noScaling;
+    final namePainter = TextPainter(
+      text: TextSpan(text: card.name, style: nameStyle),
+      textDirection: TextDirection.ltr,
+      textScaler: scaler,
+      maxLines: 1,
+    )..layout();
+    final nameWidth = namePainter.width;
+    namePainter.dispose();
+    final nameFloor = w * 0.10 * 0.8;
+    final nameOnOneLine = nameWidth <= nameRoom ||
+        scaler.scale(w * 0.10) * nameRoom / nameWidth >= nameFloor;
+
     return _CardShell(
       width: w,
       height: h,
@@ -507,15 +528,23 @@ class _LegendaryCard extends StatelessWidget {
                         ],
                       ),
                       const SizedBox(height: 6),
-                      // Card name
-                      Text(
-                        card.name,
-                        style: AppTheme.shipporiMincho(fontSize: w * 0.10, color: gold, fontWeight: FontWeight.w700, height: 1.1),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
+                      // Card name (fitted, see nameOnOneLine)
+                      if (nameOnOneLine)
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: Text(card.name, style: nameStyle, maxLines: 1),
+                        )
+                      else
+                        Text(
+                          card.name,
+                          style: nameStyle.copyWith(fontSize: nameFloor),
+                          textScaler: TextScaler.noScaling,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       const SizedBox(height: 6),
-                      Text(card.description, style: TextStyle(fontSize: w * 0.045, color: const Color(0xFFCCBB99).withOpacity(0.8), height: 1.45), maxLines: 3, overflow: TextOverflow.ellipsis),
+                      Text(card.description, style: TextStyle(fontSize: w * 0.045, color: const Color(0xFFCCBB99).withOpacity(0.8), height: 1.45), maxLines: nameOnOneLine ? 3 : 2, overflow: TextOverflow.ellipsis),
                       const Spacer(),
                       // Divider
                       Container(height: 0.5, color: gold.withOpacity(0.25)),
