@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -67,8 +68,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
       // Firestore — has built-in offline persistence, so these still work offline
       final results = await Future.wait([
-        _firestoreService.getAnimeByStatus('WATCHING').first,
-        _firestoreService.getAnimeList().first,
+        _readList(watchingOnly: true),
+        _readList(),
       ]);
 
       final importPending = await _firestoreService.getImportPending();
@@ -176,6 +177,34 @@ class _HomeScreenState extends State<HomeScreen> {
         _isFromCache = !isOnline;
       });
     }
+  }
+
+  /// Reads the list once, for this load.
+  ///
+  /// On Android the first snapshot comes from the device's persistent cache,
+  /// which holds the whole list, so Home takes it as it always has. The web
+  /// keeps no persistent copy, and a query's first snapshot there can be
+  /// just the documents another query left in memory: seen on the emulators,
+  /// the whole-list query answered with a test user's four WATCHING shows
+  /// out of nine, so "Up next" came out empty, and the headline and the
+  /// watchlist pick would miss every finished and planned show. On the web,
+  /// get() waits for the server while online, and falls back to the cache
+  /// only when it can't be reached.
+  Future<QuerySnapshot> _readList({bool watchingOnly = false}) {
+    if (!kIsWeb) {
+      return watchingOnly
+          ? _firestoreService.getAnimeByStatus('WATCHING').first
+          : _firestoreService.getAnimeList().first;
+    }
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return Future.error(StateError('Not signed in'));
+    final list = FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .collection('animeList');
+    return watchingOnly
+        ? list.where('status', isEqualTo: 'WATCHING').get()
+        : list.orderBy('addedAt', descending: true).get();
   }
 
   /// Fetches recommendation rows after the screen has already rendered,
