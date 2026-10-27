@@ -789,12 +789,32 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
 
+            // ── From your watchlist tonight (item d) ─────────
+            // One show from your own watchlist, a new one each day. Tonight's
+            // Drop, the season pick for everyone, keeps the slot only when
+            // the watchlist is empty.
+            if (_planToWatch.isNotEmpty)
+              SliverToBoxAdapter(
+                key: const ValueKey('home-watchlist-pick'),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                      AppTheme.hankoGutter, 24, AppTheme.hankoGutter, 0),
+                  child: Builder(builder: (context) {
+                    final pick = _watchlistPick();
+                    return _WatchlistPick(
+                      entry: pick,
+                      onOpen: () => _openEntry(pick),
+                    );
+                  }),
+                ),
+              )
             // ── Tonight's Drop / Anime of Day ────────────────
-            if (_animeOfDay != null)
+            else if (_animeOfDay != null)
               SliverToBoxAdapter(
                 key: const ValueKey('home-anime-of-day'),
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
+                  padding: const EdgeInsets.fromLTRB(
+                      AppTheme.hankoGutter, 24, AppTheme.hankoGutter, 0),
                   child: _TonightCard(anime: _animeOfDay!, open: _open),
                 ),
               ),
@@ -1199,6 +1219,15 @@ class _HomeScreenState extends State<HomeScreen> {
     if (url == null || url.isEmpty || !mounted) return;
     precacheImage(CachedNetworkImageProvider(url), context,
         onError: (_, _) {});
+  }
+
+  /// Tonight's watchlist pick: the day of the year, modulo the watchlist's
+  /// length (newest first), the rotation Tonight's Drop has always used,
+  /// applied to your own list. The same pick all day, a new one tomorrow.
+  Map<String, dynamic> _watchlistPick() {
+    final now = DateTime.now();
+    final dayOfYear = now.difference(DateTime(now.year, 1, 1)).inDays;
+    return _planToWatch[dayOfYear % _planToWatch.length];
   }
 
   void _openEntry(Map<String, dynamic> data) {
@@ -1646,24 +1675,22 @@ class _TonightCardState extends State<_TonightCard>
   late AnimationController _bookmarkCtrl;
   late Animation<double> _bookmarkScale;
 
-  // Maps status → icon + color for the bookmark button
-  static const _statusMeta = {
-    'WATCHING':     (Icons.play_circle_rounded,     AppTheme.primary),
-    'PLAN_TO_WATCH':(Icons.bookmark_rounded,         Colors.blueAccent),
-    'COMPLETED':    (Icons.check_circle_rounded,     Colors.green),
-    'DROPPED':      (Icons.cancel_rounded,           Colors.redAccent),
-  };
-
   @override
   void initState() {
     super.initState();
+    // Hanko's press: in to 1.06 and back in 120 ms, one small move of
+    // feedback (it was 1.4 over 300 ms, which overlapped the card).
     _bookmarkCtrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 300),
+      duration: AppTheme.hankoSealPress,
     );
     _bookmarkScale = TweenSequence([
-      TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.4), weight: 50),
-      TweenSequenceItem(tween: Tween(begin: 1.4, end: 1.0), weight: 50),
+      TweenSequenceItem(
+          tween: Tween(begin: 1.0, end: AppTheme.hankoSealPressScale),
+          weight: 50),
+      TweenSequenceItem(
+          tween: Tween(begin: AppTheme.hankoSealPressScale, end: 1.0),
+          weight: 50),
     ]).animate(CurvedAnimation(parent: _bookmarkCtrl, curve: Curves.easeOut));
     _loadStatus();
   }
@@ -1696,210 +1723,244 @@ class _TonightCardState extends State<_TonightCard>
     final status = await _showQuickAddSheet(context, widget.anime);
     if (status != null && mounted) {
       setState(() => _savedStatus = status);
-      _bookmarkCtrl.forward(from: 0);
+      // With "remove animations" on, the icon simply changes.
+      if (!MediaQuery.disableAnimationsOf(context)) {
+        _bookmarkCtrl.forward(from: 0);
+      }
     }
   }
 
+  // Hanko's sharp icons for a saved status: its shape, not a colour, says
+  // which list the show is on.
+  static const _hankoStatusIcon = {
+    'WATCHING': Icons.play_circle_sharp,
+    'PLAN_TO_WATCH': Icons.bookmark_sharp,
+    'COMPLETED': Icons.check_circle_sharp,
+    'DROPPED': Icons.cancel_sharp,
+  };
+
+  void _openShow() => widget.open(MaterialPageRoute(
+      builder: (_) => AnimeDetailScreen(anime: widget.anime)));
+
   @override
   Widget build(BuildContext context) {
+    // Since Hanko (stage H4, item d) Tonight's Drop shows only when your
+    // watchlist is empty, drawn like the watchlist pick: no text on the art,
+    // the crowd's score in indigo, and the bookmark as an outlined 48 dp
+    // tile. The "Continue" pill went: it did what tapping the card does,
+    // and said "Continue" about a show you haven't started.
+    final anime = widget.anime;
+    final title = anime.titleEnglish ?? anime.title;
+    final score = anime.averageScore;
+    final scoreText = score == null ? null : (score / 10).toStringAsFixed(1);
     final isSaved = _savedStatus != null;
-    final meta = isSaved ? _statusMeta[_savedStatus] : null;
-    final bookmarkIcon = meta?.$1 ?? Icons.bookmark_border_rounded;
-    final bookmarkColor = meta?.$2 ?? AppTheme.textSecondary;
+    final icon = isSaved
+        ? (_hankoStatusIcon[_savedStatus] ?? Icons.bookmark_sharp)
+        : Icons.bookmark_border_sharp;
+    final facts = [
+      if (anime.genres.isNotEmpty) anime.genres.first,
+      if (anime.episodes != null)
+        anime.episodes == 1 ? '1 episode' : '${anime.episodes} episodes',
+    ].join(' · ');
 
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        onTap: () => widget.open(
-            MaterialPageRoute(builder: (_) => AnimeDetailScreen(anime: widget.anime))),
-        child: Container(
-          decoration: BoxDecoration(
-            color: AppTheme.surfaceLight,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: AppTheme.border),
-          ),
-          child: Row(
-            children: [
-              // Poster
-              ClipRRect(
-                borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(20),
-                  bottomLeft: Radius.circular(20),
-                ),
-                child: SizedBox(
-                  width: 140,
-                  height: 200,
-                  child: Stack(
-                    fit: StackFit.expand,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Semantics(
+          header: true,
+          child: Text("Tonight's drop",
+              style: AppTheme.hankoSerif(height: 1.3)),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              // excludeSemantics drops the InkWell's own tap action with the
+              // rest of the subtree, so the node carries onTap itself.
+              child: Semantics(
+                button: true,
+                label: [
+                  title,
+                  if (facts.isNotEmpty) facts,
+                  if (scoreText != null) 'AniList $scoreText',
+                ].join(', '),
+                onTap: _openShow,
+                excludeSemantics: true,
+                child: InkWell(
+                  onTap: _openShow,
+                  splashFactory: NoSplash.splashFactory,
+                  highlightColor: AppTheme.hankoPressWash,
+                  hoverColor: AppTheme.hankoPressWash,
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      if (widget.anime.imageUrl != null)
-                        CachedNetworkImage(
-                          imageUrl: widget.anime.imageUrl!,
-                          fit: BoxFit.cover,
-                          errorWidget: (_, _, _) =>
-                              Container(color: AppTheme.surfaceMid),
-                        )
-                      else
-                        Container(color: AppTheme.surfaceMid),
-                      // Genre badge
-                      if (widget.anime.genres.isNotEmpty)
-                        Positioned(
-                          top: 12,
-                          left: 12,
-                          child: _Badge(widget.anime.genres.first.toUpperCase()),
-                        ),
-                      // Title overlay
-                      Positioned(
-                        bottom: 0,
-                        left: 0,
-                        right: 0,
-                        child: Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                              colors: [
-                                Colors.transparent,
-                                Colors.black.withValues(alpha: 0.8),
-                              ],
+                      _HankoCover(
+                          url: anime.imageUrl, width: 72, height: 102),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _FadeTitle(
+                              title,
+                              maxLines: 2,
+                              style: AppTheme.hankoSerif(
+                                  fontSize: AppTheme.hankoFeaturedSize,
+                                  height: 1.15),
                             ),
-                          ),
-                          child: Text(
-                            widget.anime.titleEnglish ?? widget.anime.title,
-                            style: AppTheme.sans(
-                                fontSize: 12,
-                                weight: FontWeight.w600,
-                                color: Colors.white),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
+                            if (facts.isNotEmpty) ...[
+                              const SizedBox(height: 6),
+                              Text(
+                                facts,
+                                style: AppTheme.hankoSans(
+                                    fontSize: AppTheme.hankoMetaSize,
+                                    color: AppTheme.hankoStone,
+                                    height: 1.4),
+                              ),
+                            ],
+                            if (scoreText != null) ...[
+                              const SizedBox(height: 4),
+                              Text.rich(
+                                TextSpan(
+                                  text: 'AniList ',
+                                  style: AppTheme.hankoSans(
+                                      fontSize: AppTheme.hankoMetaSize,
+                                      color: AppTheme.hankoStone,
+                                      height: 1.4),
+                                  children: [
+                                    TextSpan(
+                                      text: scoreText,
+                                      style: AppTheme.hankoSans(
+                                        fontSize: AppTheme.hankoMetaSize,
+                                        weight: FontWeight.w500,
+                                        color: AppTheme.hankoAi,
+                                        height: 1.4,
+                                        tabular: true,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ],
                         ),
                       ),
                     ],
                   ),
                 ),
               ),
+            ),
+            const SizedBox(width: 12),
+            ScaleTransition(
+              scale: _bookmarkScale,
+              child: IconButton(
+                onPressed: _onBookmarkTap,
+                tooltip: isSaved ? 'On your list' : 'Add to your list',
+                icon: Icon(icon, size: 20, color: AppTheme.hankoWashi),
+                style: const ButtonStyle(
+                  backgroundColor:
+                      WidgetStatePropertyAll(AppTheme.hankoSumi3),
+                  overlayColor:
+                      WidgetStatePropertyAll(AppTheme.hankoPressWash),
+                  splashFactory: NoSplash.splashFactory,
+                  side: WidgetStatePropertyAll(
+                      BorderSide(color: AppTheme.hankoEdge)),
+                  shape: WidgetStatePropertyAll(RoundedRectangleBorder(
+                    borderRadius:
+                        BorderRadius.all(Radius.circular(AppTheme.hankoRadius)),
+                  )),
+                  fixedSize: WidgetStatePropertyAll(
+                      Size(AppTheme.hankoTouch, AppTheme.hankoTouch)),
+                  padding: WidgetStatePropertyAll(EdgeInsets.zero),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
 
-              // Info
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 0, 16),
+/// From your watchlist tonight (Hanko stage H4, item d): one show from your
+/// own watchlist, a different one each day, in the slot Tonight's Drop (the
+/// same trending pick for everyone) used to hold. It shows only what the
+/// entry holds, its episode count: "On your watchlist since March" waits
+/// for a date the list can vouch for (question 27), and the year and
+/// "AniList recommends it" line in the mockup aren't data Home has. The
+/// whole pick is one button that opens the show.
+class _WatchlistPick extends StatelessWidget {
+  const _WatchlistPick({required this.entry, required this.onOpen});
+
+  final Map<String, dynamic> entry;
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final title = entry['title'] as String? ?? 'Unknown';
+    final episodes = entry['episodes'] as int?;
+    final fact = episodes == null
+        ? null
+        : episodes == 1
+            ? '1 episode'
+            : '$episodes episodes';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Semantics(
+          header: true,
+          child: Text('From your watchlist tonight',
+              style: AppTheme.hankoSerif(height: 1.3)),
+        ),
+        const SizedBox(height: 12),
+        // excludeSemantics drops the InkWell's own tap action with the rest
+        // of the subtree, so the node carries onTap itself.
+        Semantics(
+          button: true,
+          label: fact == null ? title : '$title, $fact',
+          onTap: onOpen,
+          excludeSemantics: true,
+          child: InkWell(
+            onTap: onOpen,
+            splashFactory: NoSplash.splashFactory,
+            highlightColor: AppTheme.hankoPressWash,
+            hoverColor: AppTheme.hankoPressWash,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _HankoCover(
+                    url: entry['imageUrl'] as String?, width: 72, height: 102),
+                const SizedBox(width: 16),
+                Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text(
-                        "TONIGHT'S DROP",
-                        style: AppTheme.mono(
-                            fontSize: 10,
-                            color: AppTheme.primary,
-                            letterSpacing: 1.2),
+                      _FadeTitle(
+                        title,
+                        maxLines: 2,
+                        style: AppTheme.hankoSerif(
+                            fontSize: AppTheme.hankoFeaturedSize,
+                            height: 1.15),
                       ),
-                      const SizedBox(height: 8),
-                      Text(
-                        widget.anime.titleEnglish ?? widget.anime.title,
-                        style: AppTheme.serif(
-                            fontSize: 16,
-                            weight: FontWeight.w600,
-                            height: 1.3),
-                        maxLines: 3,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 6),
-                      Row(
-                        children: [
-                          if (widget.anime.averageScore != null) ...[
-                            const Icon(Icons.star_rounded,
-                                color: AppTheme.primary, size: 13),
-                            const SizedBox(width: 3),
-                            Text(
-                              (widget.anime.averageScore! / 10).toStringAsFixed(1),
-                              style: AppTheme.sans(
-                                  fontSize: 12,
-                                  weight: FontWeight.w600,
-                                  color: AppTheme.primary),
-                            ),
-                            Text(' · ',
-                                style: AppTheme.sans(
-                                    color: AppTheme.textMuted, fontSize: 12)),
-                          ],
-                          if (widget.anime.genres.isNotEmpty)
-                            Flexible(
-                              child: Text(
-                                widget.anime.genres.first,
-                                style: AppTheme.sans(
-                                    fontSize: 12,
-                                    color: AppTheme.textSecondary),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      // Action buttons
-                      Row(
-                        mainAxisSize: MainAxisSize.max,
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.only(
-                                left: 10, right: 14, top: 10, bottom: 10),
-                            decoration: BoxDecoration(
-                              color: AppTheme.textPrimary,
-                              borderRadius: BorderRadius.circular(30),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(Icons.play_arrow_rounded,
-                                    color: AppTheme.textInverse, size: 16),
-                                const SizedBox(width: 5),
-                                Text(
-                                  'Continue',
-                                  style: AppTheme.sans(
-                                      fontSize: 13,
-                                      weight: FontWeight.w600,
-                                      color: AppTheme.textInverse),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          GestureDetector(
-                            onTap: _onBookmarkTap,
-                            child: ScaleTransition(
-                              scale: _bookmarkScale,
-                              child: AnimatedContainer(
-                                duration: const Duration(milliseconds: 250),
-                                width: 38,
-                                height: 38,
-                                decoration: BoxDecoration(
-                                  color: isSaved
-                                      ? bookmarkColor.withValues(alpha: 0.15)
-                                      : AppTheme.surfaceMid,
-                                  borderRadius: BorderRadius.circular(30),
-                                  border: Border.all(
-                                    color: isSaved ? bookmarkColor : AppTheme.border,
-                                  ),
-                                ),
-                                child: Icon(
-                                  bookmarkIcon,
-                                  color: isSaved ? bookmarkColor : AppTheme.textSecondary,
-                                  size: 16,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
+                      if (fact != null) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          fact,
+                          style: AppTheme.hankoSans(
+                              fontSize: AppTheme.hankoMetaSize,
+                              color: AppTheme.hankoStone,
+                              height: 1.4),
+                        ),
+                      ],
                     ],
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
-      ),
+      ],
     );
   }
 }
