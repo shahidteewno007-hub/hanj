@@ -935,6 +935,8 @@ class _LiveFrieren extends StatefulWidget {
 class _LiveFrierenState extends State<_LiveFrieren> {
   double? _rating = 8.5;
   DateTime? _ratedAt = DateTime(2026, 10, 3);
+  int _episode = 7;
+  String _status = 'WATCHING';
 
   @override
   Widget build(BuildContext context) {
@@ -948,13 +950,17 @@ class _LiveFrierenState extends State<_LiveFrieren> {
       seasonYear: 2023,
       episodes: 28,
       duration: 24,
-      status: 'WATCHING',
-      currentEpisode: 7,
+      status: _status,
+      currentEpisode: _episode,
       rating: _rating,
       ratedAt: _ratedAt,
       onRate: (v) async => setState(() {
         _rating = v;
         _ratedAt = DateTime.now();
+      }),
+      onBump: () => setState(() {
+        _episode++;
+        if (_episode >= 28) _status = 'COMPLETED';
       }),
     );
   }

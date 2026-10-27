@@ -466,7 +466,9 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
     } else {
       // Sheet already saved to Firestore — just update UI immediately
       setState(() => _currentStatus = result);
-      if (result == 'COMPLETED') {
+      // Hanko drops Detail's confetti (H3 f); it plays only with the classic
+      // header back on.
+      if (_classicDetail && result == 'COMPLETED') {
         WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted) _confettiKey.currentState?.launch(); });
       } else if (result == 'WATCHING') {
         // Wait for the bottom sheet's dismiss animation to finish before
@@ -575,6 +577,61 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
         setState(() { _userRating = previous; _ratedAt = previousAt; });
       }
     }));
+  }
+
+  /// +1 (H3 f): the episode goes up at once and saves in the background, as
+  /// Home's +1 does; a refused save puts it back and says so. Offline, the
+  /// save waits for the connection and the new number stays. At the last
+  /// episode it also writes Completed the way Home's does, a status update
+  /// with no activity event (the logic change question 4 approved). With no
+  /// episode total it never finishes the show. No confetti: in Hanko the
+  /// moment of finishing is pressing your seal.
+  Future<void> _bump() async {
+    final total = _anime.episodes;
+    final from = _currentEpisode ?? 0;
+    final next = from + 1;
+    final hasTotal = total != null && total > 0;
+    if (hasTotal && next > total) return;
+    final finishes = hasTotal && next >= total;
+    final statusBefore = _currentStatus;
+    setState(() {
+      _currentEpisode = next;
+      if (finishes) _currentStatus = 'COMPLETED';
+    });
+    try {
+      await _firestoreService.updateEpisodeProgress(int.parse(widget.anime.id), next);
+    } catch (_) {
+      if (!mounted) return;
+      // Roll back only this +1, unless another has been made since.
+      if (_currentEpisode == next) {
+        setState(() {
+          _currentEpisode = from;
+          if (finishes && _currentStatus == 'COMPLETED') _currentStatus = statusBefore;
+        });
+      }
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Your progress didn\'t save. Try again.'),
+      ));
+      return;
+    }
+    if (!finishes) return;
+    try {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) return;
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .collection('animeList')
+          .doc(widget.anime.id)
+          .update({'status': 'COMPLETED'});
+    } catch (_) {
+      // The episode saved; only the status didn't.
+      if (!mounted) return;
+      if (_currentStatus == 'COMPLETED') setState(() => _currentStatus = statusBefore);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Couldn\'t mark it completed. Try again.'),
+      ));
+    }
   }
 
   /// updateRating, caught: says what went wrong and returns false.
@@ -729,7 +786,7 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
             ),
           ],
           ),
-          ConfettiOverlay(key: _confettiKey),
+          if (_classicDetail) ConfettiOverlay(key: _confettiKey),
         ],
       ),
     );
@@ -1008,6 +1065,7 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
           busy: _isLoading,
           onRate: _rate,
           onStatus: _showAddToListSheet,
+          onBump: _bump,
           onCover: cover == null
               ? null
               : () => _openGallery(context,
@@ -1054,6 +1112,7 @@ class HankoDetailHeader extends StatefulWidget {
     this.onCover,
     this.onRate,
     this.onStatus,
+    this.onBump,
   });
 
   /// The show's name as the app shows it: English, else romaji.
@@ -1120,6 +1179,9 @@ class HankoDetailHeader extends StatefulWidget {
 
   /// Opens the status sheet: the status word, or "Add to list".
   final VoidCallback? onStatus;
+
+  /// Marks the next episode watched: the +1 shown while you're watching.
+  final VoidCallback? onBump;
 
   /// The header's sizes at [width]: the print is 208 by 293 from a 360 dp
   /// phone up, smaller on narrower screens so the facts keep room. The field
@@ -1402,7 +1464,25 @@ class _HankoDetailHeaderState extends State<HankoDetailHeader> {
                   // every episode.
                   if (onList && (widget.status == 'WATCHING' || watched > 0)) ...[
                     const SizedBox(height: 10),
-                    _HankoEpisodes(watched: watched, total: widget.episodes),
+                    _HankoEpisodes(
+                      watched: watched,
+                      total: widget.episodes,
+                      // +1 while watching, until the last episode.
+                      action: widget.status == 'WATCHING' &&
+                              (widget.episodes == null ||
+                                  widget.episodes! <= 0 ||
+                                  watched < widget.episodes!)
+                          ? _HankoMainAction(
+                              label: '+1',
+                              icon: null,
+                              semanticLabel: 'Mark episode ${watched + 1} watched',
+                              minWidth: 76,
+                              minHeight: 56,
+                              fontSize: 20,
+                              onTap: widget.onBump,
+                            )
+                          : null,
+                    ),
                   ],
                 ],
               ),
@@ -1421,17 +1501,29 @@ class _HankoMainAction extends StatelessWidget {
     required this.label,
     required this.onTap,
     required this.icon,
+    this.semanticLabel,
+    this.minWidth = AppTheme.hankoTouch,
+    this.minHeight = AppTheme.hankoTouch,
+    this.fontSize = 15,
   });
 
   final String label;
   final VoidCallback? onTap;
   final IconData? icon;
 
+  /// What a screen reader says instead of [label] ("+1" says little).
+  final String? semanticLabel;
+  final double minWidth;
+  final double minHeight;
+  final double fontSize;
+
   @override
   Widget build(BuildContext context) {
     final icon = this.icon;
     return Semantics(
       button: true,
+      label: semanticLabel,
+      excludeSemantics: semanticLabel != null,
       child: Material(
         color: AppTheme.hankoWashi,
         borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
@@ -1441,7 +1533,7 @@ class _HankoMainAction extends StatelessWidget {
           splashFactory: NoSplash.splashFactory,
           highlightColor: AppTheme.hankoSumi.withValues(alpha: 0.08),
           child: ConstrainedBox(
-            constraints: const BoxConstraints(minWidth: AppTheme.hankoTouch, minHeight: AppTheme.hankoTouch),
+            constraints: BoxConstraints(minWidth: minWidth, minHeight: minHeight),
             child: Padding(
               padding: EdgeInsets.symmetric(horizontal: icon == null ? 14 : 18),
               child: Row(
@@ -1455,7 +1547,7 @@ class _HankoMainAction extends StatelessWidget {
                   Text(
                     label,
                     style: AppTheme.hankoSans(
-                      fontSize: 15,
+                      fontSize: fontSize,
                       weight: FontWeight.w600,
                       color: AppTheme.hankoSumi,
                       height: 1,
@@ -1534,16 +1626,18 @@ class _HankoStatusButton extends StatelessWidget {
 }
 
 /// Where you are in the show: "Episode", then "7 of 28" (the number in
-/// Mincho, the total in Jost).
+/// Mincho, the total in Jost), with the +1 beside it while you're watching.
 class _HankoEpisodes extends StatelessWidget {
-  const _HankoEpisodes({required this.watched, required this.total});
+  const _HankoEpisodes({required this.watched, required this.total, required this.action});
 
   final int watched;
   final int? total;
+  final Widget? action;
 
   @override
   Widget build(BuildContext context) {
     final total = this.total != null && this.total! > 0 ? this.total : null;
+    final action = this.action;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
@@ -1576,6 +1670,7 @@ class _HankoEpisodes extends StatelessWidget {
             ],
           ),
         ),
+        if (action != null) ...[const SizedBox(width: 18), action],
       ],
     );
   }
