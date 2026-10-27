@@ -1071,12 +1071,16 @@ class _HomeScreenState extends State<HomeScreen> {
                             letterSpacing: 1.5),
                       ),
                       const SizedBox(height: 4),
-                      Text(
+                      // Two lines, fading where a cut remains (H2 QA N3):
+                      // Shippori is about 8% wider than Playfair was, so one
+                      // line cut "The Apothecary Diaries Season 3" with
+                      // Shippori's centred ⋯.
+                      _FadeTitle(
                         row['sourceTitle'] as String,
+                        maxLines: 2,
                         style: AppTheme.serif(
-                            fontSize: 20, weight: FontWeight.w600),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                            fontSize: 20, weight: FontWeight.w600,
+                            height: 1.25),
                       ),
                     ],
                   ),
@@ -2974,12 +2978,16 @@ class _ComingUpSectionState extends State<_ComingUpSection> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
+                          // Two lines, fading where a cut remains (H2 QA W1):
+                          // in Shippori one line held about 16 characters,
+                          // "STEEL BALL RUN J⋯". Two lines fit beside the
+                          // 56 px cover without making the row taller.
+                          _FadeTitle(
                             item['title'] as String,
+                            maxLines: 2,
                             style: AppTheme.serif(
-                                fontSize: 13, weight: FontWeight.w600),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                                fontSize: 13, weight: FontWeight.w600,
+                                height: 1.25),
                           ),
                           const SizedBox(height: 3),
                           Text(
