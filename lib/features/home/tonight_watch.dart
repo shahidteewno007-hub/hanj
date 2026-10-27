@@ -204,7 +204,9 @@ class _TonightWatchSheetState extends State<TonightWatchSheet>
   // ── Mood options — icons only, no emojis ──────────────────────
   // Hanko draws the sharp icons and none of the mood colours (stage H4,
   // item h): six accent colours would be decoration. The colours and the
-  // watermark icons stay here, undrawn, as a record of the old cards.
+  // watermark icons stay here, undrawn, as a record of the old cards. Dark
+  // takes its own watermark's moon behind a cloud: the sharp set has no
+  // outlined crescent, and two filled crescents read as the same mood.
   static const _moods = [
     _Option(Icons.bolt_sharp,             Icons.flash_on_rounded,
         'Hype',         'TRENDING_DESC',   'Action',
@@ -215,7 +217,7 @@ class _TonightWatchSheetState extends State<TonightWatchSheet>
     _Option(Icons.nightlight_sharp,       Icons.bedtime_outlined,
         'Cozy',         'POPULARITY_DESC', 'Slice of Life',
         Color(0xFF3A2A6B), Color(0xFF0C091A)),
-    _Option(Icons.dark_mode_sharp,        Icons.nights_stay_rounded,
+    _Option(Icons.nights_stay_sharp,      Icons.nights_stay_rounded,
         'Dark',         'SCORE_DESC',      'Thriller',
         Color(0xFF1C1C1C), Color(0xFF080808)),
     _Option(Icons.theater_comedy_sharp,   Icons.sentiment_satisfied_alt_outlined,

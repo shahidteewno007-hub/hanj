@@ -566,9 +566,16 @@ class _UpcomingAnimeRowState extends State<UpcomingAnimeRow> {
     // coral is your seal, and nothing in this row is yours. The data, the
     // static cache and where each tap goes are as they were.
     final scaler = MediaQuery.textScalerOf(context);
+    // The columns widen as the titles' text grows, so a long word still fits
+    // one line: at 1.3x a 72 px column broke "Apothecary" mid-word. Tied to
+    // the 12 px title's own growth (Android's large sizes scale non-linearly),
+    // and never narrower than the frame's 72 px. The cover keeps 72 x 102.
+    final grow = scaler.scale(12) / 12;
+    final itemWidth = grow > 1 ? 72 * grow : 72.0;
+    final coverHeight = itemWidth * 102 / 72;
     // Two lines of title at the reader's text size, so the strip grows with
     // large text instead of cutting the titles' second line.
-    final stripHeight = 102 + 6 + scaler.scale(12) * 1.25 * 2 + 4;
+    final stripHeight = coverHeight + 6 + scaler.scale(12) * 1.25 * 2 + 4;
 
     if (_isLoading && _anime.isEmpty) {
       // The size the loaded block takes, so nothing below jumps when it
@@ -644,7 +651,7 @@ class _UpcomingAnimeRowState extends State<UpcomingAnimeRow> {
                   highlightColor: AppTheme.hankoPressWash,
                   hoverColor: AppTheme.hankoPressWash,
                   child: SizedBox(
-                    width: 72,
+                    width: itemWidth,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -653,8 +660,8 @@ class _UpcomingAnimeRowState extends State<UpcomingAnimeRow> {
                           borderRadius:
                               BorderRadius.circular(AppTheme.hankoRadius),
                           child: SizedBox(
-                            width: 72,
-                            height: 102,
+                            width: itemWidth,
+                            height: coverHeight,
                             child: ColoredBox(
                               color: AppTheme.hankoSumi3,
                               child: anime.imageUrl != null
