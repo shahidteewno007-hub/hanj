@@ -368,37 +368,57 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
 
               // ── Hanj Cards ───────────────────────────────
+              // The ways on from Profile, as quiet Hanko rows below the
+              // screen's one hairline, which closes your record.
               SliverToBoxAdapter(
                 key: const ValueKey('profile-section-c'),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-                  child: _HanjCardsBanner(
-                    onTap: () => Navigator.push(context, MaterialPageRoute(
-                        builder: (_) => const CardCollectionScreen())),
+                child: _column(Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                      AppTheme.hankoGutter, 30, AppTheme.hankoGutter, 0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const ColoredBox(
+                        color: AppTheme.hankoHairline,
+                        child: SizedBox(height: 1),
+                      ),
+                      const SizedBox(height: 10),
+                      _EntryRow(
+                        icon: Icons.style_sharp,
+                        title: 'Hanj Cards',
+                        line: 'Collect rare cards by watching anime',
+                        onTap: () => Navigator.push(context, MaterialPageRoute(
+                            builder: (_) => const CardCollectionScreen())),
+                      ),
+                    ],
                   ),
-                ),
+                )),
               ),
 
               // ── Cadre ────────────────────────────────────
               SliverToBoxAdapter(
                 key: const ValueKey('profile-section-d'),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-                  child: _CadreBanner(
+                child: _column(Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                      AppTheme.hankoGutter, 4, AppTheme.hankoGutter, 0),
+                  child: _EntryRow(
+                    icon: Icons.local_fire_department_sharp,
+                    title: 'Cadre',
+                    line: 'Draft a deck from any cast and clash',
                     onTap: () => Navigator.push(context, MaterialPageRoute(
                         builder: (_) => const CadreLobbyScreen())),
                   ),
-                ),
+                )),
               ),
 
               // ── Anime Taste Profile ──────────────────────
               if (totalAnime > 0)
-                const SliverToBoxAdapter(
-                  key: ValueKey('profile-stats-header'),
-                  child: Padding(
+                SliverToBoxAdapter(
+                  key: const ValueKey('profile-stats-header'),
+                  child: _column(const Padding(
                     padding: EdgeInsets.fromLTRB(20, 16, 20, 0),
                     child: TasteProfileCard(),
-                  ),
+                  )),
                 ),
 
               // ── Founder Card (first 50 users only) ───────
@@ -408,14 +428,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
               // Until status is known, hold the card's footprint so it fills
               // in rather than appearing and pushing everything below it down.
               if (!_founderResolved)
-                const SliverToBoxAdapter(
-                  key: ValueKey('profile-founder'),
-                  child: FounderCardPlaceholder(),
+                SliverToBoxAdapter(
+                  key: const ValueKey('profile-founder'),
+                  child: _column(const FounderCardPlaceholder()),
                 )
               else if (_founderStatus.isFounder)
                 SliverToBoxAdapter(
                   key: const ValueKey('profile-founder'),
-                  child: FounderCard(status: _founderStatus),
+                  child: _column(FounderCard(status: _founderStatus)),
                 ),
 
               const SliverToBoxAdapter(child: SizedBox(height: 40)),
@@ -1324,6 +1344,75 @@ class _Cover extends StatelessWidget {
                   fit: BoxFit.cover,
                   errorWidget: (_, _, _) => const SizedBox.expand(),
                 ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A way on from Profile (Hanj Cards, Cadre) as a quiet Hanko row: an
+/// icon in stone, the name in Jost 15 500 washi, a line in Jost 13 stone and
+/// a chevron. No box, no glow, no colour of its own: coral now means your
+/// seal, so neither the gold nor the coral banner it replaces survives. At
+/// least 56 px tall, pressed with the 8% wash.
+class _EntryRow extends StatelessWidget {
+  const _EntryRow({
+    required this.icon,
+    required this.title,
+    required this.line,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String line;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: '$title. $line',
+      excludeSemantics: true,
+      child: InkWell(
+        onTap: onTap,
+        splashFactory: NoSplash.splashFactory,
+        highlightColor: AppTheme.hankoPressWash,
+        hoverColor: AppTheme.hankoPressWash,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 56),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Row(
+              children: [
+                Icon(icon, size: 22, color: AppTheme.hankoStone),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(title,
+                          style: AppTheme.hankoSans(
+                              fontSize: 15,
+                              weight: FontWeight.w500,
+                              height: 1.25)),
+                      const SizedBox(height: 2),
+                      Text(line,
+                          style: AppTheme.hankoSans(
+                            fontSize: AppTheme.hankoMetaSize,
+                            color: AppTheme.hankoStone,
+                            height: 1.3,
+                          )),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                const Icon(Icons.chevron_right_sharp,
+                    size: 20, color: AppTheme.hankoStone),
+              ],
+            ),
+          ),
         ),
       ),
     );
