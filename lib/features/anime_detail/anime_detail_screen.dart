@@ -577,7 +577,7 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
           action: SnackBarAction(
             label: 'Undo',
             onPressed: () {
-              if (mounted) _applyRating(previous, offerUndo: false);
+              if (mounted) _undoRating(rating, previous, previousAt);
             },
           ),
         ));
@@ -585,6 +585,21 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
     unawaited(_saveRating(rating).then((saved) {
       if (!saved && mounted && _userRating == rating) {
         setState(() { _userRating = previous; _ratedAt = previousAt; });
+      }
+    }));
+  }
+
+  /// Undo after a re-rate puts back the previous rating with its own date,
+  /// not today's: the seal's "Yours 25 Oct" reads it, and so will the diary.
+  /// A rating with no date (an import's) gets its date removed again. Shown
+  /// at once like any rating; a refused save puts the re-rate back, unless
+  /// the rating has changed since.
+  void _undoRating(double undone, double previous, DateTime? previousAt) {
+    final undoneAt = _ratedAt;
+    setState(() { _userRating = previous; _ratedAt = previousAt; });
+    unawaited(_saveRating(previous, restoring: true, ratedAt: previousAt).then((saved) {
+      if (!saved && mounted && _userRating == previous) {
+        setState(() { _userRating = undone; _ratedAt = undoneAt; });
       }
     }));
   }
@@ -644,10 +659,27 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
     }
   }
 
-  /// updateRating, caught: says what went wrong and returns false.
-  Future<bool> _saveRating(double rating) async {
+  /// updateRating, caught: says what went wrong and returns false. With
+  /// [restoring] (Undo), it writes [ratedAt] back instead of a new date, or
+  /// removes it when the restored rating had none; updateRating always
+  /// stamps the server's time.
+  Future<bool> _saveRating(double rating, {bool restoring = false, DateTime? ratedAt}) async {
     try {
-      await _firestoreService.updateRating(int.parse(widget.anime.id), rating);
+      if (restoring) {
+        final uid = FirebaseAuth.instance.currentUser?.uid;
+        if (uid == null) return true; // as updateRating does, signed out
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(uid)
+            .collection('animeList')
+            .doc(widget.anime.id)
+            .update({
+          'userRating': rating,
+          'ratedAt': ratedAt == null ? FieldValue.delete() : Timestamp.fromDate(ratedAt),
+        });
+      } else {
+        await _firestoreService.updateRating(int.parse(widget.anime.id), rating);
+      }
       return true;
     } catch (e) {
       // update() throws not-found when the entry doesn't exist.
