@@ -15,6 +15,7 @@ import '../../widgets/anilist_saved_note.dart';
 import '../../widgets/hanko_rating_ruler.dart';
 import '../../widgets/hanko_reel.dart';
 import '../../widgets/hanko_seal.dart';
+import '../../widgets/hanko_seal_register.dart';
 import '../../widgets/hanko_title_slip.dart';
 
 import '../../core/theme/app_theme.dart';
@@ -998,6 +999,13 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
     return nodes != null && nodes.isNotEmpty ? nodes.first['name'] as String? : null;
   }
 
+  /// AniList's users' scores per 10-point bucket, {10: 1159, … 100: 106581}.
+  Map<int, int> get _scoreDistribution => {
+        for (final e in _staffData?['stats']?['scoreDistribution'] as List? ?? const [])
+          if (e is Map && e['score'] is int && e['amount'] is int)
+            e['score'] as int: e['amount'] as int,
+      };
+
   /// AniList's coverImage.color, "#bbf1a1".
   static Color? _hexColor(String? hex) {
     if (hex == null || !RegExp(r'^#[0-9a-fA-F]{6}$').hasMatch(hex)) return null;
@@ -1065,6 +1073,8 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
           currentEpisode: _currentEpisode,
           nextEpisode: _nextEpisodeNum,
           nextAiringAt: _nextAiringAt,
+          averageScore: anime.averageScore,
+          scoreDistribution: _scoreDistribution,
           busy: _isLoading,
           onRate: _rate,
           onStatus: _showAddToListSheet,
@@ -1113,6 +1123,8 @@ class HankoDetailHeader extends StatefulWidget {
     this.currentEpisode,
     this.nextEpisode,
     this.nextAiringAt,
+    this.averageScore,
+    this.scoreDistribution = const {},
     this.busy = false,
     this.onCover,
     this.onRate,
@@ -1175,6 +1187,12 @@ class HankoDetailHeader extends StatefulWidget {
   /// reel outlines what has aired, and a line says when the next one does.
   final int? nextEpisode;
   final DateTime? nextAiringAt;
+
+  /// The crowd: AniList's average score (0–100), shown on Hanj's 10-point
+  /// scale, and its users' scores per 10-point bucket
+  /// (`stats.scoreDistribution`). No score, no crowd: an unaired show.
+  final double? averageScore;
+  final Map<int, int> scoreDistribution;
 
   /// A change to your list is under way (removing the show): the status
   /// button shows a spinner and doesn't open the sheet.
@@ -1526,12 +1544,71 @@ class _HankoDetailHeaderState extends State<HankoDetailHeader> {
                           : null,
                     ),
                   ],
+                  // The crowd (H3 h), after the screen's one hairline.
+                  if (widget.averageScore != null) ...[
+                    const SizedBox(height: 14),
+                    const ColoredBox(
+                      color: AppTheme.hankoHairline,
+                      child: SizedBox(height: 1, width: double.infinity),
+                    ),
+                    const SizedBox(height: 10),
+                    _HankoCrowd(
+                      averageScore: widget.averageScore!,
+                      distribution: widget.scoreDistribution,
+                    ),
+                  ],
                 ],
               ),
             ),
           ],
         );
       },
+    );
+  }
+}
+
+/// The crowd: "AniList 9.1", the number in indigo, the crowd's colour, and
+/// beside it the same scores as a seal register in indigo, on Hanj's 1–10
+/// ruler (AniList's buckets 10 … 100 sit on 1 … 10). The register shows only
+/// when AniList has a distribution.
+class _HankoCrowd extends StatelessWidget {
+  const _HankoCrowd({required this.averageScore, required this.distribution});
+
+  final double averageScore;
+  final Map<int, int> distribution;
+
+  @override
+  Widget build(BuildContext context) {
+    final score = (averageScore / 10).toStringAsFixed(1);
+    return Row(
+      children: [
+        Semantics(
+          label: 'AniList average, $score out of 10',
+          excludeSemantics: true,
+          child: Text.rich(
+            TextSpan(
+              text: 'AniList ',
+              children: [
+                TextSpan(
+                  text: score,
+                  style: AppTheme.hankoSans(
+                    fontSize: AppTheme.hankoMetaSize,
+                    weight: FontWeight.w500,
+                    color: AppTheme.hankoAi,
+                  ),
+                ),
+              ],
+            ),
+            style: AppTheme.hankoSans(fontSize: AppTheme.hankoMetaSize, color: AppTheme.hankoStone),
+          ),
+        ),
+        const Spacer(),
+        if (distribution.values.any((n) => n > 0))
+          SizedBox(
+            width: 112,
+            child: HankoSealRegister.anilist(distribution, averageScore: averageScore.round()),
+          ),
+      ],
     );
   }
 }

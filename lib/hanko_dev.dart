@@ -866,11 +866,17 @@ class _DetailHeaders extends StatelessWidget {
             currentEpisode: 3,
             nextEpisode: 5,
             nextAiringAt: DateTime.fromMillisecondsSinceEpoch(1793536200 * 1000),
+            averageScore: 69,
+            scoreDistribution: const {
+              10: 25, 20: 19, 30: 39, 40: 42, 50: 106, //
+              60: 155, 70: 320, 80: 196, 90: 182, 100: 170,
+            },
           ),
         ),
         _phone(
           'Perfect Blue (AniList 437). A film on a dark cover; its native title '
-              'is Latin, so no slip. Not on the list.',
+              'is Latin, so no slip. Not on the list. Its score distribution '
+              'isn’t in this specimen’s data, so the crowd is the number alone.',
           _perfectBlue,
           const HankoDetailHeader(
             title: 'Perfect Blue',
@@ -882,6 +888,7 @@ class _DetailHeaders extends StatelessWidget {
             seasonYear: 1998,
             episodes: 1,
             duration: 82,
+            averageScore: 85,
           ),
         ),
       ],
@@ -958,6 +965,8 @@ class _LiveFrierenState extends State<_LiveFrieren> {
       currentEpisode: _episode,
       rating: _rating,
       ratedAt: _ratedAt,
+      averageScore: 91,
+      scoreDistribution: _Registers._frieren,
       onRate: (v) async => setState(() {
         _rating = v;
         _ratedAt = DateTime.now();
