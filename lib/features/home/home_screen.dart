@@ -37,7 +37,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final _aniListService = AnilistService();
   final _firestoreService = FirestoreService();
 
-  List<Anime> _trendingAnime = [];
+  List<Anime> _seasonAnime = []; // Popular this season (was the trending list)
   List<Map<String, dynamic>> _continueWatching = [];
   List<Map<String, dynamic>> _planToWatch = [];
   Set<String> _reminderIds = {}; // persisted reminder animeIds
@@ -175,24 +175,27 @@ class _HomeScreenState extends State<HomeScreen> {
 
   /// The chart and Tonight's Drop, from OfflineCacheService: memory, then a
   /// saved copy under an hour old, then AniList through the throttle, with
-  /// the saved copy as the fallback when AniList fails.
+  /// the saved copy as the fallback when AniList fails. Since Hanko the
+  /// chart is the season's most popular shows (item f), so Tonight's Drop,
+  /// the pick for an empty watchlist, now comes from the season too.
   Future<void> _loadChart() async {
     try {
-      final trending = await OfflineCacheService.instance.getTrending();
+      final season = await OfflineCacheService.instance
+          .getSeasonal(_currentSeason(), DateTime.now().year);
       if (!mounted) return;
       Anime? animeOfDay;
-      if (trending.isNotEmpty) {
+      if (season.isNotEmpty) {
         final dayOfYear = DateTime.now()
             .difference(DateTime(DateTime.now().year, 1, 1))
             .inDays;
-        animeOfDay = trending[dayOfYear % trending.length];
+        animeOfDay = season[dayOfYear % season.length];
       }
       setState(() {
-        _trendingAnime = trending;
+        _seasonAnime = season;
         _animeOfDay = animeOfDay;
       });
     } catch (_) {
-      // getTrending falls back to its saved copy on any network failure;
+      // getSeasonal falls back to its saved copy on any network failure;
       // this only catches the device storage itself failing. Uncaught, it
       // would reach Crashlytics as fatal (main.dart).
     }
@@ -595,41 +598,52 @@ class _HomeScreenState extends State<HomeScreen> {
               const SliverToBoxAdapter(child: SizedBox(height: 8)),
             ],
 
-            // ── Trending ─────────────────────────────────────
-            if (_trendingAnime.isNotEmpty) ...[
+            // ── Popular this season ──────────────────────────
+            // Hanko's chart (item f): the season's most popular shows,
+            // AniList's own calendar, instead of "Trending this week". The
+            // same one request, behind the same one-hour cache and stale
+            // fallback (OfflineCacheService.getSeasonal), inside the throttle.
+            if (_seasonAnime.isNotEmpty) ...[
+              // The one hairline the screen has: it sets the season's chart
+              // off from your own record above it.
+              SliverToBoxAdapter(
+                key: const ValueKey('home-chart-rule'),
+                child: Container(
+                  height: 1,
+                  margin: const EdgeInsets.fromLTRB(
+                      AppTheme.hankoGutter, 8, AppTheme.hankoGutter, 0),
+                  color: AppTheme.hankoHairline,
+                ),
+              ),
               SliverToBoxAdapter(
                 key: const ValueKey('home-trending-header'),
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
+                  padding: const EdgeInsets.fromLTRB(
+                      AppTheme.hankoGutter, 20, AppTheme.hankoGutter, 12),
                   child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    crossAxisAlignment: CrossAxisAlignment.baseline,
+                    textBaseline: TextBaseline.alphabetic,
                     children: [
-                      Row(
-                        children: [
-                          const Icon(Icons.local_fire_department_rounded,
-                              color: AppTheme.primary, size: 16),
-                          const SizedBox(width: 8),
-                          Text('Trending this week',
-                              style: AppTheme.serif(
-                                  fontSize: 20, weight: FontWeight.w600)),
-                        ],
+                      Expanded(
+                        child: Semantics(
+                          header: true,
+                          child: Text('Popular this season',
+                              style: AppTheme.hankoSerif(height: 1.3)),
+                        ),
                       ),
-                      GestureDetector(
-                        onTap: () => Navigator.push(context,
-                            MaterialPageRoute(builder: (_) => const DiscoveryScreen(initialTab: 'TRENDING', showBackButton: true))),
-                        child: Text('MORE →',
-                            style: AppTheme.mono(
-                                fontSize: 11,
-                                color: AppTheme.primary,
-                                letterSpacing: 1)),
-                      ),
+                      const SizedBox(width: 12),
+                      Text('${_seasonLabel()}, AniList score',
+                          style: AppTheme.hankoSans(
+                              fontSize: AppTheme.hankoLabelSize,
+                              color: AppTheme.hankoStone,
+                              height: 1.3)),
                     ],
                   ),
                 ),
               ),
               const SliverToBoxAdapter(child: AnilistSavedNote()),
 
-              // Trending lays out in columns on desktop. Below 1024
+              // The chart lays out in columns on desktop. Below 1024
               // columnsFor is floored to 1 (see its domain note), so the
               // phone takes the SliverList branch it has always taken and
               // builds an identical tree in both orientations.
@@ -650,7 +664,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   1)
                 SliverList(
                   key: const ValueKey('home-trending-list'),
-                  delegate: _trendingDelegate(),
+                  delegate: _chartDelegate(),
                 )
               else
                 SliverGrid(
@@ -658,15 +672,28 @@ class _HomeScreenState extends State<HomeScreen> {
                   gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount: Responsive.columnsFor(
                         MediaQuery.of(context).size.width),
-                    // _TrendingRow is a fixed height by construction: 14 px
-                    // of padding, a 72 px poster (taller than its text stack,
-                    // whose title is maxLines: 1), 14 px of padding, and a
-                    // 1 px divider under every rank but the last.
-                    mainAxisExtent: 101,
+                    // _ChartRow is a fixed height by construction: 56 px,
+                    // taller than its 48 px cover and its one-line title.
+                    mainAxisExtent: _ChartRow.height,
                     crossAxisSpacing: 24,
                   ),
-                  delegate: _trendingDelegate(),
+                  delegate: _chartDelegate(),
                 ),
+              SliverToBoxAdapter(
+                key: const ValueKey('home-chart-more'),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                      AppTheme.hankoGutter, 4, AppTheme.hankoGutter, 0),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: _QuietLink(
+                      label: 'More from this season',
+                      onTap: () => Navigator.push(context,
+                          MaterialPageRoute(builder: (_) => const DiscoveryScreen(initialTab: 'SEASONAL', showBackButton: true))),
+                    ),
+                  ),
+                ),
+              ),
             ],
 
             // ── Coming Up ─────────────────────────────────────
@@ -795,19 +822,43 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  /// Shared by the trending SliverList and SliverGrid so the two branches
-  /// cannot drift in what they build.
-  SliverChildBuilderDelegate _trendingDelegate() {
+  /// Shared by the chart's SliverList and SliverGrid so the two branches
+  /// cannot drift in what they build. Five rows, as Hanko draws them.
+  SliverChildBuilderDelegate _chartDelegate() {
     return SliverChildBuilderDelegate(
       (context, index) {
-        if (index >= _trendingAnime.length) return null;
-        return _TrendingRow(
-          anime: _trendingAnime[index],
-          rank: index + 1,
+        if (index >= _seasonAnime.length) return null;
+        final anime = _seasonAnime[index];
+        return Padding(
+          key: ValueKey('chart-${anime.id}'),
+          padding:
+              const EdgeInsets.symmetric(horizontal: AppTheme.hankoGutter),
+          child: _ChartRow(
+            anime: anime,
+            rank: index + 1,
+            onOpen: () => Navigator.push(context,
+                MaterialPageRoute(
+                    builder: (_) => AnimeDetailScreen(anime: anime))),
+          ),
         );
       },
-      childCount: _trendingAnime.length.clamp(0, 10),
+      childCount: _seasonAnime.length.clamp(0, 5),
     );
+  }
+
+  /// AniList's season for today, the way the rest of the app works it out.
+  static String _currentSeason() {
+    final month = DateTime.now().month;
+    if (month <= 3) return 'WINTER';
+    if (month <= 6) return 'SPRING';
+    if (month <= 9) return 'SUMMER';
+    return 'FALL';
+  }
+
+  /// "Fall 2026": AniList's season names, as the rest of the app uses them.
+  static String _seasonLabel() {
+    final s = _currentSeason();
+    return '${s[0]}${s.substring(1).toLowerCase()} ${DateTime.now().year}';
   }
 
   Widget _buildHeadline() {
@@ -1965,6 +2016,165 @@ class _TrendingRowState extends State<_TrendingRow>
               ),
               if (widget.rank < 10)
                 const Divider(height: 1, color: AppTheme.border),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Hanko pieces shared by Home's blocks ─────────────────────
+
+/// A cover at a fixed size, with Hanko's square 2 px corners and sumi 3
+/// behind it while it loads or when there is none. Decoded at full size on
+/// purpose, with no memCacheWidth: a resized decode is a different cache
+/// entry, and Detail opens on this same image (DESIGN.md §6c).
+class _HankoCover extends StatelessWidget {
+  const _HankoCover({
+    required this.url,
+    required this.width,
+    required this.height,
+  });
+
+  final String? url;
+  final double width;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    final u = url;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+      child: SizedBox(
+        width: width,
+        height: height,
+        child: ColoredBox(
+          color: AppTheme.hankoSumi3,
+          child: u == null || u.isEmpty
+              ? const SizedBox.expand()
+              : CachedNetworkImage(
+                  imageUrl: u,
+                  fit: BoxFit.cover,
+                  errorWidget: (_, _, _) => const SizedBox.expand(),
+                ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Hanko's quiet link: Jost 500 13 in washi, underlined in edge, in a 48 dp
+/// target. A secondary way on ("See all", "More"), never shaped as a button.
+class _QuietLink extends StatelessWidget {
+  const _QuietLink({required this.label, required this.onTap});
+
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      child: InkWell(
+        onTap: onTap,
+        splashFactory: NoSplash.splashFactory,
+        highlightColor: AppTheme.hankoPressWash,
+        hoverColor: AppTheme.hankoPressWash,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: AppTheme.hankoTouch),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            widthFactor: 1,
+            child: Text(
+              label,
+              style: AppTheme.hankoSans(
+                fontSize: AppTheme.hankoMetaSize,
+                weight: FontWeight.w500,
+              ).copyWith(
+                decoration: TextDecoration.underline,
+                decorationColor: AppTheme.hankoEdge,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Popular this season: one chart row ───────────────────────
+// Hanko's ranked row (hanko.html, Home): the rank in Shippori, a 34 × 48
+// cover, the title on one line that fades out (Shippori draws "…" as the
+// centred Japanese ellipsis), and AniList's score in indigo, the crowd's
+// colour, so it never reads as your verdict (yours are seals). The score is
+// out of 10 with one decimal, as everywhere else in Hanj.
+class _ChartRow extends StatelessWidget {
+  const _ChartRow({
+    required this.anime,
+    required this.rank,
+    required this.onOpen,
+  });
+
+  final Anime anime;
+  final int rank;
+  final VoidCallback onOpen;
+
+  static const double height = 56;
+
+  @override
+  Widget build(BuildContext context) {
+    final title = anime.titleEnglish ?? anime.title;
+    final score = anime.averageScore;
+    final scoreText = score == null ? null : (score / 10).toStringAsFixed(1);
+    final scaler = MediaQuery.textScalerOf(context);
+    return Semantics(
+      button: true,
+      label: '$rank. $title${scoreText == null ? '' : ', AniList $scoreText'}',
+      excludeSemantics: true,
+      child: InkWell(
+        onTap: onOpen,
+        splashFactory: NoSplash.splashFactory,
+        highlightColor: AppTheme.hankoPressWash,
+        hoverColor: AppTheme.hankoPressWash,
+        child: SizedBox(
+          height: height,
+          child: Row(
+            children: [
+              SizedBox(
+                width: scaler.scale(18),
+                child: Text(
+                  '$rank',
+                  textAlign: TextAlign.right,
+                  style: AppTheme.hankoSerif(
+                      fontSize: 17, color: AppTheme.hankoStone, height: 1),
+                ),
+              ),
+              const SizedBox(width: 12),
+              _HankoCover(url: anime.imageUrl, width: 34, height: 48),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  title,
+                  maxLines: 1,
+                  softWrap: false,
+                  overflow: TextOverflow.fade,
+                  style: AppTheme.hankoSerif(
+                      fontSize: AppTheme.hankoListTitleSize, height: 1.25),
+                ),
+              ),
+              if (scoreText != null) ...[
+                const SizedBox(width: 12),
+                Text(
+                  scoreText,
+                  style: AppTheme.hankoSans(
+                    fontSize: AppTheme.hankoBodySize,
+                    weight: FontWeight.w500,
+                    color: AppTheme.hankoAi,
+                    tabular: true,
+                  ),
+                ),
+              ],
             ],
           ),
         ),
