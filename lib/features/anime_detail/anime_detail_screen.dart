@@ -2336,6 +2336,17 @@ class _OverviewTab extends StatelessWidget {
   // block is kept intact below.
   static const bool _showInformation = false;
 
+  /// AniList's official streaming links for the show (`externalLinks` of
+  /// type STREAMING, from Stage 1c's request).
+  List<({String site, String url})> get _streams => [
+        for (final link in staffData?['externalLinks'] as List? ?? const [])
+          if (link is Map &&
+              link['type'] == 'STREAMING' &&
+              link['site'] is String &&
+              link['url'] is String)
+            (site: link['site'] as String, url: link['url'] as String),
+      ];
+
   final Anime anime;
   final Map<String, dynamic>? staffData;
   final bool isLoadingStaff;
@@ -2464,6 +2475,16 @@ class _OverviewTab extends StatelessWidget {
           const SizedBox(height: 28),
         ],
 
+        // Where to watch (Stage 1c): the official streaming services AniList
+        // lists, for every show that has them. Today's play button offered two
+        // search links, and only for shows with a trailer. The links carry no
+        // region, so nothing here promises it streams where you are.
+        if (_streams.isNotEmpty) ...[
+          const _HankoSectionHead(title: 'Where to watch', aside: 'Official links on AniList'),
+          _HankoWatchLinks(links: _streams),
+          const SizedBox(height: 28),
+        ],
+
         // ── Discussion ──────────────────────────────────────
         MouseRegion(
           cursor: SystemMouseCursors.click,
@@ -2483,6 +2504,107 @@ class _OverviewTab extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// A section's head in Hanko: Shippori Mincho 16, with a note on the right.
+class _HankoSectionHead extends StatelessWidget {
+  const _HankoSectionHead({required this.title, required this.aside});
+
+  final String title;
+  final String? aside;
+
+  @override
+  Widget build(BuildContext context) {
+    final aside = this.aside;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.baseline,
+        textBaseline: TextBaseline.alphabetic,
+        children: [
+          Expanded(
+            child: Semantics(
+              header: true,
+              child: Text(title, style: AppTheme.hankoSerif(height: 1.3)),
+            ),
+          ),
+          if (aside != null)
+            Text(
+              aside,
+              style: AppTheme.hankoSans(fontSize: AppTheme.hankoLabelSize, color: AppTheme.hankoStone, height: 1.3),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The streaming links as plain rows, two to a line: Hanko keeps pills for
+/// controls. Each opens outside the app.
+class _HankoWatchLinks extends StatelessWidget {
+  const _HankoWatchLinks({required this.links});
+
+  final List<({String site, String url})> links;
+
+  static Future<void> _open(String url) async {
+    final uri = Uri.tryParse(url);
+    if (uri == null) return;
+    // Both attempts caught: an uncaught async error is a fatal Crashlytics
+    // report (CLAUDE.md, Gotchas).
+    try {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      try {
+        await launchUrl(uri, mode: LaunchMode.platformDefault);
+      } catch (_) {}
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final cell = (constraints.maxWidth - 16) / 2;
+        return Wrap(
+          spacing: 16,
+          children: [
+            for (final link in links)
+              SizedBox(
+                width: cell,
+                child: Semantics(
+                  link: true,
+                  label: 'Watch on ${link.site}',
+                  hint: 'Opens outside Hanj',
+                  excludeSemantics: true,
+                  child: InkWell(
+                    onTap: () => _open(link.url),
+                    splashFactory: NoSplash.splashFactory,
+                    highlightColor: AppTheme.hankoPressWash,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(minHeight: AppTheme.hankoTouch),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              link.site,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: AppTheme.hankoSans(weight: FontWeight.w500, height: 1.2),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          const Icon(Icons.open_in_new_sharp, size: 16, color: AppTheme.hankoStone),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 }
