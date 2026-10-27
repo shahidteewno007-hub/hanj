@@ -3,7 +3,9 @@ import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+import '../../core/responsive.dart';
 import '../../core/theme/app_theme.dart';
+import '../../widgets/hanko_seal.dart';
 import '../../services/auth_service.dart';
 import '../../services/firestore_service.dart';
 import '../../services/founder_service.dart';
@@ -200,28 +202,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
             child: CustomScrollView(
             slivers: [
               // ── AppBar ──────────────────────────────────
+              // Name first (Hanko stage H5): the name below heads the page, so
+              // the bar keeps only its actions, as hanko.html draws it.
               SliverAppBar(
                 backgroundColor: AppTheme.background,
                 floating: true,
                 snap: true,
-                titleSpacing: 20,
-                title: Text('Profile',
-                    style: AppTheme.serif(
-                        fontSize: 22, weight: FontWeight.w700)),
                 actions: [
                   IconButton(
-                    icon: const Icon(Icons.download_rounded,
-                        color: AppTheme.textSecondary, size: 20),
+                    icon: const Icon(Icons.download_sharp,
+                        color: AppTheme.hankoWashi, size: 22),
                     tooltip: 'Import',
+                    style: _hankoIconButtonStyle,
                     onPressed: () => Navigator.push(context,
                         MaterialPageRoute(
                             builder: (_) =>
                                 const AnilistImportScreen())),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.edit_outlined,
-                        color: AppTheme.textSecondary, size: 20),
+                    icon: const Icon(Icons.edit_sharp,
+                        color: AppTheme.hankoWashi, size: 22),
                     tooltip: 'Edit Profile',
+                    style: _hankoIconButtonStyle,
                     onPressed: () async {
                       await Navigator.push(context,
                           MaterialPageRoute(
@@ -233,8 +235,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   // Theme toggle hidden — light mode coming soon
                   // (Re-enable when AppTheme.background etc. are made theme-aware)
                   PopupMenuButton<String>(
-                    icon: const Icon(Icons.more_vert_rounded,
-                        color: AppTheme.textSecondary, size: 20),
+                    icon: const Icon(Icons.more_vert_sharp,
+                        color: AppTheme.hankoWashi, size: 22),
+                    style: _hankoIconButtonStyle,
                     color: AppTheme.surfaceMid,
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12)),
@@ -299,136 +302,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ],
               ),
 
-              // ── Profile Hero Card ────────────────────────
+              // ── The header (Hanko stage H5, item a) ──────
               SliverToBoxAdapter(
                 key: const ValueKey('profile-header'),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
-                  child: GestureDetector(
-                    onTap: () async {
-                      await Navigator.push(context,
-                          MaterialPageRoute(
-                              builder: (_) =>
-                                  const EditProfileScreen()));
-                      _loadAvatarPrefs();
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.all(20),
-                      decoration: BoxDecoration(
-                        color: AppTheme.surface,
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: AppTheme.border),
-                      ),
-                      child: Row(
-                        children: [
-                          // Avatar
-                          Stack(
-                            children: [
-                              Container(
-                                width: 60,
-                                height: 60,
-                                decoration: BoxDecoration(
-                                  gradient: _avatarImageUrl == null
-                                      ? LinearGradient(
-                                          colors: _avatarGradients[
-                                              _avatarColorIndex],
-                                          begin: Alignment.topLeft,
-                                          end: Alignment.bottomRight,
-                                        )
-                                      : null,
-                                  borderRadius:
-                                      BorderRadius.circular(16),
-                                ),
-                                child: _avatarImageUrl != null
-                                    ? ClipRRect(
-                                        borderRadius:
-                                            BorderRadius.circular(16),
-                                        child: Image.network(
-                                          _avatarImageUrl!,
-                                          fit: BoxFit.cover,
-                                          errorBuilder: (_, _, _) =>
-                                              Center(
-                                            child: Text(initial,
-                                                style: AppTheme.serif(
-                                                    fontSize: 24,
-                                                    weight:
-                                                        FontWeight.w700,
-                                                    color: Colors.white)),
-                                          ),
-                                        ),
-                                      )
-                                    : Center(
-                                        child: Text(initial,
-                                            style: AppTheme.serif(
-                                                fontSize: 24,
-                                                weight: FontWeight.w700,
-                                                color: Colors.white)),
-                                      ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment:
-                                  CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  user?.displayName ?? 'Anime Fan',
-                                  style: AppTheme.serif(
-                                      fontSize: 20,
-                                      weight: FontWeight.w700),
-                                ),
-                                if (_founderStatus.isFounder &&
-                                    _founderStatus.number != null) ...[
-                                  const SizedBox(height: 6),
-                                  FounderBadge(number: _founderStatus.number!),
-                                ],
-                                const SizedBox(height: 2),
-                                Text(
-                                  'MEMBER SINCE ${user?.metadata.creationTime?.year ?? '—'} · ★ ${avgRating.toStringAsFixed(1)} AVG',
-                                  style: AppTheme.mono(
-                                      fontSize: 10,
-                                      color: AppTheme.textMuted,
-                                      letterSpacing: 0.8),
-                                ),
-                                const SizedBox(height: 8),
-                                Row(
-                                  children: [
-                                    _PillBadge(
-                                      'PACE · ${watching > 0 ? "$watching" : "0"} WATCHING',
-                                      AppTheme.watching,
-                                    ),
-                                    const SizedBox(width: 8),
-                                    _PillBadge(
-                                      '$completed DONE',
-                                      AppTheme.completed,
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
+                child: _column(_buildHeader(user, initial)),
               ),
-
-              // ── Founder Card (first 50 users only) ───────
-              // Until status is known, hold the card's footprint so it fills
-              // in rather than appearing and pushing everything below it down.
-              if (!_founderResolved)
-                const SliverToBoxAdapter(
-                  key: ValueKey('profile-founder'),
-                  child: FounderCardPlaceholder(),
-                )
-              else if (_founderStatus.isFounder)
-                SliverToBoxAdapter(
-                  key: const ValueKey('profile-founder'),
-                  child: FounderCard(status: _founderStatus),
-                ),
 
               // ── Collection Hero Card ─────────────────────
               SliverToBoxAdapter(
@@ -709,12 +587,183 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 ),
 
+              // ── Founder Card (first 50 users only) ───────
+              // Moved below the record (stage H5): the Founder pill stays
+              // under the name, and the full card no longer pushes the
+              // record out of the first screen.
+              // Until status is known, hold the card's footprint so it fills
+              // in rather than appearing and pushing everything below it down.
+              if (!_founderResolved)
+                const SliverToBoxAdapter(
+                  key: ValueKey('profile-founder'),
+                  child: FounderCardPlaceholder(),
+                )
+              else if (_founderStatus.isFounder)
+                SliverToBoxAdapter(
+                  key: const ValueKey('profile-founder'),
+                  child: FounderCard(status: _founderStatus),
+                ),
+
               const SliverToBoxAdapter(child: SizedBox(height: 40)),
             ],
           ),
         );
         },
       ),
+    );
+  }
+
+  // Hanko's press: an 8% washi wash, no ripple, square corners.
+  static const ButtonStyle _hankoIconButtonStyle = ButtonStyle(
+    overlayColor: WidgetStatePropertyAll(AppTheme.hankoPressWash),
+    splashFactory: NoSplash.splashFactory,
+    shape: WidgetStatePropertyAll(RoundedRectangleBorder(
+      borderRadius: BorderRadius.all(Radius.circular(AppTheme.hankoRadius)),
+    )),
+  );
+
+  /// On a wide window (1024 px and up) each block keeps the phone's column
+  /// instead of stretching: Responsive.proseMaxWidth, 440 px, plus the
+  /// gutters, hung on the left edge as Home's record column is (stage H4,
+  /// item i). Below 1024 it does nothing, so a phone keeps its layout in
+  /// either orientation (WEB.md §9.2).
+  Widget _column(Widget child) {
+    if (!Responsive.isDesktop(context)) return child;
+    return Align(
+      alignment: Alignment.topLeft,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(
+            maxWidth: Responsive.proseMaxWidth + 2 * AppTheme.hankoGutter),
+        child: child,
+      ),
+    );
+  }
+
+  /// The header (Hanko stage H5, item a): your monogram, your name, the
+  /// Founder pill under it, and "Logging anime since 2025" from the
+  /// account's creation date. Hanj keeps no handle (no username field), so
+  /// none is drawn. Tapping it opens Edit Profile, as the old header card
+  /// did.
+  ///
+  /// The name sits beside the monogram when it has 200 px there, and under
+  /// it when the column is narrower, so a long name never squeezes into a
+  /// sliver beside the seal.
+  Widget _buildHeader(User? user, String initial) {
+    final name = user?.displayName ?? 'Anime Fan';
+    final since = user?.metadata.creationTime?.year;
+    final founder = _founderStatus.isFounder && _founderStatus.number != null;
+
+    final identity = LayoutBuilder(builder: (context, constraints) {
+      final words = Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Semantics(
+            header: true,
+            child: Text(name,
+                style: AppTheme.hankoSerif(fontSize: 28, height: 1.15)),
+          ),
+          if (founder) ...[
+            const SizedBox(height: 8),
+            FounderBadge(number: _founderStatus.number!),
+          ],
+          if (since != null) ...[
+            const SizedBox(height: 6),
+            Text(
+              'Logging anime since $since',
+              style: AppTheme.hankoSans(
+                fontSize: AppTheme.hankoMetaSize,
+                color: AppTheme.hankoStone,
+                height: 1.3,
+              ),
+            ),
+          ],
+        ],
+      );
+      final monogram = _Monogram(initial: initial, imageUrl: _avatarImageUrl);
+      final beside =
+          constraints.maxWidth - _Monogram.size - 14 >= 200;
+      return beside
+          ? Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                monogram,
+                const SizedBox(width: 14),
+                Expanded(child: words),
+              ],
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                monogram,
+                const SizedBox(height: 14),
+                words,
+              ],
+            );
+    });
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+          AppTheme.hankoGutter, 4, AppTheme.hankoGutter, 0),
+      child: Semantics(
+        hint: 'Edit profile',
+        child: InkWell(
+          onTap: () async {
+            await Navigator.push(context,
+                MaterialPageRoute(
+                    builder: (_) =>
+                        const EditProfileScreen()));
+            _loadAvatarPrefs();
+          },
+          splashFactory: NoSplash.splashFactory,
+          highlightColor: AppTheme.hankoPressWash,
+          hoverColor: AppTheme.hankoPressWash,
+          child: identity,
+        ),
+      ),
+    );
+  }
+
+  /// The avatar before Hanko: the picked character image, or the initial on
+  /// one of eight stock gradients chosen in Edit Profile. Stage H5's monogram
+  /// replaced it on Profile; kept as design history and a deletion
+  /// candidate. Edit Profile still offers the colours.
+  Widget _legacyAvatarTile(String initial) {
+    return Container(
+      width: 60,
+      height: 60,
+      decoration: BoxDecoration(
+        gradient: _avatarImageUrl == null
+            ? LinearGradient(
+                colors: _avatarGradients[_avatarColorIndex],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              )
+            : null,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: _avatarImageUrl != null
+          ? ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: Image.network(
+                _avatarImageUrl!,
+                fit: BoxFit.cover,
+                errorBuilder: (_, _, _) => Center(
+                  child: Text(initial,
+                      style: AppTheme.serif(
+                          fontSize: 24,
+                          weight: FontWeight.w700,
+                          color: Colors.white)),
+                ),
+              ),
+            )
+          : Center(
+              child: Text(initial,
+                  style: AppTheme.serif(
+                      fontSize: 24,
+                      weight: FontWeight.w700,
+                      color: Colors.white)),
+            ),
     );
   }
 
@@ -822,6 +871,41 @@ class _ProfileScreenState extends State<ProfileScreen> {
 }
 
 // ── Helper Widgets ───────────────────────────────────────────
+
+/// Your monogram (Hanko stage H5, item a): your initial pressed in your seal,
+/// 64 px with Shippori at 30 as hanko.html draws it. A character picked in
+/// Edit Profile takes its place, in the same square; if that image fails, the
+/// seal shows instead. The name beside it says who this is, so it is left
+/// out of the screen-reader tree.
+class _Monogram extends StatelessWidget {
+  const _Monogram({required this.initial, this.imageUrl});
+
+  final String initial;
+  final String? imageUrl;
+
+  static const double size = 64;
+
+  @override
+  Widget build(BuildContext context) {
+    final seal = HankoSeal(label: initial, size: size, fontSize: 30);
+    final url = imageUrl;
+    return ExcludeSemantics(
+      child: url == null || url.isEmpty
+          ? seal
+          : ClipRRect(
+              borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+              child: SizedBox.square(
+                dimension: size,
+                child: Image.network(
+                  url,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, _, _) => seal,
+                ),
+              ),
+            ),
+    );
+  }
+}
 
 class _PillBadge extends StatelessWidget {
   final String label;
