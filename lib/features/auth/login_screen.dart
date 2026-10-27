@@ -596,6 +596,7 @@ class _LoginScreenState extends State<LoginScreen>
                 controller: _passwordController,
                 hint: '••••••••',
                 icon: Icons.lock_outline_rounded,
+                password: true,
                 obscure: _obscurePassword,
                 suffixIcon: IconButton(
                   icon: Icon(
@@ -715,10 +716,16 @@ class _LoginScreenState extends State<LoginScreen>
     required TextEditingController controller,
     required String hint,
     required IconData icon,
+    bool password = false,
     bool obscure = false,
     TextInputType keyboardType = TextInputType.text,
     Widget? suffixIcon,
   }) {
+    // Jost draws "•" at about a third of DM Sans' size, so a password's dots,
+    // the hint's and the ones you type while it's hidden, are set in the
+    // bundled Shippori Mincho, whose bullet is full-size.
+    final dots = AppTheme.shipporiMincho(
+        color: Colors.white, fontSize: 15, letterSpacing: 2);
     return Container(
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.07),
@@ -729,11 +736,12 @@ class _LoginScreenState extends State<LoginScreen>
         controller: controller,
         obscureText: obscure,
         keyboardType: keyboardType,
-        style: const TextStyle(color: Colors.white, fontSize: 15),
+        style: obscure ? dots : const TextStyle(color: Colors.white, fontSize: 15),
         decoration: InputDecoration(
           hintText: hint,
-          hintStyle: TextStyle(
-              color: Colors.white.withValues(alpha: 0.3), fontSize: 15),
+          hintStyle: password
+              ? dots.copyWith(color: Colors.white.withValues(alpha: 0.3))
+              : TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 15),
           prefixIcon: Icon(icon,
               color: Colors.white.withValues(alpha: 0.4), size: 20),
           suffixIcon: suffixIcon,

@@ -22,6 +22,15 @@ class _SignupScreenState extends State<SignupScreen> {
   bool _isLoading = false;
   bool _obscurePassword = true;
 
+  // Jost draws "•" at about a third of DM Sans' size, so the passwords' dots,
+  // the hints' and the ones you type while hidden, are set in the bundled
+  // Shippori Mincho, whose bullet is full-size. Sizes and colours are the
+  // theme's field text and hint.
+  static final _dots = AppTheme.shipporiMincho(
+      color: AppTheme.textPrimary, fontSize: 16, height: 1.6, letterSpacing: 2);
+  static final _dotsHint = AppTheme.shipporiMincho(
+      color: AppTheme.textMuted, fontSize: 14, letterSpacing: 2);
+
   @override
   void dispose() {
     _usernameController.dispose();
@@ -175,9 +184,11 @@ class _SignupScreenState extends State<SignupScreen> {
                 TextFormField(
                   controller: _passwordController,
                   obscureText: _obscurePassword,
+                  style: _obscurePassword ? _dots : null,
                   textInputAction: TextInputAction.next,
                   decoration: InputDecoration(
                     hintText: '••••••••',
+                    hintStyle: _dotsHint,
                     prefixIcon: const Icon(Icons.lock_outline_rounded),
                     suffixIcon: IconButton(
                       icon: Icon(
@@ -208,11 +219,13 @@ class _SignupScreenState extends State<SignupScreen> {
                 TextFormField(
                   controller: _confirmController,
                   obscureText: _obscurePassword,
+                  style: _obscurePassword ? _dots : null,
                   textInputAction: TextInputAction.done,
                   onFieldSubmitted: (_) => _handleSignup(),
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     hintText: '••••••••',
-                    prefixIcon: Icon(Icons.lock_outline_rounded),
+                    hintStyle: _dotsHint,
+                    prefixIcon: const Icon(Icons.lock_outline_rounded),
                   ),
                   validator: (v) {
                     if (v == null || v.isEmpty) {
