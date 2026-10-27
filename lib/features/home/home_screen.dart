@@ -564,6 +564,25 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  /// Item (i): on a wide window the record blocks (the lede, the Continue
+  /// rows and tonight's pick) keep the phone's column instead of stretching:
+  /// Responsive.proseMaxWidth, 440 px of text (WEB.md §9.3's one-column
+  /// rule), plus the gutters. It hangs on the left edge that the wordmark,
+  /// the section heads and the chart's first column share; PageWidth would
+  /// centre it under none of them. Below 1024 it does nothing, so a phone
+  /// keeps its layout in either orientation (WEB.md §9.2).
+  Widget _recordColumn(Widget child) {
+    if (!Responsive.isDesktop(context)) return child;
+    return Align(
+      alignment: Alignment.topLeft,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(
+            maxWidth: Responsive.proseMaxWidth + 2 * AppTheme.hankoGutter),
+        child: child,
+      ),
+    );
+  }
+
   // Hanko's press: an 8% washi wash, no ripple, square corners.
   static const ButtonStyle _hankoIconButtonStyle = ButtonStyle(
     overlayColor: WidgetStatePropertyAll(AppTheme.hankoPressWash),
@@ -707,12 +726,12 @@ class _HomeScreenState extends State<HomeScreen> {
                   children: [
                     _buildTopLine(),
                     _buildDateline(),
-                    Padding(
+                    _recordColumn(Padding(
                       padding: const EdgeInsets.fromLTRB(
                           AppTheme.hankoGutter, 6, AppTheme.hankoGutter, 0),
                       // Dynamic headline
                       child: _buildHeadline(),
-                    ),
+                    )),
                   ],
                 ),
               ),
@@ -739,7 +758,7 @@ class _HomeScreenState extends State<HomeScreen> {
             if (_continueWatching.isNotEmpty)
               SliverToBoxAdapter(
                 key: const ValueKey('home-continue-row'),
-                child: Padding(
+                child: _recordColumn(Padding(
                   padding: const EdgeInsets.only(top: 2),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -786,7 +805,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                     ],
                   ),
-                ),
+                )),
               ),
 
             // ── From your watchlist tonight (item d) ─────────
@@ -796,7 +815,7 @@ class _HomeScreenState extends State<HomeScreen> {
             if (_planToWatch.isNotEmpty)
               SliverToBoxAdapter(
                 key: const ValueKey('home-watchlist-pick'),
-                child: Padding(
+                child: _recordColumn(Padding(
                   padding: const EdgeInsets.fromLTRB(
                       AppTheme.hankoGutter, 24, AppTheme.hankoGutter, 0),
                   child: Builder(builder: (context) {
@@ -806,17 +825,17 @@ class _HomeScreenState extends State<HomeScreen> {
                       onOpen: () => _openEntry(pick),
                     );
                   }),
-                ),
+                )),
               )
             // ── Tonight's Drop / Anime of Day ────────────────
             else if (_animeOfDay != null)
               SliverToBoxAdapter(
                 key: const ValueKey('home-anime-of-day'),
-                child: Padding(
+                child: _recordColumn(Padding(
                   padding: const EdgeInsets.fromLTRB(
                       AppTheme.hankoGutter, 24, AppTheme.hankoGutter, 0),
                   child: _TonightCard(anime: _animeOfDay!, open: _open),
-                ),
+                )),
               ),
 
             // ── Tonight's Watch ──────────────────────────────
