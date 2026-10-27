@@ -999,6 +999,22 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
     return nodes != null && nodes.isNotEmpty ? nodes.first['name'] as String? : null;
   }
 
+  /// The series director, from Stage 1c's `directors` (the first six staff by
+  /// relevance): "Director", else "Chief Director". Null when AniList lists
+  /// neither there.
+  ({int id, String name})? get _director {
+    final edges = _staffData?['directors']?['edges'] as List? ?? const [];
+    for (final role in const ['director', 'chief director']) {
+      for (final e in edges) {
+        if (e is! Map || (e['role'] as String?)?.trim().toLowerCase() != role) continue;
+        final id = e['node']?['id'] as int?;
+        final name = e['node']?['name']?['full'] as String?;
+        if (id != null && name != null && name.isNotEmpty) return (id: id, name: name);
+      }
+    }
+    return null;
+  }
+
   /// AniList's users' scores per 10-point bucket, {10: 1159, … 100: 106581}.
   Map<int, int> get _scoreDistribution => {
         for (final e in _staffData?['stats']?['scoreDistribution'] as List? ?? const [])
@@ -1018,6 +1034,8 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
     // there in the first frame.
     final cover = widget.anime.imageUrl ?? anime.imageUrl;
     final tint = AppTheme.hankoCoverTint(_coverColor);
+    final studio = _studioName;
+    final director = _director;
     return [
       SliverAppBar(
         pinned: true,
@@ -1059,7 +1077,18 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
           coverUrl: cover,
           sharpCoverUrl: _sharpCover,
           coverColor: _coverColor,
-          studio: _studioName,
+          // The studio and director links (H3 k): the pages Detail already
+          // opened from its Information block and its Cast tab.
+          studio: studio,
+          onStudio: studio == null
+              ? null
+              : () => Navigator.push(context,
+                  MaterialPageRoute(builder: (_) => StudioDetailScreen(studioName: studio))),
+          director: director?.name,
+          onDirector: director == null
+              ? null
+              : () => Navigator.push(context, MaterialPageRoute(
+                  builder: (_) => StaffDetailScreen(staffId: director.id, staffName: director.name))),
           format: anime.format,
           season: anime.season,
           seasonYear: anime.seasonYear,
@@ -1110,6 +1139,9 @@ class HankoDetailHeader extends StatefulWidget {
     this.sharpCoverUrl,
     this.coverColor,
     this.studio,
+    this.onStudio,
+    this.director,
+    this.onDirector,
     this.format,
     this.season,
     this.seasonYear,
@@ -1152,6 +1184,13 @@ class HankoDetailHeader extends StatefulWidget {
   final Color? coverColor;
 
   final String? studio;
+
+  /// Opens the studio's page.
+  final VoidCallback? onStudio;
+
+  /// Who directed it, and opening their page.
+  final String? director;
+  final VoidCallback? onDirector;
 
   /// AniList's MediaFormat (TV, MOVIE, ONA …) and season (WINTER …).
   final String? format;
@@ -1422,6 +1461,9 @@ class _HankoDetailHeaderState extends State<HankoDetailHeader> {
                                 children: [
                                   _HankoColophon(
                                     studio: widget.studio,
+                                    onStudio: widget.onStudio,
+                                    director: widget.director,
+                                    onDirector: widget.onDirector,
                                     facts: HankoDetailHeader._factsFor(
                                       format: widget.format,
                                       season: widget.season,
@@ -2006,31 +2048,32 @@ class _HankoPrint extends StatelessWidget {
 }
 
 /// The facts beside the print, set like a book's colophon: the studio, then
-/// format and season, episodes and their length.
+/// format and season, episodes and their length, and who directed it. The
+/// studio and the director are links (H3 k), each opening its own page.
 class _HankoColophon extends StatelessWidget {
-  const _HankoColophon({required this.studio, required this.facts});
+  const _HankoColophon({
+    required this.studio,
+    required this.onStudio,
+    required this.director,
+    required this.onDirector,
+    required this.facts,
+  });
 
   final String? studio;
+  final VoidCallback? onStudio;
+  final String? director;
+  final VoidCallback? onDirector;
   final List<String> facts;
 
   @override
   Widget build(BuildContext context) {
     final studio = this.studio;
+    final director = this.director;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (studio != null)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 2),
-            child: Text(
-              studio,
-              style: AppTheme.hankoSans(
-                fontSize: AppTheme.hankoMetaSize,
-                weight: FontWeight.w500,
-                height: 1.3,
-              ),
-            ),
-          ),
+          _HankoLink(label: studio, semanticLabel: 'Studio, $studio', onTap: onStudio),
         for (final (i, fact) in facts.indexed)
           Padding(
             padding: EdgeInsets.only(top: i == 0 && studio == null ? 0 : 4),
@@ -2043,7 +2086,63 @@ class _HankoColophon extends StatelessWidget {
               ),
             ),
           ),
+        if (director != null) ...[
+          const SizedBox(height: 10),
+          Text(
+            'Directed by',
+            style: AppTheme.hankoSans(
+              fontSize: AppTheme.hankoLabelSize,
+              color: AppTheme.hankoStoneHi,
+              height: 1.3,
+            ),
+          ),
+          _HankoLink(label: director, semanticLabel: 'Director, $director', onTap: onDirector),
+        ],
       ],
+    );
+  }
+}
+
+/// A name that opens its page: washi 500 with Hanko's link underline (the
+/// edge colour, 3 px below), in a 48 dp tall target. Without a page to open
+/// it is plain text.
+class _HankoLink extends StatelessWidget {
+  const _HankoLink({required this.label, required this.semanticLabel, required this.onTap});
+
+  final String label;
+  final String semanticLabel;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final linked = onTap != null;
+    final text = Text(
+      label,
+      style: AppTheme.hankoSans(
+        fontSize: AppTheme.hankoMetaSize,
+        weight: FontWeight.w500,
+        height: 1.3,
+      ).copyWith(
+        decoration: linked ? TextDecoration.underline : null,
+        decorationColor: AppTheme.hankoEdge,
+        decorationThickness: 1,
+      ),
+    );
+    if (!linked) return Padding(padding: const EdgeInsets.only(bottom: 2), child: text);
+    return Semantics(
+      link: true,
+      label: semanticLabel,
+      excludeSemantics: true,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+        splashFactory: NoSplash.splashFactory,
+        highlightColor: AppTheme.hankoPressWash,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: AppTheme.hankoTouch, minWidth: double.infinity),
+          child: Align(alignment: Alignment.centerLeft, child: text),
+        ),
+      ),
     );
   }
 }
