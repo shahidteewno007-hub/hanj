@@ -2330,6 +2330,12 @@ class _OverviewTab extends StatelessWidget {
   // number.
   static const bool _showStatTiles = false;
 
+  // ── The Information block is hidden (H3 i) ─────────────────
+  // Its studio, episodes, format and season now sit beside the print in the
+  // colophon, the studio as a link, so Overview no longer repeats them. The
+  // block is kept intact below.
+  static const bool _showInformation = false;
+
   final Anime anime;
   final Map<String, dynamic>? staffData;
   final bool isLoadingStaff;
@@ -2402,21 +2408,17 @@ class _OverviewTab extends StatelessWidget {
           const SizedBox(height: 28),
         ],
 
-        // Themes
+        // Genres, once, as one line (H3 i): today's header showed three as
+        // chips and this tab all of them again.
         if (anime.genres.isNotEmpty) ...[
-          Text('THEMES', style: AppTheme.mono(fontSize: 10, color: AppTheme.textMuted, letterSpacing: 1)),
-          const SizedBox(height: 10),
-          Wrap(spacing: 8, runSpacing: 8,
-            children: anime.genres.map((g) => Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(color: AppTheme.surfaceLight, borderRadius: BorderRadius.circular(20), border: Border.all(color: AppTheme.border)),
-              child: Text(g, style: AppTheme.sans(fontSize: 13, color: AppTheme.textSecondary)),
-            )).toList(),
-          ),
+          Text('Genres', style: AppTheme.hankoSans(fontSize: AppTheme.hankoLabelSize, color: AppTheme.hankoStone)),
+          const SizedBox(height: 6),
+          Text(anime.genres.join(', '), style: AppTheme.hankoSans(height: 1.5)),
           const SizedBox(height: 28),
         ],
 
-        // Information
+        // Information (hidden, see _showInformation)
+        if (_showInformation) ...[
         Text('INFORMATION', style: AppTheme.mono(fontSize: 10, color: AppTheme.textMuted, letterSpacing: 1)),
         const SizedBox(height: 12),
         Container(
@@ -2450,6 +2452,7 @@ class _OverviewTab extends StatelessWidget {
           ]),
         ),
         const SizedBox(height: 28),
+        ],
 
         // Characters are shown in the Cast tab (AniList medium images are too low-res for a gallery strip)
 
