@@ -3216,17 +3216,25 @@ class _SimpleTabBar extends StatelessWidget {
                       onTap: () => onTap(i),
                       child: Container(
                         // 14 + 14 around the label: a 48 dp target (H3).
-                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 4),
                         color: AppTheme.background,
-                        child: Text(
-                          _tabs[i],
-                          textAlign: TextAlign.center,
-                          style: AppTheme.sans(
-                            fontSize: 13,
-                            weight: isSelected ? FontWeight.w600 : FontWeight.w400,
-                            // Hanko: washi for the tab you're on, stone for
-                            // the rest; coral is only your seal now.
-                            color: isSelected ? AppTheme.hankoWashi : AppTheme.hankoStone,
+                        // One line, scaled down to its quarter when large
+                        // text would wrap it: at 1.3x "You May Like" wrapped
+                        // and overflowed the header by 23 px (H2 QA, §1c).
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            _tabs[i],
+                            maxLines: 1,
+                            softWrap: false,
+                            textAlign: TextAlign.center,
+                            style: AppTheme.sans(
+                              fontSize: 13,
+                              weight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                              // Hanko: washi for the tab you're on, stone for
+                              // the rest; coral is only your seal now.
+                              color: isSelected ? AppTheme.hankoWashi : AppTheme.hankoStone,
+                            ),
                           ),
                         ),
                       ),
