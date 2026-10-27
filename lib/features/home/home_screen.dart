@@ -921,18 +921,21 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(
                       AppTheme.hankoGutter, 20, AppTheme.hankoGutter, 12),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.baseline,
-                    textBaseline: TextBaseline.alphabetic,
+                  // A Wrap, not a Row (H2 QA S1): when the heading and its
+                  // aside don't fit on one line, as at 1.3x text, the aside
+                  // moves under the heading instead of squeezing it onto
+                  // two lines, or at 2.0x breaking "Popular" mid-word.
+                  child: Wrap(
+                    alignment: WrapAlignment.spaceBetween,
+                    crossAxisAlignment: WrapCrossAlignment.end,
+                    spacing: 12,
+                    runSpacing: 2,
                     children: [
-                      Expanded(
-                        child: Semantics(
-                          header: true,
-                          child: Text('Popular this season',
-                              style: AppTheme.hankoSerif(height: 1.3)),
-                        ),
+                      Semantics(
+                        header: true,
+                        child: Text('Popular this season',
+                            style: AppTheme.hankoSerif(height: 1.3)),
                       ),
-                      const SizedBox(width: 12),
                       Text('${_seasonLabel()}, AniList score',
                           style: AppTheme.hankoSans(
                               fontSize: AppTheme.hankoLabelSize,
