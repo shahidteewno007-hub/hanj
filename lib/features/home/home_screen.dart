@@ -10,6 +10,7 @@ import 'dart:convert';
 import '../../core/theme/app_theme.dart';
 import '../../widgets/anilist_saved_note.dart';
 import '../../widgets/hanko_reel.dart';
+import '../../widgets/hanko_seal.dart';
 import '../../core/responsive.dart';
 import '../../services/anilist_service.dart';
 import '../../services/firestore_service.dart';
@@ -41,6 +42,8 @@ class _HomeScreenState extends State<HomeScreen> {
   List<Anime> _seasonAnime = []; // Popular this season (was the trending list)
   List<Map<String, dynamic>> _continueWatching = [];
   List<Map<String, dynamic>> _planToWatch = [];
+  List<Map<String, dynamic>> _entries = []; // the whole list, for the lede
+  bool _listFailed = false; // the list couldn't be read: say so, with Retry
   Set<String> _reminderIds = {}; // persisted reminder animeIds
   Anime? _animeOfDay;
   List<Map<String, dynamic>> _recommendationRows = [];
@@ -135,6 +138,20 @@ class _HomeScreenState extends State<HomeScreen> {
 
       final userSnapshot = results[1];
 
+      // Offline with nothing on the device, the list arrives empty from the
+      // cache, which can't tell "no list" from "no copy". Say it couldn't
+      // load rather than greet someone with a list as a newcomer.
+      if (userSnapshot.metadata.isFromCache &&
+          userSnapshot.docs.isEmpty &&
+          !ConnectivityService.instance.isOnline) {
+        throw StateError('No copy of the list on this device');
+      }
+
+      final entries = userSnapshot.docs
+          .map((d) => d.data() as Map<String, dynamic>)
+          .where((d) => d['animeId'] != null)
+          .toList();
+
       // ── Plan to Watch ──────────────────────────────────────
       final allDocs = userSnapshot.docs
           .map((d) => d.data() as Map<String, dynamic>)
@@ -168,10 +185,13 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() {
         _continueWatching = continueWatching;
         _planToWatch = allDocs;
+        _entries = entries;
+        _listFailed = false;
         _isLoading = false;
         _isFromCache = !isOnline;
         _importPending = importPending;
       });
+      _precacheLede();
 
       // Fire recommendations in the background (non-blocking)
       if (isOnline && userSnapshot.docs.isNotEmpty) {
@@ -184,6 +204,9 @@ class _HomeScreenState extends State<HomeScreen> {
         _isLoading = false;
         _isFromCache = !isOnline;
         _airingLoading = false; // no list, so no batch to wait for
+        // Only a list Home never managed to read is an error; a failed
+        // refresh keeps what is on screen.
+        if (_entries.isEmpty) _listFailed = true;
       });
     }
   }
@@ -1010,36 +1033,248 @@ class _HomeScreenState extends State<HomeScreen> {
     return '${s[0]}${s.substring(1).toLowerCase()} ${DateTime.now().year}';
   }
 
+  // ── The lede (Hanko stage H4, item a) ──────────────────────
+  // Home opens on a sentence about your newest verdict, with its day:
+  // "Last night you finished DAN DA DAN, all twelve episodes, and sealed it
+  // [8.5]", the seal in coral because it's yours. Under 14 days old only
+  // (§6c); then it gives way to what you're watching. Imported ratings have
+  // no ratedAt, so they never pose as your latest. The whole sentence is one
+  // button that opens the show.
+
+  /// The newest rating made in the app, if it is under 14 days old.
+  Map<String, dynamic>? _newestRating() {
+    Map<String, dynamic>? newest;
+    DateTime? newestAt;
+    for (final entry in _entries) {
+      final at = (entry['ratedAt'] as Timestamp?)?.toDate();
+      if (at == null || entry['userRating'] is! num) continue;
+      if (newestAt == null || at.isAfter(newestAt)) {
+        newest = entry;
+        newestAt = at;
+      }
+    }
+    if (newestAt == null || _daysBefore(newestAt) >= 14) return null;
+    return newest;
+  }
+
+  /// Whole days between [t] and today on the device's own calendar, so a
+  /// rating at 23:50 is "last night" ten minutes later. A clock running
+  /// ahead of the server's can't make it negative.
+  static int _daysBefore(DateTime t) {
+    final now = DateTime.now();
+    final days = DateTime.utc(now.year, now.month, now.day)
+        .difference(DateTime.utc(t.year, t.month, t.day))
+        .inDays;
+    return days < 0 ? 0 : days;
+  }
+
+  /// "Today", "Last night" (yesterday from 18:00), "Yesterday", "On
+  /// Saturday" (2–6 days), "On 13 October" (7–13 days).
+  static String _whenRated(DateTime t) {
+    final days = _daysBefore(t);
+    if (days == 0) return 'Today';
+    if (days == 1) return t.hour >= 18 ? 'Last night' : 'Yesterday';
+    if (days < 7) return 'On ${DateFormat('EEEE').format(t)}';
+    return 'On ${DateFormat('d MMMM').format(t)}';
+  }
+
+  static const _numberWords = [
+    'zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight',
+    'nine', 'ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen',
+    'sixteen', 'seventeen', 'eighteen', 'nineteen',
+  ];
+  static const _tensWords = [
+    '', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy',
+    'eighty', 'ninety',
+  ];
+
+  /// Counts in a sentence are words up to ninety-nine, as a journal writes
+  /// them ("all twelve episodes"), and figures from 100 ("all 1,122").
+  static String _inWords(int n) {
+    if (n < 20) return _numberWords[n];
+    if (n < 100) {
+      final ones = n % 10;
+      return _tensWords[n ~/ 10] + (ones == 0 ? '' : '-${_numberWords[ones]}');
+    }
+    return NumberFormat.decimalPattern().format(n);
+  }
+
+  /// Precaches the lede show's cover after the list loads: one image from
+  /// AniList's image servers, not an API request, so the show's page has
+  /// its picture in the first frame when you open it from the lede. Errors
+  /// are swallowed here: reported, they would reach Crashlytics as fatal.
+  void _precacheLede() {
+    final url = _newestRating()?['imageUrl'] as String?;
+    if (url == null || url.isEmpty || !mounted) return;
+    precacheImage(CachedNetworkImageProvider(url), context,
+        onError: (_, _) {});
+  }
+
+  void _openEntry(Map<String, dynamic> data) {
+    final anime = Anime(
+      id: data['animeId']?.toString() ?? '',
+      title: data['title'] as String? ?? 'Unknown',
+      imageUrl: data['imageUrl'] as String?,
+      episodes: data['episodes'] as int?,
+      genres: (data['genres'] as List<dynamic>?)?.cast<String>() ?? [],
+    );
+    Navigator.push(context,
+        MaterialPageRoute(builder: (_) => AnimeDetailScreen(anime: anime)));
+  }
+
   Widget _buildHeadline() {
-    final count = _continueWatching.length;
-    if (count == 0) {
-      return RichText(
-        text: TextSpan(
-          style: AppTheme.serif(fontSize: 28, weight: FontWeight.w700, height: 1.2),
-          children: [
-            const TextSpan(text: 'Discover something\n'),
-            TextSpan(
-              text: 'new tonight.',
-              style: AppTheme.serif(
-                  fontSize: 28,
-                  weight: FontWeight.w700,
-                  color: AppTheme.primary,
-                  style: FontStyle.italic),
-            ),
-          ],
-        ),
+    final style = AppTheme.hankoSerif(
+        fontSize: AppTheme.hankoLedeSize, height: 1.32);
+
+    // The list couldn't be read: say so, naming no cause the app can't
+    // verify (ANILIST-OFFLINE-0908-REPORT.md), instead of greeting someone
+    // with a list as if it were empty.
+    if (_listFailed) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text("Couldn't load your list just now.", style: style),
+          const SizedBox(height: 12),
+          _TextTile(label: 'Retry', onTap: _loadData),
+        ],
       );
     }
+
+    final rated = _newestRating();
+    if (rated != null) return _buildLede(rated, style);
+
     // count is how many WATCHING shows are on the list, not episodes that
     // aired, so the headline says that.
-    return RichText(
-      text: TextSpan(
-        text: 'You\'re watching\n$count show${count > 1 ? 's' : ''}.',
-        style: AppTheme.serif(
-            fontSize: 28,
-            weight: FontWeight.w700,
-            height: 1.2,
-            color: AppTheme.textPrimary),
+    final count = _continueWatching.length;
+    final String line;
+    if (count > 0) {
+      line = 'You\'re watching $count show${count > 1 ? 's' : ''}.';
+    } else if (_entries.isNotEmpty) {
+      line = 'All caught up.';
+    } else {
+      // An empty list keeps the discovery-led headline.
+      line = 'Discover something new tonight.';
+    }
+    return Text(line, style: style);
+  }
+
+  Widget _buildLede(Map<String, dynamic> entry, TextStyle style) {
+    final ratedAt = (entry['ratedAt'] as Timestamp).toDate();
+    final lastWatched = (entry['lastWatched'] as Timestamp?)?.toDate();
+    final rating = (entry['userRating'] as num).toDouble();
+    final rawTitle = entry['title'] as String? ?? 'it';
+    final episodes = entry['episodes'] as int?;
+
+    // "Finished" only when the finishing happened with the rating: the list
+    // keeps no completion date (question 27), but lastWatched is written by
+    // the progress or status change that completed the show, so a completed
+    // show updated within six hours of its rating was finished then.
+    final finishedThen = entry['status'] == 'COMPLETED' &&
+        lastWatched != null &&
+        ratedAt.difference(lastWatched).inMinutes.abs() <= 6 * 60;
+
+    // A short title stays on one line, as the mockup's no-break span does;
+    // a long one may wrap.
+    final title = rawTitle.length <= 18
+        ? rawTitle.replaceAll(' ', ' ')
+        : rawTitle;
+    final when = _whenRated(ratedAt);
+    // "sealed it" and the seal stay together: a no-break space before the
+    // seal, as the mockup's &nbsp; does.
+    final String sentence;
+    if (finishedThen && episodes != null && episodes >= 2) {
+      sentence = '$when you finished $title, all ${_inWords(episodes)} '
+          'episodes, and sealed it ';
+    } else if (finishedThen) {
+      sentence = '$when you finished $title and sealed it ';
+    } else {
+      sentence = '$when you sealed $title ';
+    }
+
+    final scaler = MediaQuery.textScalerOf(context);
+    final score = HankoSeal.formatScore(rating);
+    // excludeSemantics drops the InkWell's own tap action with the rest of
+    // the subtree, so the node carries onTap itself.
+    return Semantics(
+      button: true,
+      label: '${sentence.replaceAll(' ', ' ').trim()} $score',
+      onTap: () => _openEntry(entry),
+      onTapHint: 'open ${rawTitle.trim()}',
+      excludeSemantics: true,
+      child: InkWell(
+        onTap: () => _openEntry(entry),
+        splashFactory: NoSplash.splashFactory,
+        highlightColor: AppTheme.hankoPressWash,
+        hoverColor: AppTheme.hankoPressWash,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: AppTheme.hankoTouch),
+          child: Text.rich(
+            TextSpan(
+              style: style,
+              children: [
+                TextSpan(text: sentence),
+                // The seal sits inline at the sentence's size: 32 x 28 with
+                // 14 px numerals at 22 px, as the mockup's .seal--in. Its box
+                // follows the text size setting; HankoSeal shrinks the
+                // numerals to fit.
+                WidgetSpan(
+                  alignment: PlaceholderAlignment.middle,
+                  child: HankoSeal.score(
+                    rating,
+                    size: scaler.scale(28),
+                    width: scaler.scale(32),
+                    fontSize: 14,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A Hanko secondary tile with a word on it ("Retry"): sumi 3 with a 1 px
+/// edge outline, Jost 600 15 washi, 48 dp tall.
+class _TextTile extends StatelessWidget {
+  const _TextTile({required this.label, required this.onTap});
+
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      child: Material(
+        color: AppTheme.hankoSumi3,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+          side: const BorderSide(color: AppTheme.hankoEdge),
+        ),
+        child: InkWell(
+          onTap: onTap,
+          splashFactory: NoSplash.splashFactory,
+          highlightColor: AppTheme.hankoPressWash,
+          hoverColor: AppTheme.hankoPressWash,
+          borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: AppTheme.hankoTouch),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 18),
+              child: Center(
+                widthFactor: 1,
+                heightFactor: 1,
+                child: Text(
+                  label,
+                  style: AppTheme.hankoSans(
+                      fontSize: 15, weight: FontWeight.w600, height: 1),
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
