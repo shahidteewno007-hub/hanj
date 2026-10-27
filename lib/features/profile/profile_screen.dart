@@ -6,6 +6,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../../core/responsive.dart';
 import '../../core/theme/app_theme.dart';
 import '../../widgets/hanko_seal.dart';
+import '../../widgets/hanko_seal_register.dart';
 import '../../services/auth_service.dart';
 import '../../services/firestore_service.dart';
 import '../../services/founder_service.dart';
@@ -156,6 +157,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
           int ratedCount = 0;
           int totalEpisodes = 0;
           Map<String, int> genreCounts = {};
+          // Every rating as stored, for the seal register (item d).
+          final ratings = <double>[];
 
           for (final doc in docs) {
             final data = doc.data() as Map<String, dynamic>;
@@ -179,6 +182,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               totalRating +=
                   (data['userRating'] as num).toDouble();
               ratedCount++;
+              ratings.add((data['userRating'] as num).toDouble());
             }
             final genres =
                 (data['genres'] as List<dynamic>?)?.cast<String>() ?? [];
@@ -485,6 +489,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               ),
 
+              // ── Your ratings (Hanko stage H5, item d) ────
+              SliverToBoxAdapter(
+                key: const ValueKey('profile-ratings'),
+                child: _column(_buildRatings(ratings)),
+              ),
+
               // ── Hanj Cards ───────────────────────────────
               SliverToBoxAdapter(
                 key: const ValueKey('profile-section-c'),
@@ -724,6 +734,58 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  /// Your ratings as Hanko's seal register (stage H5, item d; question 39):
+  /// each score keeps its place on Hanj's 1–10 ruler in half steps, and how
+  /// often you gave it becomes the size of its impression. Its caption
+  /// sentence ("12 rated, average 8.9, most often 10.") sits above it.
+  ///
+  /// Ratings imported on another scale (D20: an 85 from a 100-point list)
+  /// can't be placed on the ruler. The register leaves them out of the
+  /// drawing and of the caption's numbers, and a line under it says how
+  /// many. With no ratings at all, the register's own empty ruler says
+  /// "No ratings yet." and no caption repeats it.
+  Widget _buildRatings(List<double> ratings) {
+    final offScale = ratings.where((r) {
+      final step = (r * 2).round() / 2;
+      return step < 1 || step > 10;
+    }).length;
+    final drawn = ratings.length - offScale;
+    final register = HankoSealRegister.fromRatings(ratings);
+    final quiet = AppTheme.hankoSans(
+      fontSize: AppTheme.hankoMetaSize,
+      color: AppTheme.hankoStone,
+      height: 1.4,
+    );
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+          AppTheme.hankoGutter, 26, AppTheme.hankoGutter, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _SectionHead('Your ratings', bottom: drawn > 0 ? 8 : 12),
+          if (drawn > 0) ...[
+            Text(register.summary, style: quiet),
+            const SizedBox(height: 10),
+          ],
+          // Only imported ratings: an empty ruler saying "No ratings yet."
+          // would contradict the line below, so it is left out.
+          if (drawn > 0 || offScale == 0) register,
+          if (offScale > 0) ...[
+            if (drawn > 0) const SizedBox(height: 8),
+            Text(
+              offScale == 1
+                  ? '1 imported rating is on another scale, so it isn\'t '
+                      'drawn here.'
+                  : '$offScale imported ratings are on another scale, so '
+                      'they aren\'t drawn here.',
+              style: quiet,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   /// The avatar before Hanko: the picked character image, or the initial on
   /// one of eight stock gradients chosen in Edit Profile. Stage H5's monogram
   /// replaced it on Profile; kept as design history and a deletion
@@ -903,6 +965,29 @@ class _Monogram extends StatelessWidget {
                 ),
               ),
             ),
+    );
+  }
+}
+
+/// A Hanko section head (hanko.html's .sec-h): Shippori 16 in washi.
+class _SectionHead extends StatelessWidget {
+  const _SectionHead(this.title, {this.bottom = 12});
+
+  final String title;
+
+  /// Space below the head; 8 where a caption follows it.
+  final double bottom;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: bottom),
+      child: Semantics(
+        header: true,
+        child: Text(title,
+            style: AppTheme.hankoSerif(
+                fontSize: AppTheme.hankoSectionSize, height: 1.3)),
+      ),
     );
   }
 }
