@@ -350,6 +350,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 child: _column(_buildRatings(ratings)),
               ),
 
+              // ── Recent diary (Hanko stage H5, item f) ────
+              if (totalAnime > 0)
+                SliverToBoxAdapter(
+                  key: const ValueKey('profile-diary'),
+                  child: _column(_buildDiary(_diary(entries))),
+                ),
+
               // ── Hanj Cards ───────────────────────────────
               SliverToBoxAdapter(
                 key: const ValueKey('profile-section-c'),
@@ -701,6 +708,82 @@ class _ProfileScreenState extends State<ProfileScreen> {
           .compareTo(((b['title'] as String?) ?? '').toLowerCase());
     });
     return rated.take(3).toList();
+  }
+
+  /// The recent diary (Hanko stage H5, item f): your latest dated moments,
+  /// newest first, five at most. It is partial until the list keeps watch
+  /// dates (question 27), so each row says only what its date can prove:
+  ///  - "Rated": the date of your rating (ratedAt), with your seal.
+  ///  - "Updated": lastWatched, which adds, status changes, imports and
+  ///    episodes all write, so it can't say which; the row adds what the
+  ///    show is now ("now watching, 7 of 28").
+  /// An update within six hours of the rating is the same sitting (you
+  /// finished it and sealed it), so only the rating shows. More than three
+  /// updates on one day read as one batch row ("148 titles updated"), the
+  /// shape an import leaves, rather than filling the diary with it.
+  /// Entries with neither date (a write still pending, or an older entry)
+  /// can't be placed in time and are left out.
+  Widget _buildDiary(List<_DiaryItem> items) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+          AppTheme.hankoGutter, 26, AppTheme.hankoGutter, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const _SectionHead('Recent diary'),
+          if (items.isEmpty)
+            Text(
+              'Nothing dated yet.',
+              style: AppTheme.hankoSans(
+                fontSize: AppTheme.hankoMetaSize,
+                color: AppTheme.hankoStone,
+                height: 1.4,
+              ),
+            ),
+          for (var i = 0; i < items.length; i++) ...[
+            if (i > 0) const SizedBox(height: 6),
+            _DiaryRow(
+              item: items[i],
+              onTap: items[i].entry == null
+                  ? null
+                  : () => _openEntry(items[i].entry!),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  static List<_DiaryItem> _diary(List<Map<String, dynamic>> entries) {
+    final items = <_DiaryItem>[];
+    final updated = <_DiaryItem>[];
+    for (final e in entries) {
+      final ratedAt = e['userRating'] is num ? _when(e['ratedAt']) : null;
+      final updatedAt = _when(e['lastWatched']);
+      if (ratedAt != null) items.add(_DiaryItem(ratedAt, e, rated: true));
+      if (updatedAt != null &&
+          (ratedAt == null ||
+              updatedAt.difference(ratedAt).abs() > const Duration(hours: 6))) {
+        updated.add(_DiaryItem(updatedAt, e, rated: false));
+      }
+    }
+    final byDay = <DateTime, List<_DiaryItem>>{};
+    for (final u in updated) {
+      byDay
+          .putIfAbsent(DateTime(u.at.year, u.at.month, u.at.day), () => [])
+          .add(u);
+    }
+    for (final day in byDay.values) {
+      if (day.length > 3) {
+        final latest =
+            day.map((u) => u.at).reduce((a, b) => a.isAfter(b) ? a : b);
+        items.add(_DiaryItem(latest, null, rated: false, count: day.length));
+      } else {
+        items.addAll(day);
+      }
+    }
+    items.sort((a, b) => b.at.compareTo(a.at));
+    return items.take(5).toList();
   }
 
   /// Whether a stored rating lands on Hanj's 1–10 scale at its nearest
@@ -1102,6 +1185,174 @@ class _Cover extends StatelessWidget {
                 ),
         ),
       ),
+    );
+  }
+}
+
+/// One line of the recent diary: a rating, an update, or a day's batch of
+/// updates ([entry] null, [count] titles).
+class _DiaryItem {
+  const _DiaryItem(this.at, this.entry, {required this.rated, this.count = 1});
+
+  final DateTime at;
+  final Map<String, dynamic>? entry;
+  final bool rated;
+  final int count;
+}
+
+/// A diary row (hanko.html's .pdia): the day and the weekday (or the year,
+/// before this one) in Jost, the cover at 30 x 42, the title in Shippori 15
+/// on one line fading at its end, what the date means under it, and your
+/// seal when the show is rated. The date column grows with the text size.
+class _DiaryRow extends StatelessWidget {
+  const _DiaryRow({required this.item, this.onTap});
+
+  final _DiaryItem item;
+  final VoidCallback? onTap;
+
+  static const _months = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  ];
+  static const _monthNames = [
+    'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August',
+    'September', 'October', 'November', 'December',
+  ];
+  static const _weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  static const _weekdayNames = [
+    'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday',
+  ];
+
+  /// "Updated · now watching, 7 of 28": lastWatched can't say what the
+  /// update was, so the row says what the show is now.
+  static String _updatedLine(Map<String, dynamic> e) {
+    final current = (e['currentEpisode'] as num?)?.toInt() ?? 0;
+    final total = (e['episodes'] as num?)?.toInt();
+    final String? now = switch (e['status']) {
+      'WATCHING' => total != null && total > 0
+          ? 'watching, $current of $total'
+          : 'watching, $current watched',
+      'COMPLETED' => 'completed',
+      'PLAN_TO_WATCH' => 'on your watchlist',
+      'DROPPED' => 'dropped',
+      _ => null,
+    };
+    return now == null ? 'Updated' : 'Updated · now $now';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final at = item.at;
+    final thisYear = at.year == DateTime.now().year;
+    final entry = item.entry;
+    final title = entry == null
+        ? '${NumberFormat.decimalPattern().format(item.count)} titles updated'
+        : (entry['title'] as String?) ?? 'Unknown';
+    final meta = entry == null
+        ? null
+        : item.rated
+            ? 'Rated'
+            : _updatedLine(entry);
+    final rating = entry != null && entry['userRating'] is num
+        ? (entry['userRating'] as num).toDouble()
+        : null;
+    final spoken = [
+      '${_weekdayNames[at.weekday - 1]} ${at.day} ${_monthNames[at.month - 1]}'
+          '${thisYear ? '' : ' ${at.year}'}',
+      if (entry == null) title else '${item.rated ? 'rated' : 'updated'} $title',
+      if (entry != null && !item.rated) _updatedLine(entry).replaceFirst('Updated · ', ''),
+      if (rating != null) 'your rating ${HankoSeal.formatScore(rating)}',
+    ].join(', ');
+
+    final row = ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: AppTheme.hankoTouch),
+      child: Row(
+        children: [
+          SizedBox(
+            width: MediaQuery.textScalerOf(context).scale(46),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '${at.day} ${_months[at.month - 1]}',
+                  maxLines: 1,
+                  softWrap: false,
+                  style: AppTheme.hankoSans(
+                    fontSize: AppTheme.hankoMetaSize,
+                    weight: FontWeight.w500,
+                    height: 1.15,
+                    tabular: true,
+                  ),
+                ),
+                Text(
+                  thisYear ? _weekdays[at.weekday - 1] : '${at.year}',
+                  maxLines: 1,
+                  softWrap: false,
+                  style: AppTheme.hankoSans(
+                    fontSize: AppTheme.hankoDataSmallSize,
+                    color: AppTheme.hankoAsh,
+                    height: 1.2,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          entry == null
+              ? const SizedBox(width: 30, height: 42)
+              : _Cover(url: entry['imageUrl'] as String?, width: 30, height: 42),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  title,
+                  maxLines: 1,
+                  softWrap: false,
+                  overflow: TextOverflow.fade,
+                  style: AppTheme.hankoSerif(
+                      fontSize: AppTheme.hankoListTitleSize, height: 1.25),
+                ),
+                if (meta != null) ...[
+                  const SizedBox(height: 3),
+                  Text(
+                    meta,
+                    maxLines: 1,
+                    softWrap: false,
+                    overflow: TextOverflow.fade,
+                    style: AppTheme.hankoSans(
+                      fontSize: AppTheme.hankoLabelSize,
+                      color: AppTheme.hankoStone,
+                      height: 1.2,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          if (rating != null) ...[
+            const SizedBox(width: 12),
+            HankoSeal.score(rating, size: 28),
+          ],
+        ],
+      ),
+    );
+
+    return Semantics(
+      button: onTap != null,
+      label: spoken,
+      excludeSemantics: true,
+      child: onTap == null
+          ? row
+          : InkWell(
+              onTap: onTap,
+              splashFactory: NoSplash.splashFactory,
+              highlightColor: AppTheme.hankoPressWash,
+              hoverColor: AppTheme.hankoPressWash,
+              child: row,
+            ),
     );
   }
 }
