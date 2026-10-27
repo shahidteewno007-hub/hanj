@@ -1470,12 +1470,14 @@ Future<String?> showHanjListSheet({
                 ),
               ),
               const SizedBox(height: 24),
-              Text(
+              // Three lines, fading where a cut remains (H2 QA W2): in
+              // Shippori two lines cut "…Skill to Rise in⋯" where Playfair
+              // showed "…Skill to Rise in the Wo…". Shared with Detail.
+              _FadeTitle(
                 anime.titleEnglish ?? anime.title,
-                style: AppTheme.serif(fontSize: 18, weight: FontWeight.w700, color: AppTheme.textPrimary),
+                maxLines: 3,
                 textAlign: TextAlign.center,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
+                style: AppTheme.serif(fontSize: 18, weight: FontWeight.w700, color: AppTheme.textPrimary, height: 1.25),
               ),
               const SizedBox(height: 4),
               Text(
@@ -2649,11 +2651,17 @@ class _HankoCover extends StatelessWidget {
 /// line is set on its own, one line with TextOverflow.fade, as the mockup's
 /// .fade does.
 class _FadeTitle extends StatelessWidget {
-  const _FadeTitle(this.text, {required this.style, required this.maxLines});
+  const _FadeTitle(this.text,
+      {required this.style, required this.maxLines, this.textAlign});
 
   final String text;
   final TextStyle style;
   final int maxLines;
+
+  /// Centred titles (the status sheet's) pass TextAlign.center. A cut last
+  /// line is always as wide as the box, so it starts at the left edge and
+  /// fades at the right whatever the alignment.
+  final TextAlign? textAlign;
 
   @override
   Widget build(BuildContext context) {
@@ -2676,16 +2684,19 @@ class _FadeTitle extends StatelessWidget {
       if (!overflows || lastStart <= 0) {
         return Text(text,
             style: style,
+            textAlign: textAlign,
             maxLines: maxLines,
             softWrap: maxLines > 1,
             overflow: TextOverflow.fade);
       }
       return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: textAlign == TextAlign.center
+            ? CrossAxisAlignment.center
+            : CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(text.substring(0, lastStart).trimRight(),
-              style: style, maxLines: maxLines - 1),
+              style: style, textAlign: textAlign, maxLines: maxLines - 1),
           Text(text.substring(lastStart).trimLeft(),
               style: style,
               maxLines: 1,
