@@ -47,6 +47,18 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isFromCache = false;
   bool _importPending = false;
 
+  // ── The airing batch, lifted out of Coming up (Stage 2 item a) ──
+  // One AniList request for every show you're watching: its next episode
+  // and when it airs. Coming up lists the soonest three, and each Continue
+  // row's reel shows the episodes that have aired since yours. Still one
+  // request, sent on Home's first load, and again only when a show joins
+  // Watching or the last one failed and you pull to refresh.
+  Map<int, Map<String, dynamic>> _airing = {};
+  Set<int> _airingAsked = {};
+  bool _airingLoading = true;
+  bool _airingFailed = false;
+  int _airingRun = 0;
+
   @override
   void initState() {
     super.initState();
@@ -164,11 +176,13 @@ class _HomeScreenState extends State<HomeScreen> {
       if (isOnline && userSnapshot.docs.isNotEmpty) {
         _loadRecommendations(userSnapshot);
       }
+      _loadAiring(retryFailed: true);
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _isLoading = false;
         _isFromCache = !isOnline;
+        _airingLoading = false; // no list, so no batch to wait for
       });
     }
   }
@@ -199,6 +213,134 @@ class _HomeScreenState extends State<HomeScreen> {
       // this only catches the device storage itself failing. Uncaught, it
       // would reach Crashlytics as fatal (main.dart).
     }
+  }
+
+  /// True for an entry imported from MyAnimeList before the D21 fix: it is
+  /// keyed by its MyAnimeList id and keeps MyAnimeList's cover, so its id
+  /// means nothing to AniList (or means another show).
+  static bool _isMalImport(Map<String, dynamic> entry) =>
+      ((entry['imageUrl'] as String?) ?? '')
+          .startsWith('https://cdn.myanimelist.net/');
+
+  /// AniList ids to ask the airing batch about. MyAnimeList imports are
+  /// left out: asking AniList about their number would fetch another show's
+  /// schedule, or none, so their rows show no new episodes (§6c).
+  static Set<int> _airingIdsFor(List<Map<String, dynamic>> entries) => {
+        for (final e in entries)
+          if (!_isMalImport(e))
+            ?int.tryParse((e['animeId'] ?? e['id'] ?? '').toString()),
+      };
+
+  /// Sends the airing batch when a watching show hasn't been asked about
+  /// yet, or, with [retryFailed], when the last batch failed. Keeps what it
+  /// had when a batch fails, so a bad moment never blanks Coming up.
+  Future<void> _loadAiring({bool retryFailed = false}) async {
+    final ids = _airingIdsFor(_continueWatching);
+    final ask = ids.difference(_airingAsked).isNotEmpty ||
+        (retryFailed && _airingFailed);
+    if (!ask) {
+      if (_airingLoading && mounted) setState(() => _airingLoading = false);
+      return;
+    }
+    final run = ++_airingRun;
+    final airing = await _fetchAiringBatch(ids.toList());
+    if (!mounted || run != _airingRun) return;
+    setState(() {
+      if (airing != null) {
+        _airing = airing;
+        _airingAsked = ids;
+      }
+      _airingFailed = airing == null;
+      _airingLoading = false;
+    });
+  }
+
+  /// Coming up's three: the soonest next episodes among the shows you're
+  /// watching, from the airing batch.
+  List<Map<String, dynamic>> _comingUpItems() {
+    final results = <Map<String, dynamic>>[];
+    for (final data in _continueWatching) {
+      if (_isMalImport(data)) continue;
+      final id =
+          int.tryParse((data['animeId'] ?? data['id'] ?? '').toString());
+      final airing = id == null ? null : _airing[id];
+      if (airing == null) continue;
+      final episode = (airing['episode'] as num?)?.toInt();
+      final airingAt = (airing['airingAt'] as num?)?.toInt();
+      if (episode == null || airingAt == null) continue;
+      results.add({
+        'title': data['title'] as String? ?? 'Unknown',
+        'animeId': id.toString(),
+        'episode': episode,
+        'date': DateTime.fromMillisecondsSinceEpoch(airingAt * 1000),
+        'imageUrl': data['imageUrl'] as String? ?? '',
+      });
+    }
+    results.sort(
+        (a, b) => (a['date'] as DateTime).compareTo(b['date'] as DateTime));
+    return results.take(3).toList();
+  }
+
+  /// Fetches next-airing-episode for many anime in a single AniList
+  /// request. Paginated (perPage 50) to cover large watching lists.
+  /// Moved here from Coming up unchanged, except that a failure now returns
+  /// null instead of an empty map, so Home can keep what it had.
+  Future<Map<int, Map<String, dynamic>>?> _fetchAiringBatch(
+      List<int> ids) async {
+    if (ids.isEmpty) return {};
+    final out = <int, Map<String, dynamic>>{};
+    const url = 'https://graphql.anilist.co';
+    const query = r'''
+    query ($ids: [Int]) {
+      Page(page: 1, perPage: 50) {
+        media(id_in: $ids, type: ANIME) {
+          id
+          nextAiringEpisode { episode airingAt }
+        }
+      }
+    }
+    ''';
+
+    try {
+      // Same retry shape as AnilistService._post: up to 3 attempts, and
+      // ONLY for 429. Anything else — including a 403 — returns on the
+      // first attempt, so an outage is never hammered. This used to back
+      // off correctly and then return without ever retrying, so a single
+      // transient 429 silently cost the whole cycle of countdowns.
+      http.Response? resp;
+      for (var attempt = 0; attempt < 3; attempt++) {
+        await AnilistService.throttle();
+        try {
+          resp = await http.post(
+            Uri.parse(url),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'query': query, 'variables': {'ids': ids}}),
+          ).timeout(const Duration(seconds: 12));
+        } catch (_) {
+          AnilistService.noteStatus(0, 'home airing');
+          rethrow;
+        }
+
+        AnilistService.noteStatus(resp.statusCode, 'home airing');
+        AnilistService.noteLimits(resp.headers);
+        if (resp.statusCode != 429) break;
+        final retryAfter =
+            int.tryParse(resp.headers['retry-after'] ?? '') ?? (3 * (attempt + 1));
+        AnilistService.backoff(retryAfter);
+      }
+      if (resp == null || resp.statusCode != 200) return null;
+
+      final body = jsonDecode(resp.body);
+      final media = body['data']?['Page']?['media'] as List? ?? [];
+      for (final m in media) {
+        final id = m['id'] as int?;
+        final airing = m['nextAiringEpisode'] as Map<String, dynamic>?;
+        if (id != null && airing != null) out[id] = airing;
+      }
+    } catch (_) {
+      return null;
+    }
+    return out;
   }
 
   /// Reads the list once, for this load.
@@ -737,7 +879,8 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
                 child: _ComingUpSection(
-                    continueWatching: _continueWatching,
+                    items: _comingUpItems(),
+                    loading: _airingLoading,
                     reminderIds: _reminderIds,
                     onToggleReminder: (animeId, val) {
                       setState(() {
@@ -2201,13 +2344,18 @@ Future<void> _saveReminder(BuildContext context, String animeId, bool val) async
 }
 
 
+/// Coming up: the soonest three next episodes among the shows you're
+/// watching. Since Hanko's Home (stage H4, item b) it draws what Home's
+/// lifted airing batch found (Stage 2 item a) instead of fetching its own.
 class _ComingUpSection extends StatefulWidget {
-  final List<Map<String, dynamic>> continueWatching;
+  final List<Map<String, dynamic>> items;
+  final bool loading;
   final Set<String> reminderIds;
   final void Function(String animeId, bool val) onToggleReminder;
 
   const _ComingUpSection({
-    required this.continueWatching,
+    required this.items,
+    required this.loading,
     required this.reminderIds,
     required this.onToggleReminder,
   });
@@ -2219,138 +2367,11 @@ class _ComingUpSection extends StatefulWidget {
 class _ComingUpSectionState extends State<_ComingUpSection> {
   static const _days = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
 
-  bool _loading = true;
-  List<Map<String, dynamic>> _items = [];
-
-  @override
-  void initState() {
-    super.initState();
-    _loadAiring();
-  }
-
-  @override
-  void didUpdateWidget(_ComingUpSection old) {
-    super.didUpdateWidget(old);
-    // Re-fetch if the watching list changed.
-    if (old.continueWatching.length != widget.continueWatching.length) {
-      _loadAiring();
-    }
-  }
-
-  Future<void> _loadAiring() async {
-    if (_items.isEmpty) setState(() => _loading = true);
-
-    final watching = widget.continueWatching;
-    if (watching.isEmpty) {
-      if (mounted) setState(() { _items = []; _loading = false; });
-      return;
-    }
-
-    // Collect all anime IDs and fetch their airing schedules in ONE
-    // batched request instead of one call per anime.
-    final idToData = <int, Map<String, dynamic>>{};
-    for (final data in watching) {
-      final idStr = (data['animeId'] ?? data['id'] ?? '').toString();
-      final id = int.tryParse(idStr);
-      if (id != null) idToData[id] = data;
-    }
-    if (idToData.isEmpty) {
-      if (mounted) setState(() { _items = []; _loading = false; });
-      return;
-    }
-
-    final airingById = await _fetchAiringBatch(idToData.keys.toList());
-
-    final results = <Map<String, dynamic>>[];
-    airingById.forEach((id, airing) {
-      final data = idToData[id];
-      if (data == null) return;
-      final episode  = (airing['episode'] as num?)?.toInt();
-      final airingAt = (airing['airingAt'] as num?)?.toInt();
-      if (episode == null || airingAt == null) return;
-      results.add({
-        'title':    data['title'] as String? ?? 'Unknown',
-        'animeId':  id.toString(),
-        'episode':  episode,
-        'date':     DateTime.fromMillisecondsSinceEpoch(airingAt * 1000),
-        'imageUrl': data['imageUrl'] as String? ?? '',
-      });
-    });
-
-    results.sort((a, b) =>
-        (a['date'] as DateTime).compareTo(b['date'] as DateTime));
-    final top = results.take(3).toList();
-
-    if (mounted) {
-      setState(() {
-        _items = top;
-        _loading = false;
-      });
-    }
-  }
-
-  /// Fetches next-airing-episode for many anime in a single AniList
-  /// request. Paginated (perPage 50) to cover large watching lists.
-  Future<Map<int, Map<String, dynamic>>> _fetchAiringBatch(
-      List<int> ids) async {
-    final out = <int, Map<String, dynamic>>{};
-    const url = 'https://graphql.anilist.co';
-    const query = r'''
-    query ($ids: [Int]) {
-      Page(page: 1, perPage: 50) {
-        media(id_in: $ids, type: ANIME) {
-          id
-          nextAiringEpisode { episode airingAt }
-        }
-      }
-    }
-    ''';
-
-    try {
-      // Same retry shape as AnilistService._post: up to 3 attempts, and
-      // ONLY for 429. Anything else — including a 403 — returns on the
-      // first attempt, so an outage is never hammered. This used to back
-      // off correctly and then return without ever retrying, so a single
-      // transient 429 silently cost the whole cycle of countdowns.
-      http.Response? resp;
-      for (var attempt = 0; attempt < 3; attempt++) {
-        await AnilistService.throttle();
-        try {
-          resp = await http.post(
-            Uri.parse(url),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({'query': query, 'variables': {'ids': ids}}),
-          ).timeout(const Duration(seconds: 12));
-        } catch (_) {
-          AnilistService.noteStatus(0, 'home airing');
-          rethrow;
-        }
-
-        AnilistService.noteStatus(resp.statusCode, 'home airing');
-        AnilistService.noteLimits(resp.headers);
-        if (resp.statusCode != 429) break;
-        final retryAfter =
-            int.tryParse(resp.headers['retry-after'] ?? '') ?? (3 * (attempt + 1));
-        AnilistService.backoff(retryAfter);
-      }
-      if (resp == null || resp.statusCode != 200) return out;
-
-      final body = jsonDecode(resp.body);
-      final media = body['data']?['Page']?['media'] as List? ?? [];
-      for (final m in media) {
-        final id = m['id'] as int?;
-        final airing = m['nextAiringEpisode'] as Map<String, dynamic>?;
-        if (id != null && airing != null) out[id] = airing;
-      }
-    } catch (_) {}
-    return out;
-  }
-
   @override
   Widget build(BuildContext context) {
-    final items = _items;
+    final items = widget.items;
 
-    if (_loading) {
+    if (widget.loading) {
       return Container(
         padding: const EdgeInsets.all(28),
         decoration: BoxDecoration(
