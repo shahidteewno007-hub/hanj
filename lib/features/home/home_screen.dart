@@ -1783,10 +1783,13 @@ class _PlusOneTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // excludeSemantics drops the InkWell's own tap action with the rest of
+    // the subtree, so the node carries onTap itself.
     return Semantics(
       button: true,
       enabled: onTap != null,
       label: 'Mark episode $nextEpisode watched',
+      onTap: onTap,
       excludeSemantics: true,
       child: Material(
         color: AppTheme.hankoSumi3,
@@ -2335,9 +2338,12 @@ class _ChartRow extends StatelessWidget {
     final score = anime.averageScore;
     final scoreText = score == null ? null : (score / 10).toStringAsFixed(1);
     final scaler = MediaQuery.textScalerOf(context);
+    // excludeSemantics drops the InkWell's own tap action with the rest of
+    // the subtree, so the node carries onTap itself.
     return Semantics(
       button: true,
       label: '$rank. $title${scoreText == null ? '' : ', AniList $scoreText'}',
+      onTap: onOpen,
       excludeSemantics: true,
       child: InkWell(
         onTap: onOpen,
