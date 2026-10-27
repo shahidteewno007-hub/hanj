@@ -2687,12 +2687,18 @@ class _FadeTitle extends StatelessWidget {
       )..layout(maxWidth: constraints.maxWidth);
       final overflows = painter.didExceedMaxLines;
       final lines = overflows ? painter.computeLineMetrics() : null;
+      // The last line's first character: the painter is left-aligned, so
+      // x = 0 on that line is its start. Not getLineBoundary(...).start: at
+      // the first offset of a soft-wrapped line it answers with the line
+      // before (seen on the emulators), which made every two-line title
+      // fall back to Flutter's bottom-half fade below, and split a
+      // three-line title after its first line.
       final lastStart = lines == null || lines.length < maxLines
           ? 0
           : painter
-              .getLineBoundary(painter.getPositionForOffset(Offset(
-                  0, lines[maxLines - 1].baseline - lines[maxLines - 1].ascent / 2)))
-              .start;
+              .getPositionForOffset(Offset(
+                  0, lines[maxLines - 1].baseline - lines[maxLines - 1].ascent / 2))
+              .offset;
       painter.dispose();
       if (!overflows || lastStart <= 0) {
         return Text(text,
