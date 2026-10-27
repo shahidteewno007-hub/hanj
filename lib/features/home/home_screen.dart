@@ -96,46 +96,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
       if (!mounted) return;
 
-      final watchingSnapshot = results[0];
-      final allWatching = watchingSnapshot.docs
-          .map((d) => d.data() as Map<String, dynamic>)
-          .where((d) => d['animeId'] != null)
-          .toList();
-
-      // ── Auto-complete already-finished anime ──────────────────
-      // Anything where currentEpisode has reached the total (e.g. a
-      // 1-episode movie added at 1/1, or anything finished outside the
-      // tap-to-increment flow) should be COMPLETED and drop out of
-      // Continue arc. Heal Firestore in the background.
-      final List<Map<String, dynamic>> continueWatching = [];
-      final uidForHeal = FirebaseAuth.instance.currentUser?.uid;
-      for (final d in allWatching) {
-        final cur   = (d['currentEpisode'] as int?) ?? 0;
-        final total = (d['episodes'] as int?) ?? 0;
-        final finished = total > 0 && cur >= total;
-        if (finished) {
-          // Heal status → COMPLETED (fire-and-forget, don't block load)
-          final id = d['animeId']?.toString();
-          if (uidForHeal != null && id != null) {
-            FirebaseFirestore.instance
-                .collection('users').doc(uidForHeal)
-                .collection('animeList').doc(id)
-                .update({'status': 'COMPLETED'})
-                .catchError((_) {});
-          }
-          continue; // exclude from Continue arc
-        }
-        continueWatching.add(d);
-      }
-
-      continueWatching.sort((a, b) {
-        final aTime = a['lastWatched'] as Timestamp?;
-        final bTime = b['lastWatched'] as Timestamp?;
-        if (aTime == null) return 1;
-        if (bTime == null) return -1;
-        return bTime.compareTo(aTime);
-      });
-
       final userSnapshot = results[1];
 
       // Offline with nothing on the device, the list arrives empty from the
@@ -147,24 +107,7 @@ class _HomeScreenState extends State<HomeScreen> {
         throw StateError('No copy of the list on this device');
       }
 
-      final entries = userSnapshot.docs
-          .map((d) => d.data() as Map<String, dynamic>)
-          .where((d) => d['animeId'] != null)
-          .toList();
-
-      // ── Plan to Watch ──────────────────────────────────────
-      final allDocs = userSnapshot.docs
-          .map((d) => d.data() as Map<String, dynamic>)
-          .where((d) => d['animeId'] != null && d['status'] == 'PLAN_TO_WATCH')
-          .toList();
-      // Sort by most recently added
-      allDocs.sort((a, b) {
-        final aTime = a['addedAt'] as Timestamp?;
-        final bTime = b['addedAt'] as Timestamp?;
-        if (aTime == null) return 1;
-        if (bTime == null) return -1;
-        return bTime.compareTo(aTime);
-      });
+      final lists = _sortList(results[0], userSnapshot);
 
       // Load reminders
       final uid = FirebaseAuth.instance.currentUser?.uid;
@@ -183,9 +126,9 @@ class _HomeScreenState extends State<HomeScreen> {
       // Recommendations are fetched separately so a throttled AniList
       // call never blocks the whole screen from showing.
       setState(() {
-        _continueWatching = continueWatching;
-        _planToWatch = allDocs;
-        _entries = entries;
+        _continueWatching = lists.watching;
+        _planToWatch = lists.planned;
+        _entries = lists.entries;
         _listFailed = false;
         _isLoading = false;
         _isFromCache = !isOnline;
@@ -208,6 +151,146 @@ class _HomeScreenState extends State<HomeScreen> {
         // refresh keeps what is on screen.
         if (_entries.isEmpty) _listFailed = true;
       });
+    }
+  }
+
+  /// Works out Home's lists from one read of the list: Continue (minus any
+  /// show already at its last episode, which it heals to COMPLETED in the
+  /// background), the watchlist, and the whole list for the lede. Shared by
+  /// the first load and the re-read on return (item c).
+  ({
+    List<Map<String, dynamic>> watching,
+    List<Map<String, dynamic>> planned,
+    List<Map<String, dynamic>> entries,
+  }) _sortList(QuerySnapshot watchingSnapshot, QuerySnapshot userSnapshot) {
+    final allWatching = watchingSnapshot.docs
+        .map((d) => d.data() as Map<String, dynamic>)
+        .where((d) => d['animeId'] != null)
+        .toList();
+
+    // ── Auto-complete already-finished anime ──────────────────
+    // Anything where currentEpisode has reached the total (e.g. a
+    // 1-episode movie added at 1/1, or anything finished outside the
+    // tap-to-increment flow) should be COMPLETED and drop out of
+    // Continue arc. Heal Firestore in the background.
+    final List<Map<String, dynamic>> continueWatching = [];
+    final uidForHeal = FirebaseAuth.instance.currentUser?.uid;
+    for (final d in allWatching) {
+      final cur   = (d['currentEpisode'] as int?) ?? 0;
+      final total = (d['episodes'] as int?) ?? 0;
+      final finished = total > 0 && cur >= total;
+      if (finished) {
+        // Heal status → COMPLETED (fire-and-forget, don't block load)
+        final id = d['animeId']?.toString();
+        if (uidForHeal != null && id != null) {
+          FirebaseFirestore.instance
+              .collection('users').doc(uidForHeal)
+              .collection('animeList').doc(id)
+              .update({'status': 'COMPLETED'})
+              .catchError((_) {});
+        }
+        continue; // exclude from Continue arc
+      }
+      continueWatching.add(d);
+    }
+
+    continueWatching.sort((a, b) {
+      final aTime = a['lastWatched'] as Timestamp?;
+      final bTime = b['lastWatched'] as Timestamp?;
+      if (aTime == null) return 1;
+      if (bTime == null) return -1;
+      return bTime.compareTo(aTime);
+    });
+
+    final entries = userSnapshot.docs
+        .map((d) => d.data() as Map<String, dynamic>)
+        .where((d) => d['animeId'] != null)
+        .toList();
+
+    // ── Plan to Watch ──────────────────────────────────────
+    final allDocs = entries
+        .where((d) => d['status'] == 'PLAN_TO_WATCH')
+        .toList();
+    // Sort by most recently added
+    allDocs.sort((a, b) {
+      final aTime = a['addedAt'] as Timestamp?;
+      final bTime = b['addedAt'] as Timestamp?;
+      if (aTime == null) return 1;
+      if (bTime == null) return -1;
+      return bTime.compareTo(aTime);
+    });
+
+    return (watching: continueWatching, planned: allDocs, entries: entries);
+  }
+
+  // ── Reload on return (Hanko stage H4, item c) ──────────────
+  // Coming back from a page Home opened (a show, Search, My List…), Home
+  // re-reads your list so the headline, the rows and the watchlist are
+  // right after you rate, log or change a status there. Before, nothing
+  // reloaded on return, so the headline named your previous rating.
+
+  /// Opens [route] from Home, then re-reads the list once the page has
+  /// finished closing. TransitionRoute.completed lands after the pop
+  /// animation, so the re-read never rebuilds Home mid-transition.
+  Future<void> _open(Route<void> route) async {
+    Navigator.push(context, route);
+    if (route is TransitionRoute<void>) {
+      await route.completed;
+    } else {
+      await route.popped;
+    }
+    if (mounted) _reloadList();
+  }
+
+  bool _reloading = false;
+
+  /// Re-reads the list from the device's cache, with estimated server
+  /// timestamps (Stage 2 item b). The cache already holds what you just
+  /// saved on the show's page, and "estimate" fills in its ratedAt, which a
+  /// normal read leaves null until the server confirms it, so the lede is
+  /// right at once, offline too. No AniList request; the airing batch only
+  /// goes out if a show joined Watching.
+  ///
+  /// The web keeps no persistent copy, so its cache can hold just part of
+  /// the list. There the re-read goes to the server (with your pending
+  /// writes applied), and an answer that came from the cache instead is
+  /// ignored rather than shown as your whole list.
+  Future<void> _reloadList() async {
+    if (_isLoading || _reloading) return;
+    if (_listFailed) {
+      _loadData(); // nothing on screen to keep: a plain retry
+      return;
+    }
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    _reloading = true;
+    try {
+      final list = FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .collection('animeList');
+      const options = GetOptions(
+        source: kIsWeb ? Source.serverAndCache : Source.cache,
+        serverTimestampBehavior: ServerTimestampBehavior.estimate,
+      );
+      final results = await Future.wait([
+        list.where('status', isEqualTo: 'WATCHING').get(options),
+        list.orderBy('addedAt', descending: true).get(options),
+      ]);
+      if (!mounted) return;
+      if (kIsWeb && results.any((s) => s.metadata.isFromCache)) return;
+      final lists = _sortList(results[0], results[1]);
+      setState(() {
+        _continueWatching = lists.watching;
+        _planToWatch = lists.planned;
+        _entries = lists.entries;
+      });
+      _precacheLede();
+      _loadAiring();
+    } catch (_) {
+      // The cache couldn't answer: keep what is on screen.
+    } finally {
+      _reloading = false;
     }
   }
 
@@ -562,7 +645,7 @@ class _HomeScreenState extends State<HomeScreen> {
             const SizedBox(width: 8),
           ],
           IconButton(
-            onPressed: () => Navigator.push(context,
+            onPressed: () => _open(
                 MaterialPageRoute(builder: (_) => const SearchScreen())),
             tooltip: 'Search',
             icon: const Icon(Icons.search_sharp, size: 24),
@@ -640,6 +723,7 @@ class _HomeScreenState extends State<HomeScreen> {
               SliverToBoxAdapter(
                 key: const ValueKey('home-import-banner'),
                 child: _ImportPendingBanner(
+                  open: _open,
                   onDismiss: () async {
                     await _firestoreService.dismissImportBanner();
                     if (mounted) setState(() => _importPending = false);
@@ -680,8 +764,12 @@ class _HomeScreenState extends State<HomeScreen> {
                                 'continue-$index'),
                             data: data,
                             firestoreService: _firestoreService,
-                            onUpdated: _loadData,
+                            // Finishing a show re-reads the list from the
+                            // cache, so the row leaves with no AniList
+                            // request (it used to re-run the whole load).
+                            onUpdated: _reloadList,
                             aired: _airedFor(data),
+                            open: _open,
                           ),
                         ),
                       ],
@@ -691,7 +779,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               AppTheme.hankoGutter, 6, AppTheme.hankoGutter, 0),
                           child: _QuietLink(
                             label: 'See all ${_continueWatching.length}',
-                            onTap: () => Navigator.push(context,
+                            onTap: () => _open(
                                 MaterialPageRoute(
                                     builder: (_) => const MyListScreen(initialStatus: 'WATCHING', showBackButton: true))),
                           ),
@@ -707,7 +795,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 key: const ValueKey('home-anime-of-day'),
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
-                  child: _TonightCard(anime: _animeOfDay!),
+                  child: _TonightCard(anime: _animeOfDay!, open: _open),
                 ),
               ),
 
@@ -735,7 +823,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       MouseRegion(
                         cursor: SystemMouseCursors.click,
                         child: GestureDetector(
-                          onTap: () => Navigator.push(context,
+                          onTap: () => _open(
                               MaterialPageRoute(
                                   builder: (_) => const MyListScreen(initialStatus: 'PLAN_TO_WATCH', showBackButton: true))),
                           child: Text(
@@ -762,6 +850,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     itemCount: _planToWatch.length,
                     itemBuilder: (context, index) => _PlanCard(
                       data: _planToWatch[index],
+                      open: _open,
                     ),
                   ),
                 ),
@@ -859,7 +948,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     alignment: Alignment.centerLeft,
                     child: _QuietLink(
                       label: 'More from this season',
-                      onTap: () => Navigator.push(context,
+                      onTap: () => _open(
                           MaterialPageRoute(builder: (_) => const DiscoveryScreen(initialTab: 'SEASONAL', showBackButton: true))),
                     ),
                   ),
@@ -886,7 +975,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       ],
                     ),
                     InkWell(
-                      onTap: () => Navigator.push(context,
+                      onTap: () => _open(
                           MaterialPageRoute(builder: (_) => const AnimeCalendarScreen())),
                       borderRadius: BorderRadius.circular(8),
                       child: Padding(
@@ -910,6 +999,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: _ComingUpSection(
                     items: _comingUpItems(),
                     loading: _airingLoading,
+                    open: _open,
                     reminderIds: _reminderIds,
                     onToggleReminder: (animeId, val) {
                       setState(() {
@@ -965,6 +1055,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           'rec-${row['genre']}-${(row['anime'] as List<Anime>)[index].id}'),
                       anime: (row['anime'] as List<Anime>)[index],
                       rank: index + 1,
+                      open: _open,
                     ),
                   ),
                 ),
@@ -1008,7 +1099,7 @@ class _HomeScreenState extends State<HomeScreen> {
           child: _ChartRow(
             anime: anime,
             rank: index + 1,
-            onOpen: () => Navigator.push(context,
+            onOpen: () => _open(
                 MaterialPageRoute(
                     builder: (_) => AnimeDetailScreen(anime: anime))),
           ),
@@ -1118,8 +1209,7 @@ class _HomeScreenState extends State<HomeScreen> {
       episodes: data['episodes'] as int?,
       genres: (data['genres'] as List<dynamic>?)?.cast<String>() ?? [],
     );
-    Navigator.push(context,
-        MaterialPageRoute(builder: (_) => AnimeDetailScreen(anime: anime)));
+    _open(MaterialPageRoute(builder: (_) => AnimeDetailScreen(anime: anime)));
   }
 
   Widget _buildHeadline() {
@@ -1432,9 +1522,14 @@ Future<String?> showHanjListSheet({
 }
 
 // ── Import Pending Banner ─────────────────────────────────────
+/// Home's way of opening a page: push it, then re-read the list once it has
+/// closed (_HomeScreenState._open, item c).
+typedef _Open = Future<void> Function(Route<void> route);
+
 class _ImportPendingBanner extends StatelessWidget {
   final VoidCallback onDismiss;
-  const _ImportPendingBanner({required this.onDismiss});
+  final _Open open;
+  const _ImportPendingBanner({required this.onDismiss, required this.open});
 
   @override
   Widget build(BuildContext context) {
@@ -1495,8 +1590,7 @@ class _ImportPendingBanner extends StatelessWidget {
               children: [
                 GestureDetector(
                   onTap: () {
-                    Navigator.push(
-                      context,
+                    open(
                       MaterialPageRoute(
                         builder: (_) => const AnilistImportScreen(),
                       ),
@@ -1539,7 +1633,8 @@ class _ImportPendingBanner extends StatelessWidget {
 // ── Tonight's Drop Card ──────────────────────────────────────
 class _TonightCard extends StatefulWidget {
   final Anime anime;
-  const _TonightCard({required this.anime});
+  final _Open open;
+  const _TonightCard({required this.anime, required this.open});
 
   @override
   State<_TonightCard> createState() => _TonightCardState();
@@ -1615,7 +1710,7 @@ class _TonightCardState extends State<_TonightCard>
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
-        onTap: () => Navigator.push(context,
+        onTap: () => widget.open(
             MaterialPageRoute(builder: (_) => AnimeDetailScreen(anime: widget.anime))),
         child: Container(
           decoration: BoxDecoration(
@@ -1818,6 +1913,7 @@ class _ContinueCard extends StatefulWidget {
   /// Episodes aired so far, from Home's airing batch (next episode − 1),
   /// or null when the batch knows nothing about this show.
   final int? aired;
+  final _Open open;
 
   const _ContinueCard({
     super.key,
@@ -1825,6 +1921,7 @@ class _ContinueCard extends StatefulWidget {
     required this.firestoreService,
     required this.onUpdated,
     required this.aired,
+    required this.open,
   });
 
   @override
@@ -1931,7 +2028,7 @@ class _ContinueCardState extends State<_ContinueCard> {
           episodes: total,
           genres: genres,
         );
-        Navigator.push(context,
+        widget.open(
             MaterialPageRoute(
                 builder: (_) => AnimeDetailScreen(anime: anime)));
       },
@@ -2060,7 +2157,13 @@ class _PlusOneTile extends StatelessWidget {
 class _TrendingCard extends StatefulWidget {
   final Anime anime;
   final int? rank;
-  const _TrendingCard({super.key, required this.anime, this.rank});
+  final _Open open;
+  const _TrendingCard({
+    super.key,
+    required this.anime,
+    this.rank,
+    required this.open,
+  });
 
   @override
   State<_TrendingCard> createState() => _TrendingCardState();
@@ -2076,8 +2179,7 @@ class _TrendingCardState extends State<_TrendingCard> {
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
       child: GestureDetector(
-        onTap: () => Navigator.push(
-          context,
+        onTap: () => widget.open(
           MaterialPageRoute(
               builder: (_) => AnimeDetailScreen(anime: widget.anime)),
         ),
@@ -2657,12 +2759,14 @@ class _ComingUpSection extends StatefulWidget {
   final bool loading;
   final Set<String> reminderIds;
   final void Function(String animeId, bool val) onToggleReminder;
+  final _Open open;
 
   const _ComingUpSection({
     required this.items,
     required this.loading,
     required this.reminderIds,
     required this.onToggleReminder,
+    required this.open,
   });
 
   @override
@@ -2894,7 +2998,7 @@ class _ComingUpSectionState extends State<_ComingUpSection> {
 
     _opening = false;
     if (anime != null && mounted) {
-      Navigator.push(context,
+      widget.open(
           MaterialPageRoute(builder: (_) => AnimeDetailScreen(anime: anime!)));
     } else if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -2909,7 +3013,8 @@ class _ComingUpSectionState extends State<_ComingUpSection> {
 // Tapping opens the anime detail screen.
 class _PlanCard extends StatelessWidget {
   final Map<String, dynamic> data;
-  const _PlanCard({required this.data});
+  final _Open open;
+  const _PlanCard({required this.data, required this.open});
 
   @override
   Widget build(BuildContext context) {
@@ -2922,8 +3027,7 @@ class _PlanCard extends StatelessWidget {
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
-        onTap: () => Navigator.push(
-          context,
+        onTap: () => open(
           MaterialPageRoute(
             builder: (_) => AnimeDetailScreen(
               anime: Anime(
