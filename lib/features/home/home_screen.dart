@@ -9,6 +9,7 @@ import 'dart:convert';
 
 import '../../core/theme/app_theme.dart';
 import '../../widgets/anilist_saved_note.dart';
+import '../../widgets/hanko_reel.dart';
 import '../../core/responsive.dart';
 import '../../services/anilist_service.dart';
 import '../../services/firestore_service.dart';
@@ -253,6 +254,18 @@ class _HomeScreenState extends State<HomeScreen> {
       _airingFailed = airing == null;
       _airingLoading = false;
     });
+  }
+
+  /// Episodes aired so far for a Continue row: the next episode to air,
+  /// minus one. Null when the batch knows nothing about the show: it has
+  /// finished or isn't scheduled (the batch only asks for the next
+  /// episode), the batch failed or hasn't answered, or it is a MyAnimeList
+  /// import whose id isn't an AniList id.
+  int? _airedFor(Map<String, dynamic> data) {
+    if (_isMalImport(data)) return null;
+    final id = int.tryParse((data['animeId'] ?? data['id'] ?? '').toString());
+    final next = (_airing[id]?['episode'] as num?)?.toInt();
+    return next == null ? null : next - 1;
   }
 
   /// Coming up's three: the soonest next episodes among the shows you're
@@ -611,12 +624,66 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
 
+            // ── Continue Watching ────────────────────────────
+            // Hanko's rows (item b), right under the headline: the thing you
+            // do most is the easiest to reach, so +1 sits in the top half of
+            // the screen instead of below the fold. Three rows, then "See
+            // all", which opens My List's Watching filter.
+            if (_continueWatching.isNotEmpty)
+              SliverToBoxAdapter(
+                key: const ValueKey('home-continue-row'),
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      for (final (index, data)
+                          in _continueWatching.take(3).indexed) ...[
+                        if (index > 0) const SizedBox(height: 16),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: AppTheme.hankoGutter),
+                          // Keyed by animeId, not index. This list is sorted
+                          // by lastWatched, so bumping an episode reorders it
+                          // — and _ContinueCardState holds _current, the
+                          // episode number. Index-matched, the element keeps
+                          // its old _current while receiving a different
+                          // anime's data, and didUpdateWidget only resyncs
+                          // when the incoming value differs from the
+                          // *previous widget's* value, so two shows on the
+                          // same episode leave the stale number on screen.
+                          child: _ContinueCard(
+                            key: ValueKey(data['animeId']?.toString() ??
+                                'continue-$index'),
+                            data: data,
+                            firestoreService: _firestoreService,
+                            onUpdated: _loadData,
+                            aired: _airedFor(data),
+                          ),
+                        ),
+                      ],
+                      if (_continueWatching.length > 3)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(
+                              AppTheme.hankoGutter, 6, AppTheme.hankoGutter, 0),
+                          child: _QuietLink(
+                            label: 'See all ${_continueWatching.length}',
+                            onTap: () => Navigator.push(context,
+                                MaterialPageRoute(
+                                    builder: (_) => const MyListScreen(initialStatus: 'WATCHING', showBackButton: true))),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+
             // ── Tonight's Drop / Anime of Day ────────────────
             if (_animeOfDay != null)
               SliverToBoxAdapter(
                 key: const ValueKey('home-anime-of-day'),
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
+                  padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
                   child: _TonightCard(anime: _animeOfDay!),
                 ),
               ),
@@ -629,67 +696,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: TonightWatchCard(),
               ),
             ),
-
-            // ── Continue Watching ────────────────────────────
-            if (_continueWatching.isNotEmpty) ...[
-              SliverToBoxAdapter(
-                key: const ValueKey('home-continue-header'),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text('Continue arc',
-                          style: AppTheme.serif(
-                              fontSize: 20, weight: FontWeight.w600)),
-                      MouseRegion(
-                        cursor: SystemMouseCursors.click,
-                        child: GestureDetector(
-                          onTap: () => Navigator.push(context,
-                              MaterialPageRoute(
-                                  builder: (_) => const MyListScreen(initialStatus: 'WATCHING', showBackButton: true))),
-                          child: Text(
-                            'SEE ALL →',
-                            style: AppTheme.mono(
-                                fontSize: 11,
-                                color: AppTheme.primary,
-                                letterSpacing: 1),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              SliverToBoxAdapter(
-                key: const ValueKey('home-continue-row'),
-                child: SizedBox(
-                  height: 310,
-                  child: ListView.builder(
-                    scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    physics: const BouncingScrollPhysics(),
-                    itemCount: _continueWatching.length,
-                    // Keyed by animeId, not index. This list is sorted by
-                    // lastWatched, so bumping an episode reorders it — and
-                    // _ContinueCardState holds _current, the episode number.
-                    // Index-matched, the element keeps its old _current while
-                    // receiving a different anime's data, and
-                    // didUpdateWidget only resyncs when the incoming value
-                    // differs from the *previous widget's* value, so two shows
-                    // on the same episode leave the stale number on screen.
-                    itemBuilder: (context, index) => _ContinueCard(
-                      key: ValueKey(
-                          _continueWatching[index]['animeId']?.toString() ??
-                              'continue-$index'),
-                      data: _continueWatching[index],
-                      firestoreService: _firestoreService,
-                      onUpdated: _loadData,
-                    ),
-                  ),
-                ),
-              ),
-            ],
 
             // ── Plan to Watch ────────────────────────────────
             if (_planToWatch.isNotEmpty) ...[
@@ -1574,11 +1580,16 @@ class _ContinueCard extends StatefulWidget {
   final FirestoreService firestoreService;
   final VoidCallback onUpdated;
 
+  /// Episodes aired so far, from Home's airing batch (next episode − 1),
+  /// or null when the batch knows nothing about this show.
+  final int? aired;
+
   const _ContinueCard({
     super.key,
     required this.data,
     required this.firestoreService,
     required this.onUpdated,
+    required this.aired,
   });
 
   @override
@@ -1664,145 +1675,142 @@ class _ContinueCardState extends State<_ContinueCard> {
     final animeId = data['animeId']?.toString() ?? '';
     final genres = (data['genres'] as List<dynamic>?)?.cast<String>() ?? [];
     final hasTotal = total != null && total > 0;
-    final progress = hasTotal ? (_current / total).clamp(0.0, 1.0) : 0.0;
+    final aired = widget.aired;
 
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        onTap: () {
-          final anime = Anime(
-            id: animeId,
-            title: title,
-            imageUrl: imageUrl,
-            episodes: total,
-            genres: genres,
-          );
-          Navigator.push(context,
-              MaterialPageRoute(
-                  builder: (_) => AnimeDetailScreen(anime: anime)));
-        },
-        child: Container(
-          width: 140,
-          margin: const EdgeInsets.only(right: 14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Poster with episode badge
-              Stack(
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(14),
-                    child: SizedBox(
-                      width: 140,
-                      height: 196,
-                      child: imageUrl.isNotEmpty
-                          ? CachedNetworkImage(
-                              imageUrl: imageUrl,
-                              fit: BoxFit.cover,
-                              errorWidget: (_, _, _) =>
-                                  Container(color: AppTheme.surfaceLight),
-                            )
-                          : Container(color: AppTheme.surfaceLight),
-                    ),
-                  ),
-                  // Episode badge — animated, display only (set on detail screen)
-                  Positioned(
-                    top: 10,
-                    right: 10,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 5),
-                      decoration: BoxDecoration(
-                        color: AppTheme.background.withValues(alpha: 0.85),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 220),
-                        transitionBuilder: (child, anim) => FadeTransition(
-                          opacity: anim,
-                          child: SlideTransition(
-                            position: Tween<Offset>(
-                              begin: const Offset(0, -0.4),
-                              end: Offset.zero,
-                            ).animate(anim),
-                            child: child,
-                          ),
-                        ),
-                        child: Text(
-                          'EP $_current',
-                          key: ValueKey(_current),
-                          style: AppTheme.sans(
-                              fontSize: 10,
-                              weight: FontWeight.w700,
-                              color: AppTheme.textPrimary),
+    // Hanko's Continue row (stage H4, item b; hanko.html, Home): the cover,
+    // the English title on up to two lines, and progress as words plus the
+    // reel. The reel's outlined ticks are the episodes that have aired and
+    // wait for you, which is what "2 NEW" said. When the airing batch knows
+    // nothing (finished, not scheduled, failed, offline, or a MyAnimeList
+    // import), the reel claims nothing past your episode, and its spoken
+    // label says only how far you are.
+    final progressWords =
+        hasTotal ? '$_current of $total' : '$_current watched';
+
+    return InkWell(
+      onTap: () {
+        final anime = Anime(
+          id: animeId,
+          title: title,
+          imageUrl: imageUrl,
+          episodes: total,
+          genres: genres,
+        );
+        Navigator.push(context,
+            MaterialPageRoute(
+                builder: (_) => AnimeDetailScreen(anime: anime)));
+      },
+      splashFactory: NoSplash.splashFactory,
+      highlightColor: AppTheme.hankoPressWash,
+      hoverColor: AppTheme.hankoPressWash,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: _HankoCover(url: imageUrl, width: 42, height: 60),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _FadeTitle(
+                  title,
+                  maxLines: 2,
+                  style: AppTheme.hankoSerif(
+                      fontSize: AppTheme.hankoListTitleSize, height: 1.25),
+                ),
+                const SizedBox(height: 9),
+                Row(
+                  children: [
+                    ExcludeSemantics(
+                      child: Text(
+                        progressWords,
+                        style: AppTheme.hankoSans(
+                          fontSize: AppTheme.hankoLabelSize,
+                          weight: FontWeight.w500,
+                          color: AppTheme.hankoStone,
+                          height: 1,
+                          tabular: true,
                         ),
                       ),
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              // Progress bar — animates smoothly between values
-              if (hasTotal)
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(2),
-                  child: TweenAnimationBuilder<double>(
-                    tween: Tween(begin: progress, end: progress),
-                    duration: const Duration(milliseconds: 300),
-                    curve: Curves.easeOut,
-                    builder: (_, value, _) => LinearProgressIndicator(
-                      value: value,
-                      backgroundColor: AppTheme.border,
-                      valueColor: const AlwaysStoppedAnimation<Color>(
-                          AppTheme.primary),
-                      minHeight: 2,
+                    const SizedBox(width: 10),
+                    Flexible(
+                      child: HankoReel(
+                        watched: _current,
+                        total: hasTotal ? total : null,
+                        aired: aired ?? _current,
+                        semanticLabel:
+                            aired == null ? '$progressWords watched' : null,
+                      ),
                     ),
-                  ),
+                  ],
                 ),
-              const SizedBox(height: 6),
-              Text(
-                title,
-                style: AppTheme.sans(
-                    fontSize: 12,
-                    weight: FontWeight.w500,
-                    color: AppTheme.textSecondary),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+              ],
+            ),
+          ),
+          const SizedBox(width: 14),
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: _PlusOneTile(
+              nextEpisode: _current + 1,
+              saving: _saving,
+              onTap: animeId.isEmpty ? null : () => _bump(total ?? 0),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Hanko's outlined +1 tile: sumi 3 with a 1 px edge outline (4.02:1), 48 dp
+/// square, "+1" in Jost 600 washi. Outlined rather than filled because it
+/// repeats on every row, and one filled main action per screen is the rule.
+/// While its write is on its way the outline turns washi.
+class _PlusOneTile extends StatelessWidget {
+  const _PlusOneTile({
+    required this.nextEpisode,
+    required this.saving,
+    required this.onTap,
+  });
+
+  final int nextEpisode;
+  final bool saving;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      enabled: onTap != null,
+      label: 'Mark episode $nextEpisode watched',
+      excludeSemantics: true,
+      child: Material(
+        color: AppTheme.hankoSumi3,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+          side: BorderSide(
+              color: saving ? AppTheme.hankoWashi : AppTheme.hankoEdge),
+        ),
+        child: InkWell(
+          onTap: onTap,
+          splashFactory: NoSplash.splashFactory,
+          highlightColor: AppTheme.hankoPressWash,
+          hoverColor: AppTheme.hankoPressWash,
+          borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+          child: SizedBox(
+            width: AppTheme.hankoTouch,
+            height: AppTheme.hankoTouch,
+            child: Center(
+              child: Text(
+                '+1',
+                style: AppTheme.hankoSans(
+                    fontSize: 15, weight: FontWeight.w600, height: 1),
               ),
-              Text(
-                hasTotal ? 'EP $_current OF $total' : 'EP $_current',
-                style: AppTheme.mono(fontSize: 10, color: AppTheme.textMuted),
-              ),
-              const SizedBox(height: 6),
-              // +1 episode button — optimistic, no full reload
-              GestureDetector(
-                onTap: animeId.isEmpty ? null : () => _bump(total ?? 0),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 150),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                  decoration: BoxDecoration(
-                    color: _saving
-                        ? AppTheme.primary.withValues(alpha: 0.18)
-                        : AppTheme.surfaceMid,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                        color: _saving ? AppTheme.primary : AppTheme.border),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text('+1 episode',
-                          style: AppTheme.mono(
-                              fontSize: 10,
-                              color: _saving
-                                  ? AppTheme.primary
-                                  : AppTheme.textMuted)),
-                    ],
-                  ),
-                ),
-              ),
-            ],
+            ),
           ),
         ),
       ),
@@ -2204,6 +2212,62 @@ class _HankoCover extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// A Shippori title on up to [maxLines] lines whose last line fades out at
+/// its end when the title runs longer, instead of an ellipsis: Shippori
+/// draws "…" as the centred Japanese ⋯ (AppTheme.hankoSerif). Flutter's own
+/// TextOverflow.fade on a multi-line Text fades the bottom half of the last
+/// line instead, so the title is split after its last full line and that
+/// line is set on its own, one line with TextOverflow.fade, as the mockup's
+/// .fade does.
+class _FadeTitle extends StatelessWidget {
+  const _FadeTitle(this.text, {required this.style, required this.maxLines});
+
+  final String text;
+  final TextStyle style;
+  final int maxLines;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(builder: (context, constraints) {
+      final painter = TextPainter(
+        text: TextSpan(text: text, style: style),
+        textDirection: Directionality.of(context),
+        textScaler: MediaQuery.textScalerOf(context),
+        maxLines: maxLines,
+      )..layout(maxWidth: constraints.maxWidth);
+      final overflows = painter.didExceedMaxLines;
+      final lines = overflows ? painter.computeLineMetrics() : null;
+      final lastStart = lines == null || lines.length < maxLines
+          ? 0
+          : painter
+              .getLineBoundary(painter.getPositionForOffset(Offset(
+                  0, lines[maxLines - 1].baseline - lines[maxLines - 1].ascent / 2)))
+              .start;
+      painter.dispose();
+      if (!overflows || lastStart <= 0) {
+        return Text(text,
+            style: style,
+            maxLines: maxLines,
+            softWrap: maxLines > 1,
+            overflow: TextOverflow.fade);
+      }
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(text.substring(0, lastStart).trimRight(),
+              style: style, maxLines: maxLines - 1),
+          Text(text.substring(lastStart).trimLeft(),
+              style: style,
+              maxLines: 1,
+              softWrap: false,
+              overflow: TextOverflow.fade),
+        ],
+      );
+    });
   }
 }
 
