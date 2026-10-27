@@ -737,6 +737,9 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
                     selected: _selectedTab,
                     onTap: (i) => setState(() => _selectedTab = i),
                   ),
+                  // 48 dp labels, the indicator and the rule, growing with
+                  // the text size instead of overflowing a fixed 52.
+                  height: math.max(52.0, 32 + MediaQuery.textScalerOf(context).scale(13) * 1.5),
                 ),
               ),
             // Tab content — swipeable via horizontal drag
@@ -2393,16 +2396,10 @@ class _OverviewTab extends StatelessWidget {
 
         const AnilistSavedNote(padding: EdgeInsets.only(bottom: 12)),
 
-        // Synopsis
+        // Synopsis. Hanko: a Mincho head, no coral bar and no tracked-caps
+        // eyebrow under it.
         if (anime.description != null) ...[
-          Row(children: [
-            Container(width: 3, height: 20, decoration: BoxDecoration(color: AppTheme.primary, borderRadius: BorderRadius.circular(2))),
-            const SizedBox(width: 10),
-            Text('Synopsis', style: AppTheme.serif(fontSize: 20, weight: FontWeight.w600)),
-          ]),
-          const SizedBox(height: 4),
-          Text('A STORY IN MOTION', style: AppTheme.mono(fontSize: 10, color: AppTheme.textMuted, letterSpacing: 1)),
-          const SizedBox(height: 12),
+          const _HankoSectionHead(title: 'Synopsis', aside: null),
           _SynopsisText(text: cleanDescription(anime.description!)),
           const SizedBox(height: 28),
         ],
@@ -2486,21 +2483,22 @@ class _OverviewTab extends StatelessWidget {
         ],
 
         // ── Discussion ──────────────────────────────────────
-        MouseRegion(
-          cursor: SystemMouseCursors.click,
-          child: GestureDetector(
-            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => EpisodeDiscussionScreen(anime: anime, episodeNumber: 0))),
-            child: Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(color: AppTheme.surfaceLight, borderRadius: BorderRadius.circular(14), border: Border.all(color: AppTheme.border)),
-              child: Row(children: [
-                const Icon(Icons.forum_outlined, size: 18, color: AppTheme.textSecondary),
-                const SizedBox(width: 10),
-                Text('Join the discussion', style: AppTheme.sans(fontSize: 15, weight: FontWeight.w600)),
-                const Spacer(),
-                Text('→', style: AppTheme.sans(fontSize: 15, color: AppTheme.primary)),
-              ]),
-            ),
+        // A plain 48 dp row in Hanko: no card, no coral arrow.
+        InkWell(
+          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => EpisodeDiscussionScreen(anime: anime, episodeNumber: 0))),
+          splashFactory: NoSplash.splashFactory,
+          highlightColor: AppTheme.hankoPressWash,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: AppTheme.hankoTouch),
+            child: Row(children: [
+              const Icon(Icons.forum_outlined, size: 20, color: AppTheme.hankoWashi),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text('Join the discussion',
+                    style: AppTheme.hankoSans(fontSize: 15, weight: FontWeight.w500)),
+              ),
+              const Icon(Icons.chevron_right_sharp, size: 20, color: AppTheme.hankoStone),
+            ]),
           ),
         ),
       ],
@@ -2644,25 +2642,21 @@ class _EpisodesTab extends StatelessWidget {
       itemBuilder: (_, i) {
         final ep = i + 1;
         final isWatched = ep <= watched;
-        return Container(
-          margin: const EdgeInsets.only(bottom: 8),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          decoration: BoxDecoration(
-            color: AppTheme.surfaceLight,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: isWatched ? AppTheme.completed.withValues(alpha: 0.3) : AppTheme.border),
-          ),
+        // Hanko: a plain row per episode, no card and no green; watched ones
+        // carry a check and the word, so it never rests on colour.
+        return SizedBox(
+          height: AppTheme.hankoTouch,
           child: Row(children: [
-            Container(
-              width: 36, height: 36,
-              decoration: BoxDecoration(color: isWatched ? AppTheme.completed.withValues(alpha: 0.15) : AppTheme.surfaceMid, borderRadius: BorderRadius.circular(8)),
-              child: Center(child: isWatched ? const Icon(Icons.check_rounded, color: AppTheme.completed, size: 16) : Text('$ep', style: AppTheme.mono(fontSize: 12, weight: FontWeight.w600))),
+            SizedBox(
+              width: 32,
+              child: isWatched
+                  ? const Icon(Icons.check_sharp, color: AppTheme.hankoWashi, size: 18)
+                  : Text('$ep', style: AppTheme.hankoSans(fontSize: AppTheme.hankoMetaSize, color: AppTheme.hankoStone, tabular: true)),
             ),
-            const SizedBox(width: 14),
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Episode $ep', style: AppTheme.sans(fontSize: 14, weight: FontWeight.w600)),
-            ])),
-            if (isWatched) Text('WATCHED', style: AppTheme.mono(fontSize: 9, color: AppTheme.completed, letterSpacing: 0.5)),
+            const SizedBox(width: 8),
+            Expanded(child: Text('Episode $ep', style: AppTheme.hankoSans(weight: FontWeight.w500))),
+            if (isWatched)
+              Text('Watched', style: AppTheme.hankoSans(fontSize: AppTheme.hankoLabelSize, color: AppTheme.hankoStone)),
           ]),
         );
       },
@@ -2678,7 +2672,7 @@ class _CastTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (isLoading) return const Center(child: CircularProgressIndicator(color: AppTheme.primary, strokeWidth: 1.5));
+    if (isLoading) return const Center(child: CircularProgressIndicator(color: AppTheme.hankoWashi, strokeWidth: 1.5));
     final characters = staffData?['characters']?['edges'] as List? ?? [];
     final staff      = staffData?['staff']?['edges'] as List? ?? [];
 
@@ -2694,9 +2688,11 @@ class _CastTab extends StatelessWidget {
             Text('Cast information unavailable',
                 style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 6),
+            // Names no cause the app can't verify (the SAVED DATA report's
+            // copy rule): it was "check your connection".
             Text(
               staffData == null
-                  ? 'Couldn\'t load cast — check your connection.'
+                  ? 'Couldn\'t load the cast just now.'
                   : 'No cast data for this title.',
               style: AppTheme.sans(fontSize: 12, color: AppTheme.textMuted),
               textAlign: TextAlign.center,
@@ -2712,15 +2708,13 @@ class _CastTab extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 40),
       children: [
         if (characters.isNotEmpty) ...[
-          Text('CHARACTERS & VOICE ACTORS', style: AppTheme.mono(fontSize: 10, color: AppTheme.textMuted, letterSpacing: 1)),
-          const SizedBox(height: 12),
-          for (final e in characters.take(8)) ...[_CastRow(edge: e as Map<String, dynamic>), const SizedBox(height: 10)],
+          const _HankoSectionHead(title: 'Cast and voices', aside: null),
+          for (final e in characters.take(8)) ...[_CastRow(edge: e as Map<String, dynamic>), const SizedBox(height: 4)],
           const SizedBox(height: 24),
         ],
         if (staff.isNotEmpty) ...[
-          Text('STAFF', style: AppTheme.mono(fontSize: 10, color: AppTheme.textMuted, letterSpacing: 1)),
-          const SizedBox(height: 12),
-          for (final e in staff.take(8)) ...[_StaffRow(edge: e as Map<String, dynamic>), const SizedBox(height: 10)],
+          const _HankoSectionHead(title: 'Staff', aside: null),
+          for (final e in staff.take(8)) ...[_StaffRow(edge: e as Map<String, dynamic>), const SizedBox(height: 4)],
         ],
       ],
     );
@@ -2738,15 +2732,16 @@ class _CastRow extends StatelessWidget {
     final va   = vas.isNotEmpty ? vas[0] as Map : null;
     final vaId   = va?['id'] as int?;
     final vaName = va?['name']?['full'] as String? ?? '';
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(color: AppTheme.surfaceLight, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppTheme.border)),
+    // Hanko: a plain row, no card; the voice actor's name is a link in
+    // washi with the edge underline, not coral.
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(children: [
         _Avatar(url: char?['image']?['medium'] as String?, name: char?['name']?['full'] as String? ?? '?'),
-        const SizedBox(width: 10),
+        const SizedBox(width: 12),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(char?['name']?['full'] as String? ?? '—', style: AppTheme.sans(fontSize: 13, weight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis),
-          Text('Character', style: AppTheme.mono(fontSize: 10, color: AppTheme.textMuted)),
+          Text(char?['name']?['full'] as String? ?? '—', style: AppTheme.hankoSans(weight: FontWeight.w500), maxLines: 1, overflow: TextOverflow.ellipsis),
+          Text('Character', style: AppTheme.hankoSans(fontSize: AppTheme.hankoLabelSize, color: AppTheme.hankoStone)),
         ])),
         if (va != null) ...[
           const SizedBox(width: 8),
@@ -2755,17 +2750,22 @@ class _CastRow extends StatelessWidget {
             child: GestureDetector(
               onTap: vaId != null ? () => Navigator.push(context, MaterialPageRoute(
                   builder: (_) => StaffDetailScreen(staffId: vaId, staffName: vaName))) : null,
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                Column(crossAxisAlignment: CrossAxisAlignment.end, mainAxisSize: MainAxisSize.min, children: [
-                  Text(vaName.isNotEmpty ? vaName : '—',
-                      style: AppTheme.sans(fontSize: 12, weight: FontWeight.w600,
-                          color: vaId != null ? AppTheme.primary : AppTheme.textPrimary),
-                      maxLines: 1, overflow: TextOverflow.ellipsis),
-                  Text('VA', style: AppTheme.mono(fontSize: 9, color: AppTheme.textMuted)),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: AppTheme.hankoTouch),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Column(crossAxisAlignment: CrossAxisAlignment.end, mainAxisSize: MainAxisSize.min, children: [
+                    Text(vaName.isNotEmpty ? vaName : '—',
+                        style: AppTheme.hankoSans(fontSize: AppTheme.hankoMetaSize, weight: FontWeight.w500).copyWith(
+                          decoration: vaId != null ? TextDecoration.underline : null,
+                          decorationColor: AppTheme.hankoEdge,
+                        ),
+                        maxLines: 1, overflow: TextOverflow.ellipsis),
+                    Text('Voice', style: AppTheme.hankoSans(fontSize: AppTheme.hankoLabelSize, color: AppTheme.hankoStone)),
+                  ]),
+                  const SizedBox(width: 8),
+                  _Avatar(url: va['image']?['medium'] as String?, name: vaName),
                 ]),
-                const SizedBox(width: 8),
-                _Avatar(url: va['image']?['medium'] as String?, name: vaName),
-              ]),
+              ),
             ),
           ),
         ],
@@ -2786,17 +2786,18 @@ class _StaffRow extends StatelessWidget {
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
         onTap: () { final id = node?['id'] as int?; final name = node?['name']?['full'] as String? ?? ''; if (id != null) Navigator.push(context, MaterialPageRoute(builder: (_) => StaffDetailScreen(staffId: id, staffName: name))); },
+        // Hanko: a plain row, no card.
         child: Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(color: AppTheme.surfaceLight, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppTheme.border)),
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          color: Colors.transparent,
           child: Row(children: [
             _Avatar(url: node?['image']?['medium'] as String?, name: node?['name']?['full'] as String? ?? '?'),
             const SizedBox(width: 12),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(node?['name']?['full'] as String? ?? '—', style: AppTheme.sans(fontSize: 14, weight: FontWeight.w600)),
-              Text(role, style: AppTheme.mono(fontSize: 10, color: AppTheme.textMuted)),
+              Text(node?['name']?['full'] as String? ?? '—', style: AppTheme.hankoSans(weight: FontWeight.w500)),
+              Text(role, style: AppTheme.hankoSans(fontSize: AppTheme.hankoLabelSize, color: AppTheme.hankoStone)),
             ])),
-            const Icon(Icons.chevron_right_rounded, color: AppTheme.textMuted, size: 16),
+            const Icon(Icons.chevron_right_sharp, color: AppTheme.hankoStone, size: 20),
           ]),
         ),
       ),
@@ -2828,19 +2829,48 @@ class _Avatar extends StatelessWidget {
 class _RelatedTab extends StatelessWidget {
   final List<Anime> anime;
   final bool isLoading;
-  const _RelatedTab({required this.anime, required this.isLoading});
+
+  /// The staff request failed, so there's nothing to say about whether the
+  /// show has recommendations.
+  final bool failed;
+  const _RelatedTab({required this.anime, required this.isLoading, required this.failed});
 
   @override
   Widget build(BuildContext context) {
-    if (isLoading) return const Center(child: CircularProgressIndicator(color: AppTheme.primary, strokeWidth: 1.5));
-    if (anime.isEmpty) return Center(child: Text('No related anime found', style: AppTheme.sans(color: AppTheme.textMuted)));
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      padding: const EdgeInsets.all(20),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, childAspectRatio: 0.65, crossAxisSpacing: 12, mainAxisSpacing: 12),
-      itemCount: anime.length,
-      itemBuilder: (_, i) => _RelatedCard(anime: anime[i]),
+    if (isLoading) return const Center(child: CircularProgressIndicator(color: AppTheme.hankoWashi, strokeWidth: 1.5));
+    if (anime.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.all(40),
+        child: Center(
+          child: Text(
+            failed ? 'Recommendations didn\'t load just now.' : 'No recommendations yet.',
+            textAlign: TextAlign.center,
+            style: AppTheme.hankoSans(color: AppTheme.hankoStone),
+          ),
+        ),
+      );
+    }
+    // Hanko: AniList users' recommendations (Stage 1c), as 2 px posters up
+    // to 120 px wide, three across on a phone; the note says whose they are.
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Recommended by AniList users',
+              style: AppTheme.hankoSans(fontSize: AppTheme.hankoLabelSize, color: AppTheme.hankoStone)),
+          const SizedBox(height: 12),
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            padding: EdgeInsets.zero,
+            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                maxCrossAxisExtent: 120, childAspectRatio: 0.52, crossAxisSpacing: 12, mainAxisSpacing: 16),
+            itemCount: anime.length,
+            itemBuilder: (_, i) => _RelatedCard(anime: anime[i]),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -2872,16 +2902,18 @@ class _RelatedCardState extends State<_RelatedCard> {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
+              // Hanko: a 2 px poster and the title on up to two lines; the
+              // 9 px genre caps go.
               Expanded(child: ClipRRect(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
                 child: widget.anime.imageUrl != null
-                    ? CachedNetworkImage(imageUrl: widget.anime.imageUrl!, fit: BoxFit.cover, width: double.infinity, errorWidget: (_, _, _) => Container(color: AppTheme.surfaceLight))
-                    : Container(color: AppTheme.surfaceLight),
+                    ? CachedNetworkImage(imageUrl: widget.anime.imageUrl!, fit: BoxFit.cover, width: double.infinity, errorWidget: (_, _, _) => Container(color: AppTheme.hankoSumi3))
+                    : Container(color: AppTheme.hankoSumi3),
               )),
               const SizedBox(height: 6),
-              Text(widget.anime.titleEnglish ?? widget.anime.title, style: AppTheme.sans(fontSize: 12, weight: FontWeight.w500), maxLines: 1, overflow: TextOverflow.ellipsis),
-              if (widget.anime.genres.isNotEmpty)
-                Text(widget.anime.genres.first.toUpperCase(), style: AppTheme.mono(fontSize: 9, color: AppTheme.textMuted, letterSpacing: 0.5)),
+              Text(widget.anime.titleEnglish ?? widget.anime.title,
+                  style: AppTheme.hankoSans(fontSize: AppTheme.hankoLabelSize, weight: FontWeight.w500, height: 1.25),
+                  maxLines: 2, overflow: TextOverflow.ellipsis),
             ],
           ),
         ),
@@ -2991,7 +3023,7 @@ class _EpisodeInputDialogState extends State<_EpisodeInputDialog> {
               contentPadding:
                   const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
                 borderSide: BorderSide.none,
               ),
               hintText: 'Episode number',
@@ -3016,9 +3048,10 @@ class _EpisodeInputDialogState extends State<_EpisodeInputDialog> {
                 (total != null && total > 0) ? v.clamp(0, total) : v;
             widget.onSave(clamped);
           },
+          // Washi, not coral: in Hanko coral is only your seal.
           child: Text('Save',
               style: AppTheme.sans(
-                  color: AppTheme.primary, weight: FontWeight.w600)),
+                  color: AppTheme.hankoWashi, weight: FontWeight.w600)),
         ),
       ],
     );
@@ -3113,16 +3146,25 @@ class _SynopsisTextState extends State<_SynopsisText> {
           crossFadeState: _expanded ? CrossFadeState.showSecond : CrossFadeState.showFirst,
           duration: const Duration(milliseconds: 300),
         ),
-        const SizedBox(height: 10),
-        MouseRegion(
-          cursor: SystemMouseCursors.click,
-          child: GestureDetector(
-            onTap: () => setState(() => _expanded = !_expanded),
-            child: Row(children: [
-              Text(_expanded ? 'Show less' : 'Read more', style: AppTheme.sans(fontSize: 13, weight: FontWeight.w600, color: AppTheme.primary)),
-              const SizedBox(width: 4),
-              Icon(_expanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded, color: AppTheme.primary, size: 16),
-            ]),
+        // Hanko's link: washi with an edge-coloured underline, in a 48 dp
+        // target; no coral.
+        InkWell(
+          onTap: () => setState(() => _expanded = !_expanded),
+          splashFactory: NoSplash.splashFactory,
+          highlightColor: AppTheme.hankoPressWash,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: AppTheme.hankoTouch),
+            child: Align(
+              widthFactor: 1,
+              alignment: Alignment.centerLeft,
+              child: Text(
+                _expanded ? 'Show less' : 'Read more',
+                style: AppTheme.hankoSans(fontSize: AppTheme.hankoMetaSize, weight: FontWeight.w500).copyWith(
+                  decoration: TextDecoration.underline,
+                  decorationColor: AppTheme.hankoEdge,
+                ),
+              ),
+            ),
           ),
         ),
       ],
@@ -3150,18 +3192,25 @@ class _SimpleTabBar extends StatelessWidget {
               return Expanded(
                 child: MouseRegion(
                   cursor: SystemMouseCursors.click,
-                  child: GestureDetector(
-                    onTap: () => onTap(i),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 11),
-                      color: AppTheme.background,
-                      child: Text(
-                        _tabs[i],
-                        textAlign: TextAlign.center,
-                        style: AppTheme.sans(
-                          fontSize: 13,
-                          weight: isSelected ? FontWeight.w600 : FontWeight.w400,
-                          color: isSelected ? AppTheme.primary : AppTheme.textMuted,
+                  child: Semantics(
+                    button: true,
+                    selected: isSelected,
+                    child: GestureDetector(
+                      onTap: () => onTap(i),
+                      child: Container(
+                        // 14 + 14 around the label: a 48 dp target (H3).
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        color: AppTheme.background,
+                        child: Text(
+                          _tabs[i],
+                          textAlign: TextAlign.center,
+                          style: AppTheme.sans(
+                            fontSize: 13,
+                            weight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                            // Hanko: washi for the tab you're on, stone for
+                            // the rest; coral is only your seal now.
+                            color: isSelected ? AppTheme.hankoWashi : AppTheme.hankoStone,
+                          ),
                         ),
                       ),
                     ),
@@ -3177,7 +3226,7 @@ class _SimpleTabBar extends StatelessWidget {
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
                   height: 2,
-                  color: selected == i ? AppTheme.primary : Colors.transparent,
+                  color: selected == i ? AppTheme.hankoWashi : Colors.transparent,
                 ),
               );
             }),
@@ -3239,7 +3288,11 @@ class _TabContent extends StatelessWidget {
       case 2:
         return _CastTab(staffData: staffData, isLoading: isLoadingStaff);
       case 3:
-        return _RelatedTab(anime: relatedAnime, isLoading: isLoadingRelated);
+        return _RelatedTab(
+          anime: relatedAnime,
+          isLoading: isLoadingRelated,
+          failed: staffData == null && !isLoadingStaff,
+        );
       default:
         return const SizedBox.shrink();
     }
@@ -3448,22 +3501,14 @@ class _NextEpisodeCountdownState extends State<_NextEpisodeCountdown> {
     final s = timeUntil.inSeconds % 60;
     final isImminent = timeUntil.inHours < 1;
 
+    // Hanko: a sumi 2 field with 2 px corners. No coral border and no
+    // blurred glow (blur is the app's costliest raster effect, PERF.md); an
+    // imminent episode shows in its date line, in washi.
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 8, 8, 16),
       decoration: BoxDecoration(
-        color: AppTheme.surface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: isImminent
-              ? AppTheme.primary.withValues(alpha: 0.5)
-              : AppTheme.border,
-        ),
-        boxShadow: isImminent
-            ? [BoxShadow(
-                color: AppTheme.primary.withValues(alpha: 0.08),
-                blurRadius: 12,
-              )]
-            : null,
+        color: AppTheme.hankoSumi2,
+        borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -3471,23 +3516,20 @@ class _NextEpisodeCountdownState extends State<_NextEpisodeCountdown> {
           // Header row
           Row(
             children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                decoration: BoxDecoration(
-                  color: AppTheme.primary.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  'UP NEXT',
-                  style: AppTheme.mono(
-                      fontSize: 9,
-                      color: AppTheme.primary,
-                      letterSpacing: 1.5),
-                ),
+              Text(
+                'Next episode',
+                style: AppTheme.hankoSans(fontSize: AppTheme.hankoLabelSize, color: AppTheme.hankoStone),
               ),
               const Spacer(),
-              // Notification bell
-              GestureDetector(
+              // Notification bell: a square that is filled when on, 48 dp
+              // to touch, its state in its name for screen readers.
+              Semantics(
+                button: true,
+                toggled: _reminderOn,
+                label: 'Remind me when episode ${widget.episode} airs',
+                excludeSemantics: true,
+                child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
                 onTap: () {
                   final newVal = !_reminderOn;
                   setState(() => _reminderOn = newVal);
@@ -3500,38 +3542,37 @@ class _NextEpisodeCountdownState extends State<_NextEpisodeCountdown> {
                       backgroundColor: AppTheme.surfaceLight,
                       behavior: SnackBarBehavior.floating,
                       margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppTheme.hankoRadius)),
                       duration: const Duration(seconds: 2),
                     ),
                   );
                 },
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 250),
-                  curve: Curves.easeOut,
-                  width: 34, height: 34,
-                  decoration: BoxDecoration(
-                    color: _reminderOn ? AppTheme.primary : AppTheme.surfaceMid,
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: _reminderOn ? AppTheme.primary : AppTheme.border,
+                child: SizedBox.square(
+                  dimension: AppTheme.hankoTouch,
+                  child: Center(
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 250),
+                      curve: Curves.easeOut,
+                      width: 36, height: 36,
+                      decoration: BoxDecoration(
+                        color: _reminderOn ? AppTheme.hankoWashi : Colors.transparent,
+                        borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+                        border: _reminderOn ? null : Border.all(color: AppTheme.hankoEdge),
+                      ),
+                      child: Icon(
+                        _reminderOn ? Icons.notifications_sharp : Icons.notifications_none_outlined,
+                        color: _reminderOn ? AppTheme.hankoSumi : AppTheme.hankoWashi,
+                        size: 18,
+                      ),
                     ),
-                    boxShadow: _reminderOn ? [BoxShadow(
-                      color: AppTheme.primary.withValues(alpha: 0.4),
-                      blurRadius: 8,
-                      spreadRadius: 1,
-                    )] : [],
-                  ),
-                  child: Icon(
-                    _reminderOn ? Icons.notifications_rounded : Icons.notifications_none_rounded,
-                    color: _reminderOn ? Colors.white : AppTheme.textMuted,
-                    size: 16,
                   ),
                 ),
+              ),
               ),
             ],
           ),
 
-          const SizedBox(height: 10),
+          const SizedBox(height: 2),
 
           // Episode + date
           Row(
@@ -3539,7 +3580,7 @@ class _NextEpisodeCountdownState extends State<_NextEpisodeCountdown> {
             children: [
               Text(
                 'Episode ${widget.episode}',
-                style: AppTheme.serif(fontSize: 22, weight: FontWeight.w700),
+                style: AppTheme.hankoSerif(fontSize: 22),
               ),
               const Spacer(),
               // Countdown clock
@@ -3568,16 +3609,16 @@ class _NextEpisodeCountdownState extends State<_NextEpisodeCountdown> {
           Row(
             children: [
               Icon(
-                Icons.schedule_rounded,
-                size: 12,
-                color: AppTheme.textMuted,
+                Icons.schedule_sharp,
+                size: 14,
+                color: isImminent ? AppTheme.hankoWashi : AppTheme.hankoStone,
               ),
-              const SizedBox(width: 5),
+              const SizedBox(width: 6),
               Text(
                 _friendlyDate(),
-                style: AppTheme.mono(
-                    fontSize: 11,
-                    color: isImminent ? AppTheme.primary : AppTheme.textMuted),
+                style: AppTheme.hankoSans(
+                    fontSize: AppTheme.hankoLabelSize,
+                    color: isImminent ? AppTheme.hankoWashi : AppTheme.hankoStone),
               ),
             ],
           ),
@@ -3598,16 +3639,17 @@ class _CountUnit extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
+        // Hanko: washi tabular figures; units at 11, not 8.
         Text(
           value,
-          style: AppTheme.mono(
+          style: AppTheme.hankoSans(
               fontSize: 16,
-              color: AppTheme.primary,
-              letterSpacing: 0),
+              weight: FontWeight.w500,
+              tabular: true),
         ),
         Text(
           label,
-          style: AppTheme.mono(fontSize: 8, color: AppTheme.textMuted),
+          style: AppTheme.hankoSans(fontSize: AppTheme.hankoDataSmallSize, color: AppTheme.hankoStone),
         ),
       ],
     );
@@ -3748,7 +3790,7 @@ class _ImageGalleryScreenState extends State<_ImageGalleryScreen> {
                     height: 6,
                     decoration: BoxDecoration(
                       color: active
-                          ? const Color(0xFFF97316)
+                          ? AppTheme.hankoWashi
                           : Colors.white.withOpacity(0.3),
                       borderRadius: BorderRadius.circular(3),
                     ),
@@ -3850,7 +3892,7 @@ class _ZoomableImageState extends State<_ZoomableImage> {
             fit: BoxFit.contain,
             placeholder: (_, __) => const Center(
               child: CircularProgressIndicator(
-                color: Color(0xFFF97316),
+                color: AppTheme.hankoWashi,
                 strokeWidth: 2,
               ),
             ),
