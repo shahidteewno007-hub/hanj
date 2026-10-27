@@ -1113,7 +1113,9 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
           currentEpisode: _currentEpisode,
           nextEpisode: _nextEpisodeNum,
           nextAiringAt: _nextAiringAt,
-          averageScore: anime.averageScore,
+          // A MyAnimeList import AniList hasn't replaced still carries MAL's
+          // mean (the import stores mean × 10), so it gets no "AniList" crowd.
+          averageScore: _isMalImport && identical(anime, widget.anime) ? null : anime.averageScore,
           scoreDistribution: _scoreDistribution,
           busy: _isLoading,
           onRate: _rate,
@@ -2475,10 +2477,9 @@ class _OverviewTab extends StatelessWidget {
 
         // Characters are shown in the Cast tab (AniList medium images are too low-res for a gallery strip)
 
-        // Trailer
+        // Trailer, under a Mincho head like Overview's other sections.
         if (anime.trailerUrl != null) ...[
-          Text('TRAILER', style: AppTheme.mono(fontSize: 10, color: AppTheme.textMuted, letterSpacing: 1)),
-          const SizedBox(height: 12),
+          const _HankoSectionHead(title: 'Trailer', aside: null),
           TrailerButton(trailerUrl: anime.trailerUrl!),
           const SizedBox(height: 28),
         ],
@@ -2922,9 +2923,14 @@ class _RelatedCardState extends State<_RelatedCard> {
                     : Container(color: AppTheme.hankoSumi3),
               )),
               const SizedBox(height: 6),
-              Text(widget.anime.titleEnglish ?? widget.anime.title,
-                  style: AppTheme.hankoSans(fontSize: AppTheme.hankoLabelSize, weight: FontWeight.w500, height: 1.25),
-                  maxLines: 2, overflow: TextOverflow.ellipsis),
+              // Two lines kept for every title, so the posters line up
+              // whatever their titles' lengths.
+              SizedBox(
+                height: 2 * MediaQuery.textScalerOf(context).scale(AppTheme.hankoLabelSize) * 1.25,
+                child: Text(widget.anime.titleEnglish ?? widget.anime.title,
+                    style: AppTheme.hankoSans(fontSize: AppTheme.hankoLabelSize, weight: FontWeight.w500, height: 1.25),
+                    maxLines: 2, overflow: TextOverflow.ellipsis),
+              ),
             ],
           ),
         ),
