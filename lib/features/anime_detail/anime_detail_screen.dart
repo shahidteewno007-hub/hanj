@@ -112,10 +112,18 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
   // Enrich the (possibly stub) anime with full details. When opened from
   // Continue, the passed object only has id/title/image/episodes/genres, so
   // score, status, season, romaji, synopsis etc. would be blank without this.
-  /// A list row's stub, rather than an entry from an AniList query: no score
-  /// or no status. An unscored show from Search counts too, and is looked up.
+  /// A list row's stub, rather than an entry from an AniList query: no score,
+  /// or no AniList status. My List's random pick passes your list status
+  /// (WATCHING …) in that field, which AniList's statuses never share
+  /// (AniList says FINISHED, the list COMPLETED), so it counts as a stub too.
+  /// An unscored show from Search counts as well, and is looked up.
   static bool _isStub(Anime anime) =>
-      anime.averageScore == null || anime.status == null;
+      anime.averageScore == null || !_mediaStatuses.contains(anime.status);
+
+  /// AniList's MediaStatus values.
+  static const _mediaStatuses = {
+    'FINISHED', 'RELEASING', 'NOT_YET_RELEASED', 'CANCELLED', 'HIATUS',
+  };
 
   Future<void> _loadFullAnime() async {
     // Skip if we already have rich data (opened from search/trending).
