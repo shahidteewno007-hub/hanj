@@ -16,108 +16,158 @@ class TonightWatchCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Hanko (stage H4, item h): a Home section like the others, a Shippori
+    // heading over a sentence and an outlined tile, instead of a coral
+    // gradient card with a coral border, a coral icon disc and a coral pill.
+    // In Hanko coral is your seal, so nothing here is coral. The time of day
+    // moves from a tracked eyebrow ("LATE NIGHT") into the sentence, and its
+    // icon onto the tile.
     final hour = DateTime.now().hour;
-    final greeting = hour < 12
-        ? 'MORNING'
+    final when = hour < 12
+        ? 'this morning'
         : hour < 17
-            ? 'AFTERNOON'
+            ? 'this afternoon'
             : hour < 21
-                ? 'EVENING'
-                : 'LATE NIGHT';
+                ? 'this evening'
+                : 'tonight';
+    final icon = hour >= 20 || hour < 6
+        ? Icons.nightlight_sharp
+        : hour < 12
+            ? Icons.wb_sunny_sharp
+            : Icons.wb_twilight_sharp;
+    final sentence = 'One show for $when, picked for your mood.';
 
-    return GestureDetector(
-      onTap: () => showModalBottomSheet(
-        context: context,
-        isScrollControlled: true,
-        backgroundColor: Colors.transparent,
-        builder: (_) => const TonightWatchSheet(),
-      ),
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 20),
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              const Color(0xFF1A0F0A),
-              const Color(0xFF2A1510),
-              AppTheme.primary.withValues(alpha: 0.15),
-            ],
+    void open() => showModalBottomSheet(
+          context: context,
+          isScrollControlled: true,
+          backgroundColor: Colors.transparent,
+          builder: (_) => const TonightWatchSheet(),
+        );
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: AppTheme.hankoGutter),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Semantics(
+            header: true,
+            child: Text("Tonight's watch",
+                style: AppTheme.hankoSerif(height: 1.3)),
           ),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: AppTheme.primary.withValues(alpha: 0.3),
-          ),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: AppTheme.primary.withValues(alpha: 0.12),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                hour >= 20 || hour < 6
-                    ? Icons.nightlight_round
-                    : hour < 12
-                        ? Icons.wb_sunny_rounded
-                        : Icons.wb_twilight_rounded,
-                color: AppTheme.primary,
-                size: 22,
-              ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
+          const SizedBox(height: 6),
+          // The sentence and the tile are one button, as the old card was.
+          // excludeSemantics drops the InkWell's own tap action with the
+          // rest of the subtree, so the node carries onTap itself.
+          Semantics(
+            button: true,
+            label: 'Choose a mood. $sentence',
+            onTap: open,
+            excludeSemantics: true,
+            child: InkWell(
+              onTap: open,
+              splashFactory: NoSplash.splashFactory,
+              highlightColor: AppTheme.hankoPressWash,
+              hoverColor: AppTheme.hankoPressWash,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    greeting,
-                    style: AppTheme.mono(
-                      fontSize: 10,
-                      color: AppTheme.textMuted,
-                      letterSpacing: 1.2,
-                    ),
+                    sentence,
+                    style: AppTheme.hankoSans(
+                        fontSize: AppTheme.hankoMetaSize,
+                        color: AppTheme.hankoStone,
+                        height: 1.4),
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Find your next anime',
-                    style: AppTheme.serif(
-                      fontSize: 17,
-                      weight: FontWeight.w600,
-                      color: AppTheme.textPrimary,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    'Curated for tonight',
-                    style: AppTheme.sans(
-                      fontSize: 12,
-                      color: AppTheme.textSecondary,
-                    ),
-                  ),
+                  const SizedBox(height: 12),
+                  _HankoTile(label: 'Choose a mood', icon: icon),
                 ],
               ),
             ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              decoration: BoxDecoration(
-                color: AppTheme.primary,
-                borderRadius: BorderRadius.circular(20),
-              ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Hanko's tile (hanko.html .tile): 48 dp tall, square 2 px corners, Jost 600
+/// 15. Outlined, sumi 3 with a 1 px edge outline (4.02:1), for a secondary
+/// action; [main] fills it washi with a sumi label, for a screen's one main
+/// action. Without [onTap] it is drawn only, as part of a larger button.
+class _HankoTile extends StatelessWidget {
+  const _HankoTile({
+    required this.label,
+    this.icon,
+    this.onTap,
+    this.main = false,
+    this.expand = false,
+  });
+
+  final String label;
+  final IconData? icon;
+  final VoidCallback? onTap;
+  final bool main;
+  final bool expand;
+
+  // The press on a washi tile: sumi at 10%, as washi at 8% is on sumi.
+  static const _sumiWash = Color(0x1A121110);
+
+  @override
+  Widget build(BuildContext context) {
+    final ink = main ? AppTheme.hankoSumi : AppTheme.hankoWashi;
+    final radius = BorderRadius.circular(AppTheme.hankoRadius);
+    final content = ConstrainedBox(
+      constraints: const BoxConstraints(
+          minHeight: AppTheme.hankoTouch, minWidth: AppTheme.hankoTouch),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        child: Row(
+          mainAxisSize: expand ? MainAxisSize.max : MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            if (icon != null) ...[
+              Icon(icon, size: 18, color: ink),
+              const SizedBox(width: 8),
+            ],
+            Flexible(
               child: Text(
-                'Discover',
-                style: AppTheme.sans(
-                  fontSize: 12,
-                  weight: FontWeight.w600,
-                  color: Colors.white,
-                ),
+                label,
+                textAlign: TextAlign.center,
+                style: AppTheme.hankoSans(
+                    fontSize: 15,
+                    weight: FontWeight.w600,
+                    color: ink,
+                    height: 1.2),
               ),
             ),
           ],
+        ),
+      ),
+    );
+    final decoration = ShapeDecoration(
+      color: main ? AppTheme.hankoWashi : AppTheme.hankoSumi3,
+      shape: RoundedRectangleBorder(
+        borderRadius: radius,
+        side: main
+            ? BorderSide.none
+            : const BorderSide(color: AppTheme.hankoEdge),
+      ),
+    );
+    if (onTap == null) {
+      return DecoratedBox(decoration: decoration, child: content);
+    }
+    return Semantics(
+      button: true,
+      child: Material(
+        color: decoration.color,
+        shape: decoration.shape,
+        child: InkWell(
+          onTap: onTap,
+          splashFactory: NoSplash.splashFactory,
+          highlightColor: main ? _sumiWash : AppTheme.hankoPressWash,
+          hoverColor: main ? _sumiWash : AppTheme.hankoPressWash,
+          borderRadius: radius,
+          child: content,
         ),
       ),
     );
@@ -152,23 +202,26 @@ class _TonightWatchSheetState extends State<TonightWatchSheet>
   late Animation<double>   _fadeAnim;
 
   // ── Mood options — icons only, no emojis ──────────────────────
+  // Hanko draws the sharp icons and none of the mood colours (stage H4,
+  // item h): six accent colours would be decoration. The colours and the
+  // watermark icons stay here, undrawn, as a record of the old cards.
   static const _moods = [
-    _Option(Icons.bolt_rounded,           Icons.flash_on_rounded,
+    _Option(Icons.bolt_sharp,             Icons.flash_on_rounded,
         'Hype',         'TRENDING_DESC',   'Action',
         Color(0xFF8B1A0A), Color(0xFF1A0603)),
-    _Option(Icons.water_drop_outlined,    Icons.opacity_rounded,
+    _Option(Icons.water_drop_sharp,       Icons.opacity_rounded,
         'Emotional',    'SCORE_DESC',      'Drama',
         Color(0xFF1A3A6B), Color(0xFF060D1A)),
-    _Option(Icons.nightlight_round,       Icons.bedtime_outlined,
+    _Option(Icons.nightlight_sharp,       Icons.bedtime_outlined,
         'Cozy',         'POPULARITY_DESC', 'Slice of Life',
         Color(0xFF3A2A6B), Color(0xFF0C091A)),
-    _Option(Icons.dark_mode_outlined,     Icons.nights_stay_rounded,
+    _Option(Icons.dark_mode_sharp,        Icons.nights_stay_rounded,
         'Dark',         'SCORE_DESC',      'Thriller',
         Color(0xFF1C1C1C), Color(0xFF080808)),
-    _Option(Icons.theater_comedy_outlined,Icons.sentiment_satisfied_alt_outlined,
+    _Option(Icons.theater_comedy_sharp,   Icons.sentiment_satisfied_alt_outlined,
         'Funny',        'POPULARITY_DESC', 'Comedy',
         Color(0xFF6B4A10), Color(0xFF1A1106)),
-    _Option(Icons.hub_outlined,           Icons.all_inclusive_rounded,
+    _Option(Icons.hub_sharp,              Icons.all_inclusive_rounded,
         'Mind-bending', 'SCORE_DESC',      'Mystery',
         Color(0xFF1A4A3A), Color(0xFF051A12)),
   ];
@@ -247,62 +300,62 @@ class _TonightWatchSheetState extends State<TonightWatchSheet>
 
   @override
   Widget build(BuildContext context) {
+    // Hanko (stage H4, item h; hanko.html's sheet): sumi 2 with 6 px top
+    // corners and an edge grab, a Shippori title, and Hanko's tiles. The
+    // steps, the data and where each tap goes are as they were.
     return Container(
       height: MediaQuery.of(context).size.height * 0.82,
       decoration: const BoxDecoration(
-        color: Color(0xFF0F0B08),
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        color: AppTheme.hankoSumi2,
+        borderRadius: BorderRadius.vertical(
+            top: Radius.circular(AppTheme.hankoSheetRadius)),
       ),
       child: Column(
         children: [
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
           // Handle
           Container(
-            width: 40, height: 4,
+            width: 32, height: 4,
             decoration: BoxDecoration(
-              color: AppTheme.border,
+              color: AppTheme.hankoEdge.withValues(alpha: 0.7),
               borderRadius: BorderRadius.circular(2),
             ),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 18),
 
           // Header
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24),
+            padding:
+                const EdgeInsets.symmetric(horizontal: AppTheme.hankoGutter),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text("Tonight's Watch",
-                        style: AppTheme.serif(
-                            fontSize: 22, weight: FontWeight.w700)),
-                    const SizedBox(height: 2),
-                    Text(
-                      _step == 0 ? 'What pulls you tonight?' : 'Curated for your mood',
-                      style: AppTheme.sans(
-                          fontSize: 12, color: AppTheme.textMuted),
-                    ),
-                  ],
-                ),
-                const Spacer(),
-                if (_step == 1)
-                  GestureDetector(
-                    onTap: _reset,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: AppTheme.surfaceLight,
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: AppTheme.border),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Semantics(
+                        header: true,
+                        child: Text("Tonight's watch",
+                            style: AppTheme.hankoSerif(
+                                fontSize: AppTheme.hankoLedeSize,
+                                height: 1.2)),
                       ),
-                      child: Text('Reset',
-                          style: AppTheme.sans(
-                              color: AppTheme.textMuted, fontSize: 12)),
-                    ),
+                      const SizedBox(height: 4),
+                      Text(
+                        _step == 0 ? 'What pulls you tonight?' : 'Curated for your mood',
+                        style: AppTheme.hankoSans(
+                            fontSize: AppTheme.hankoMetaSize,
+                            color: AppTheme.hankoStone,
+                            height: 1.3),
+                      ),
+                    ],
                   ),
+                ),
+                if (_step == 1) ...[
+                  const SizedBox(width: 12),
+                  _HankoTile(label: 'Reset', onTap: _reset),
+                ],
               ],
             ),
           ),
@@ -321,13 +374,19 @@ class _TonightWatchSheetState extends State<TonightWatchSheet>
 
   // ── Step 0: Mood grid ─────────────────────────────────────────
   Widget _buildMoodStep() {
+    // Six outlined tiles, two across, each tall enough for its label on two
+    // lines at the reader's text size, so large text never overflows a tile.
+    final extent = max(
+        64.0, MediaQuery.textScalerOf(context).scale(15) * 1.25 * 2 + 28);
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: GridView.count(
-        crossAxisCount: 2,
-        crossAxisSpacing: 10,
-        mainAxisSpacing: 10,
-        childAspectRatio: 1.25,
+      padding: const EdgeInsets.symmetric(horizontal: AppTheme.hankoGutter),
+      child: GridView(
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2,
+          crossAxisSpacing: 10,
+          mainAxisSpacing: 10,
+          mainAxisExtent: extent,
+        ),
         children: _moods.map((mood) => _MoodCard(
           icon:       mood.icon,
           watermark:  mood.watermark,
@@ -347,29 +406,38 @@ class _TonightWatchSheetState extends State<TonightWatchSheet>
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const CircularProgressIndicator(
-                color: AppTheme.primary, strokeWidth: 2),
+            const SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(
+                  color: AppTheme.hankoWashi, strokeWidth: 1.5),
+            ),
             const SizedBox(height: 16),
             Text('Finding your perfect watch...',
-                style: AppTheme.sans(color: AppTheme.textSecondary)),
+                style: AppTheme.hankoSans(color: AppTheme.hankoStone)),
           ],
         ),
       );
     }
 
     if (_recommendation == null) {
+      // An empty answer and a failed request land here alike, so the copy
+      // names no cause it can't verify (ANILIST-OFFLINE-0908-REPORT.md).
       return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.search_off_rounded,
-                color: AppTheme.textMuted, size: 48),
-            const SizedBox(height: 16),
-            Text('Couldn\'t find a match',
-                style: AppTheme.serif(fontSize: 18)),
-            const SizedBox(height: 8),
-            TextButton(onPressed: _reset, child: const Text('Try again')),
-          ],
+        child: Padding(
+          padding:
+              const EdgeInsets.symmetric(horizontal: AppTheme.hankoGutter),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text("Couldn't find a pick just now.",
+                  textAlign: TextAlign.center,
+                  style: AppTheme.hankoSerif(
+                      fontSize: AppTheme.hankoFeaturedSize, height: 1.3)),
+              const SizedBox(height: 16),
+              _HankoTile(label: 'Try again', onTap: _reset),
+            ],
+          ),
         ),
       );
     }
@@ -377,135 +445,123 @@ class _TonightWatchSheetState extends State<TonightWatchSheet>
     final anime   = _recommendation!;
     final moodObj = _moods.firstWhere((m) => m.label == _mood,
         orElse: () => _moods.first);
+    final title = anime.titleEnglish ?? anime.title;
+    final facts = anime.genres.take(2).join(' · ');
+    final score = anime.averageScore == null
+        ? null
+        : (anime.averageScore! / 10).toStringAsFixed(1);
+    void openShow() {
+      Navigator.pop(context);
+      Navigator.push(context,
+          MaterialPageRoute(
+              builder: (_) => AnimeDetailScreen(anime: anime)));
+    }
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
+      padding: const EdgeInsets.symmetric(horizontal: AppTheme.hankoGutter),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Mood chip
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-            decoration: BoxDecoration(
-              color: moodObj.colorLight.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                  color: moodObj.colorLight.withValues(alpha: 0.4)),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(moodObj.icon, size: 12, color: Colors.white70),
-                const SizedBox(width: 6),
-                Text(moodObj.label,
-                    style: AppTheme.mono(
-                        fontSize: 10,
-                        color: Colors.white70,
-                        letterSpacing: 0.6)),
-              ],
-            ),
+          // The mood, as a label rather than a chip: it isn't a control.
+          Row(
+            children: [
+              Icon(moodObj.icon, size: 16, color: AppTheme.hankoStone),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(moodObj.label,
+                    style: AppTheme.hankoSans(
+                        fontSize: AppTheme.hankoMetaSize,
+                        weight: FontWeight.w500,
+                        color: AppTheme.hankoStone)),
+              ),
+            ],
           ),
+          // The reason is Hanj speaking, so it is set in the voice's face.
+          if (_reasonText != null) ...[
+            const SizedBox(height: 8),
+            Text(_reasonText!,
+                style: AppTheme.hankoSerif(height: 1.4)),
+          ],
           const SizedBox(height: 20),
 
-          // Anime result card — mood-aware glow
-          GestureDetector(
-            onTap: () {
-              Navigator.pop(context);
-              Navigator.push(context,
-                  MaterialPageRoute(
-                      builder: (_) => AnimeDetailScreen(anime: anime)));
-            },
-            child: Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [moodObj.colorDark, AppTheme.surface],
-                ),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                    color: moodObj.colorLight.withValues(alpha: 0.4),
-                    width: 1.2),
-                boxShadow: [
-                  BoxShadow(
-                    color: moodObj.colorLight.withValues(alpha: 0.12),
-                    blurRadius: 20,
-                    spreadRadius: 0,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
+          // The pick: the cover, the whole title (the sheet scrolls, so it
+          // is never cut), the facts, the crowd's score in indigo, and Open,
+          // the sheet's one main action. Cover and words are one button.
+          Semantics(
+            button: true,
+            label: [
+              'Open $title',
+              if (facts.isNotEmpty) facts,
+              if (score != null) 'AniList $score',
+            ].join(', '),
+            onTap: openShow,
+            excludeSemantics: true,
+            child: InkWell(
+              onTap: openShow,
+              splashFactory: NoSplash.splashFactory,
+              highlightColor: AppTheme.hankoPressWash,
+              hoverColor: AppTheme.hankoPressWash,
               child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   ClipRRect(
-                    borderRadius: const BorderRadius.only(
-                      topLeft: Radius.circular(20),
-                      bottomLeft: Radius.circular(20),
-                    ),
+                    borderRadius:
+                        BorderRadius.circular(AppTheme.hankoRadius),
                     child: anime.imageUrl != null
                         ? Image.network(anime.imageUrl!,
-                            width: 110, height: 160,
+                            width: 104, height: 156,
                             fit: BoxFit.cover,
                             errorBuilder: (_, _, _) => _placeholder())
                         : _placeholder(),
                   ),
+                  const SizedBox(width: 16),
                   Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            anime.titleEnglish ?? anime.title,
-                            style: AppTheme.serif(
-                                fontSize: 15, weight: FontWeight.w600,
-                                height: 1.3),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          style: AppTheme.hankoSerif(
+                              fontSize: AppTheme.hankoFeaturedSize,
+                              height: 1.15),
+                        ),
+                        if (facts.isNotEmpty) ...[
                           const SizedBox(height: 6),
-                          if (anime.genres.isNotEmpty)
-                            Text(
-                              anime.genres.take(2).join(' · '),
-                              style: AppTheme.mono(
-                                  fontSize: 10,
-                                  color: AppTheme.textMuted,
-                                  letterSpacing: 0.5),
-                            ),
-                          if (anime.averageScore != null) ...[
-                            const SizedBox(height: 8),
-                            Row(
+                          Text(
+                            facts,
+                            style: AppTheme.hankoSans(
+                                fontSize: AppTheme.hankoMetaSize,
+                                color: AppTheme.hankoStone,
+                                height: 1.4),
+                          ),
+                        ],
+                        if (score != null) ...[
+                          const SizedBox(height: 4),
+                          Text.rich(
+                            TextSpan(
+                              text: 'AniList ',
+                              style: AppTheme.hankoSans(
+                                  fontSize: AppTheme.hankoMetaSize,
+                                  color: AppTheme.hankoStone,
+                                  height: 1.4),
                               children: [
-                                const Icon(Icons.star_rounded,
-                                    color: Colors.amber, size: 13),
-                                const SizedBox(width: 4),
-                                Text(
-                                  (anime.averageScore! / 10)
-                                      .toStringAsFixed(1),
-                                  style: AppTheme.sans(
-                                      fontSize: 12,
-                                      color: Colors.amber,
-                                      weight: FontWeight.w600),
+                                TextSpan(
+                                  text: score,
+                                  style: AppTheme.hankoSans(
+                                    fontSize: AppTheme.hankoMetaSize,
+                                    weight: FontWeight.w500,
+                                    color: AppTheme.hankoAi,
+                                    height: 1.4,
+                                    tabular: true,
+                                  ),
                                 ),
                               ],
                             ),
-                          ],
-                          const SizedBox(height: 12),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 6),
-                            decoration: BoxDecoration(
-                              color: AppTheme.primary,
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: Text('Watch Now →',
-                                style: AppTheme.sans(
-                                    fontSize: 11,
-                                    weight: FontWeight.w600,
-                                    color: Colors.white)),
                           ),
                         ],
-                      ),
+                        const SizedBox(height: 14),
+                        const _HankoTile(label: 'Open', main: true),
+                      ],
                     ),
                   ),
                 ],
@@ -513,94 +569,48 @@ class _TonightWatchSheetState extends State<TonightWatchSheet>
             ),
           ),
 
-          const SizedBox(height: 16),
+          const SizedBox(height: 24),
 
-          // Reason box
-          if (_reasonText != null)
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: AppTheme.surfaceLight,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppTheme.cardBorder),
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(moodObj.icon, size: 15, color: AppTheme.textMuted),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(_reasonText!,
-                        style: AppTheme.sans(
-                            fontSize: 12,
-                            color: AppTheme.textSecondary,
-                            height: 1.5)),
-                  ),
-                ],
-              ),
-            ),
-
-          const SizedBox(height: 12),
-
-          // Why this pick?
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: AppTheme.surfaceLight,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: AppTheme.cardBorder),
-            ),
-            child: Column(
+          // Why this pick? Plain lines with stone checks: no boxes, and no
+          // green, which would read as a status.
+          Text('Why this pick?',
+              style: AppTheme.hankoSans(
+                  fontSize: AppTheme.hankoMetaSize,
+                  weight: FontWeight.w500)),
+          const SizedBox(height: 8),
+          for (final reason in [
+            'Matches your selected mood',
+            'Highly rated by the community',
+            'Curated from top ${moodObj.genre} titles',
+          ]) ...[
+            Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Why this pick?',
-                    style: AppTheme.sans(
-                        fontSize: 12,
-                        weight: FontWeight.w600,
-                        color: AppTheme.textSecondary)),
-                const SizedBox(height: 10),
-                for (final reason in [
-                  'Matches your selected mood',
-                  'Highly rated by the community',
-                  'Curated from top ${moodObj.genre} titles',
-                ]) ...[
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Icon(Icons.check_rounded,
-                          size: 13, color: AppTheme.completed),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(reason,
-                            style: AppTheme.sans(
-                                fontSize: 12,
-                                color: AppTheme.textMuted,
-                                height: 1.4)),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                ],
+                const Padding(
+                  padding: EdgeInsets.only(top: 2),
+                  child: Icon(Icons.check_sharp,
+                      size: 14, color: AppTheme.hankoStone),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(reason,
+                      style: AppTheme.hankoSans(
+                          fontSize: AppTheme.hankoMetaSize,
+                          color: AppTheme.hankoStone,
+                          height: 1.4)),
+                ),
               ],
             ),
-          ),
+            const SizedBox(height: 6),
+          ],
 
-          const SizedBox(height: 14),
+          const SizedBox(height: 18),
 
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: _reset,
-              icon: const Icon(Icons.refresh_rounded, size: 15),
-              label: const Text('Change the vibe'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: AppTheme.textSecondary,
-                side: const BorderSide(color: AppTheme.border),
-                padding: const EdgeInsets.symmetric(vertical: 13),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
-              ),
-            ),
+          _HankoTile(
+            label: 'Change the vibe',
+            icon: Icons.refresh_sharp,
+            onTap: _reset,
+            expand: true,
           ),
           const SizedBox(height: 24),
         ],
@@ -608,11 +618,10 @@ class _TonightWatchSheetState extends State<TonightWatchSheet>
     );
   }
 
-  Widget _placeholder() => Container(
-        width: 110, height: 160,
-        color: AppTheme.surfaceLight,
-        child: const Icon(Icons.movie_outlined,
-            color: AppTheme.textMuted, size: 32),
+  // Missing art stays an empty sumi 3 print, never a stand-in picture.
+  Widget _placeholder() => const SizedBox(
+        width: 104, height: 156,
+        child: ColoredBox(color: AppTheme.hankoSumi3),
       );
 }
 
@@ -639,47 +648,43 @@ class _MoodCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [colorLight, colorDark],
-          ),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: colorLight.withValues(alpha: 0.5)),
+    // Hanko (stage H4, item h): an outlined tile, sumi 3 with a 1 px edge
+    // outline and 2 px corners, the sharp icon in stone and the mood in Jost
+    // 500 washi. The gradient, its border and the watermark were the mood's
+    // colours; Hanko doesn't draw them, so colorLight, colorDark and
+    // watermark are kept but unused.
+    final radius = BorderRadius.circular(AppTheme.hankoRadius);
+    return Semantics(
+      button: true,
+      child: Material(
+        color: AppTheme.hankoSumi3,
+        shape: RoundedRectangleBorder(
+          borderRadius: radius,
+          side: const BorderSide(color: AppTheme.hankoEdge),
         ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(16),
-          child: Stack(
-            children: [
-              // Watermark icon — large, bottom-right, very faint
-              Positioned(
-                right: -8, bottom: -8,
-                child: Icon(watermark,
-                    size: 60,
-                    color: Colors.white.withValues(alpha: 0.09)),
-              ),
-              // Content
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 44, 16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    Icon(icon, size: 18, color: Colors.white60),
-                    const SizedBox(height: 10),
-                    Text(label,
-                        style: AppTheme.serif(
-                            fontSize: 17,
-                            weight: FontWeight.w600,
-                            color: Colors.white)),
-                  ],
+        child: InkWell(
+          onTap: onTap,
+          splashFactory: NoSplash.splashFactory,
+          highlightColor: AppTheme.hankoPressWash,
+          hoverColor: AppTheme.hankoPressWash,
+          borderRadius: radius,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            child: Row(
+              children: [
+                Icon(icon, size: 20, color: AppTheme.hankoStone),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(label,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTheme.hankoSans(
+                          fontSize: 15,
+                          weight: FontWeight.w500,
+                          height: 1.25)),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

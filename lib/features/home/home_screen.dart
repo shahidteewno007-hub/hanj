@@ -820,10 +820,12 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
 
             // ── Tonight's Watch ──────────────────────────────
+            // A Hanko section since item h, so it takes the sections' 24 px
+            // above it; the old card had 16 and its own coral frame.
             const SliverToBoxAdapter(
               key: ValueKey('home-tonight-watch'),
               child: Padding(
-                padding: EdgeInsets.fromLTRB(0, 16, 0, 0),
+                padding: EdgeInsets.fromLTRB(0, 24, 0, 0),
                 child: TonightWatchCard(),
               ),
             ),
