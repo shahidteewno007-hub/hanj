@@ -2168,7 +2168,8 @@ class _HankoColophon extends StatelessWidget {
 /// director's name. Lines above the seal keep their full width, so the
 /// usual layout doesn't change. A line counts as running into the seal
 /// once it passes [sealTop] by more than [slack] (a link's 48 dp target is
-/// mostly air around its text).
+/// mostly air around its text). A line whose longest word wouldn't fit the
+/// narrower width stays where it was rather than break that word.
 class _ClearOfSeal extends MultiChildRenderObjectWidget {
   const _ClearOfSeal({required this.sealTop, required super.children});
 
@@ -2224,7 +2225,11 @@ class _RenderClearOfSeal extends RenderBox
       final data = child.parentData! as _ClearOfSealParentData;
       var size = sized(child, full);
       var x = 0.0;
-      if (y + size.height - _ClearOfSeal.slack > _sealTop) {
+      // Step right only if every word still fits on its own line: at large
+      // text a long name ("Katsumasa") is wider than the narrower column and
+      // would break mid-word, which reads worse than the seal's corner.
+      if (y + size.height - _ClearOfSeal.slack > _sealTop &&
+          child.getMinIntrinsicWidth(double.infinity) <= narrow.maxWidth) {
         size = sized(child, narrow);
         x = _ClearOfSeal.indent;
       }
