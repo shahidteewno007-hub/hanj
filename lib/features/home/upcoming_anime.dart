@@ -559,11 +559,30 @@ class _UpcomingAnimeRowState extends State<UpcomingAnimeRow> {
 
   @override
   Widget build(BuildContext context) {
+    // Hanko (stage H4, item h; hanko.html's poster strip, .mlt): 72 × 102
+    // covers with square 2 px corners on sumi 3 while they load, each title
+    // under its cover in Jost 500 12 on up to two lines, and "See all" as a
+    // quiet washi link in a 48 dp target. No coral and no arrow: in Hanko
+    // coral is your seal, and nothing in this row is yours. The data, the
+    // static cache and where each tap goes are as they were.
+    final scaler = MediaQuery.textScalerOf(context);
+    // Two lines of title at the reader's text size, so the strip grows with
+    // large text instead of cutting the titles' second line.
+    final stripHeight = 102 + 6 + scaler.scale(12) * 1.25 * 2 + 4;
+
     if (_isLoading && _anime.isEmpty) {
-      return const SizedBox(
-        height: 200,
-        child: Center(child: CircularProgressIndicator(
-            color: AppTheme.primary, strokeWidth: 2)),
+      // The size the loaded block takes, so nothing below jumps when it
+      // arrives.
+      return SizedBox(
+        height: AppTheme.hankoTouch + stripHeight,
+        child: const Center(
+          child: SizedBox(
+            width: 20,
+            height: 20,
+            child: CircularProgressIndicator(
+                color: AppTheme.hankoWashi, strokeWidth: 1.5),
+          ),
+        ),
       );
     }
 
@@ -574,24 +593,24 @@ class _UpcomingAnimeRowState extends State<UpcomingAnimeRow> {
       children: [
         // Header
         Padding(
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+          // The link's 8 px of padding sits in the gutter, so its word
+          // lines up with the gutter edge.
+          padding: const EdgeInsets.fromLTRB(
+              AppTheme.hankoGutter, 0, AppTheme.hankoGutter - 8, 0),
           child: Row(
             children: [
-              Text('This Season',
-                  style: AppTheme.serif(
-                      fontSize: 20, weight: FontWeight.w600)),
-              const Spacer(),
-              GestureDetector(
+              Expanded(
+                child: Semantics(
+                  header: true,
+                  child: Text('This season',
+                      style: AppTheme.hankoSerif(height: 1.3)),
+                ),
+              ),
+              const SizedBox(width: 12),
+              _SeeAllLink(
                 onTap: () => Navigator.push(context,
                     MaterialPageRoute(
                         builder: (_) => const UpcomingAnimeScreen())),
-                child: Text(
-                  'SEE ALL →',
-                  style: AppTheme.mono(
-                      fontSize: 11,
-                      color: AppTheme.primary,
-                      letterSpacing: 1),
-                ),
               ),
             ],
           ),
@@ -599,57 +618,69 @@ class _UpcomingAnimeRowState extends State<UpcomingAnimeRow> {
 
         // Horizontal scroll
         SizedBox(
-          height: 260,
-          child: ListView.builder(
+          height: stripHeight,
+          child: ListView.separated(
             scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 20),
+            padding:
+                const EdgeInsets.symmetric(horizontal: AppTheme.hankoGutter),
             itemCount: _anime.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 10),
             itemBuilder: (_, i) {
               final anime = _anime[i];
-              return GestureDetector(
-                onTap: () => Navigator.push(context,
-                    MaterialPageRoute(
-                        builder: (_) => AnimeDetailScreen(anime: anime))),
-                child: Container(
-                  width: 140,
-                  margin: const EdgeInsets.only(right: 12),
-                  child: Stack(
-                    children: [
-                      // Card
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(12),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            // Poster
-                            Expanded(
+              final title = anime.titleEnglish ?? anime.title;
+              void open() => Navigator.push(context,
+                  MaterialPageRoute(
+                      builder: (_) => AnimeDetailScreen(anime: anime)));
+              // excludeSemantics drops the InkWell's own tap action with the
+              // rest of the subtree, so the node carries onTap itself.
+              return Semantics(
+                button: true,
+                label: title,
+                onTap: open,
+                excludeSemantics: true,
+                child: InkWell(
+                  onTap: open,
+                  splashFactory: NoSplash.splashFactory,
+                  highlightColor: AppTheme.hankoPressWash,
+                  hoverColor: AppTheme.hankoPressWash,
+                  child: SizedBox(
+                    width: 72,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Poster
+                        ClipRRect(
+                          borderRadius:
+                              BorderRadius.circular(AppTheme.hankoRadius),
+                          child: SizedBox(
+                            width: 72,
+                            height: 102,
+                            child: ColoredBox(
+                              color: AppTheme.hankoSumi3,
                               child: anime.imageUrl != null
                                   ? CachedNetworkImage(
                                       imageUrl: anime.imageUrl!,
-                                      width: 140,
                                       fit: BoxFit.cover,
                                       errorWidget: (_, _, _) =>
-                                          Container(color: AppTheme.surfaceLight),
+                                          const SizedBox.expand(),
                                     )
-                                  : Container(color: AppTheme.surfaceLight),
+                                  : const SizedBox.expand(),
                             ),
-                            // Title
-                            Container(
-                              color: AppTheme.surface,
-                              padding: const EdgeInsets.all(8),
-                              child: Text(
-                                anime.titleEnglish ?? anime.title,
-                                style: AppTheme.sans(
-                                    fontSize: 11,
-                                    weight: FontWeight.w600),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
+                          ),
                         ),
-                      ),
-                    ],
+                        const SizedBox(height: 6),
+                        // Title
+                        Text(
+                          title,
+                          style: AppTheme.hankoSans(
+                              fontSize: AppTheme.hankoLabelSize,
+                              weight: FontWeight.w500,
+                              height: 1.25),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               );
@@ -657,6 +688,47 @@ class _UpcomingAnimeRowState extends State<UpcomingAnimeRow> {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Hanko's quiet link, as Home's "See all": Jost 500 13 in washi, underlined
+/// in edge, in a 48 dp target. A secondary way on, never shaped as a button.
+class _SeeAllLink extends StatelessWidget {
+  const _SeeAllLink({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      child: InkWell(
+        onTap: onTap,
+        splashFactory: NoSplash.splashFactory,
+        highlightColor: AppTheme.hankoPressWash,
+        hoverColor: AppTheme.hankoPressWash,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(
+              minHeight: AppTheme.hankoTouch, minWidth: AppTheme.hankoTouch),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Align(
+              widthFactor: 1,
+              child: Text(
+                'See all',
+                style: AppTheme.hankoSans(
+                  fontSize: AppTheme.hankoMetaSize,
+                  weight: FontWeight.w500,
+                ).copyWith(
+                  decoration: TextDecoration.underline,
+                  decorationColor: AppTheme.hankoEdge,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
