@@ -883,7 +883,17 @@ class _HomeScreenState extends State<HomeScreen> {
               SliverToBoxAdapter(
                 key: const ValueKey('home-plan-row'),
                 child: SizedBox(
-                  height: 260,
+                  // A 196 px cover, then a two-line title (Jost 11) and the
+                  // episode count (Jost 9) at the reader's text size. Jost's
+                  // own line is about 1.5 times its size here (1.47-1.55
+                  // measured); 1.6 leaves room. Never under the 260 px it
+                  // had: at 1.3x a card with a two-line title needed 262
+                  // (196 + 6 + 42 + 18) and overflowed.
+                  height: (202 +
+                          MediaQuery.textScalerOf(context).scale(11) * 1.6 * 2 +
+                          MediaQuery.textScalerOf(context).scale(9) * 1.6 +
+                          2)
+                      .clamp(260.0, double.infinity),
                   child: ListView.builder(
                     scrollDirection: Axis.horizontal,
                     padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -2956,16 +2966,19 @@ class _ComingUpSectionState extends State<_ComingUpSection> {
                       ),
                     ),
                     const SizedBox(width: 12),
-                    // Date badge
+                    // Date badge: 40 x 40, and taller when large text
+                    // needs it. Fixed at 40 it overflowed 7 px at 1.3x
+                    // (H2 QA §1c, before H2 as well as after).
                     Container(
-                      width: 40,
-                      height: 40,
+                      constraints: const BoxConstraints(
+                          minWidth: 40, minHeight: 40),
                       decoration: BoxDecoration(
                         color: AppTheme.surfaceMid,
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(color: AppTheme.border),
                       ),
                       child: Column(
+                        mainAxisSize: MainAxisSize.min,
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Text(
