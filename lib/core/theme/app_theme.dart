@@ -4,12 +4,19 @@ import 'package:google_fonts/google_fonts.dart';
 class AppTheme {
   // ── Warm Dark Palette ──────────────────────────────────────
   // Hanko's sumi steps since the switch (stage H2); was #0A0A0A, #141414,
-  // #1E1E1E, #272727, #333333 and #272727.
+  // #1E1E1E, #272727, #333333 and #272727. One step each, as before, so a
+  // card still lifts off its surface and a track off its card: the screens
+  // not yet in Hanko were drawn on five steps, and Hanko has three sumi plus
+  // the hairline. Each step keeps the old contrast with its neighbours
+  // within about 0.04 (sumi 3 on sumi 2 1.10:1, was 1.11).
   static const Color background    = hankoSumi;     // sumi
   static const Color surface       = hankoSumi2;    // sumi 2: nav, sheets
-  static const Color surfaceLight  = hankoSumi2;    // sumi 2: cards, fields
-  static const Color surfaceMid    = hankoSumi3;    // sumi 3: tiles, pills, placeholders
-  static const Color border        = hankoHairline; // subtle border
+  static const Color surfaceLight  = hankoSumi3;    // sumi 3: cards, fields, tracks
+  static const Color surfaceMid    = hankoHairline; // the hairline's tone as a fill: tiles, pills, placeholders
+  // The old border's step: sumi with 37% of the edge, between the hairline
+  // and the edge. 1.55:1 on sumi, 1.44 on sumi 2, 1.31 on sumi 3 (was 1.57,
+  // 1.46, 1.32 on the old steps). Hanko's own borders are the edge itself.
+  static const Color border        = Color(0xFF383531);
   static const Color cardBorder    = hankoHairline; // card borders
 
   // ── Brand ──────────────────────────────────────────────────
