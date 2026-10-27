@@ -62,10 +62,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final isOnline = ConnectivityService.instance.isOnline;
 
-    try {
-      // Trending — always uses cache fallback automatically via OfflineCacheService
-      final trending = await OfflineCacheService.instance.getTrending();
+    // The chart loads beside your list, never in front of it (D19). It used
+    // to be awaited first, so on a cold start whose saved copy was over an
+    // hour old, the headline, Continue and the watchlist waited for AniList
+    // to answer or time out (15 s per attempt). Not awaited: it sets its
+    // own state when it lands.
+    _loadChart();
 
+    try {
       // Firestore — has built-in offline persistence, so these still work offline
       final results = await Future.wait([
         _readList(watchingOnly: true),
@@ -116,14 +120,6 @@ class _HomeScreenState extends State<HomeScreen> {
         return bTime.compareTo(aTime);
       });
 
-      Anime? animeOfDay;
-      if (trending.isNotEmpty) {
-        final dayOfYear = DateTime.now()
-            .difference(DateTime(DateTime.now().year, 1, 1))
-            .inDays;
-        animeOfDay = trending[dayOfYear % trending.length];
-      }
-
       final userSnapshot = results[1];
 
       // ── Plan to Watch ──────────────────────────────────────
@@ -157,10 +153,8 @@ class _HomeScreenState extends State<HomeScreen> {
       // Recommendations are fetched separately so a throttled AniList
       // call never blocks the whole screen from showing.
       setState(() {
-        _trendingAnime = trending;
         _continueWatching = continueWatching;
         _planToWatch = allDocs;
-        _animeOfDay = animeOfDay;
         _isLoading = false;
         _isFromCache = !isOnline;
         _importPending = importPending;
@@ -176,6 +170,31 @@ class _HomeScreenState extends State<HomeScreen> {
         _isLoading = false;
         _isFromCache = !isOnline;
       });
+    }
+  }
+
+  /// The chart and Tonight's Drop, from OfflineCacheService: memory, then a
+  /// saved copy under an hour old, then AniList through the throttle, with
+  /// the saved copy as the fallback when AniList fails.
+  Future<void> _loadChart() async {
+    try {
+      final trending = await OfflineCacheService.instance.getTrending();
+      if (!mounted) return;
+      Anime? animeOfDay;
+      if (trending.isNotEmpty) {
+        final dayOfYear = DateTime.now()
+            .difference(DateTime(DateTime.now().year, 1, 1))
+            .inDays;
+        animeOfDay = trending[dayOfYear % trending.length];
+      }
+      setState(() {
+        _trendingAnime = trending;
+        _animeOfDay = animeOfDay;
+      });
+    } catch (_) {
+      // getTrending falls back to its saved copy on any network failure;
+      // this only catches the device storage itself failing. Uncaught, it
+      // would reach Crashlytics as fatal (main.dart).
     }
   }
 
