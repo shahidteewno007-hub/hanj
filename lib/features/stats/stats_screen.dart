@@ -587,8 +587,10 @@ class _MonthlyChart extends StatelessWidget {
           show: true,
           drawVerticalLine: false,
           horizontalInterval: maxY > 4 ? (maxY / 4).ceilToDouble() : 1,
-          getDrawingHorizontalLine: (_) => FlLine(
-            color: AppTheme.border.withValues(alpha: 0.5),
+          // The border at full strength: at half it measured 1.10:1 on the
+          // card after the switch to sumi, too faint to see; 1.44:1 now.
+          getDrawingHorizontalLine: (_) => const FlLine(
+            color: AppTheme.border,
             strokeWidth: 1,
             dashArray: [4, 4],
           ),
