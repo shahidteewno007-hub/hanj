@@ -253,6 +253,9 @@ class _RulerPainter extends CustomPainter {
     }
 
     // Figures under the whole ticks; only the even ones when they'd crowd.
+    // The one under the thumb gives way to it: the thumb and its keyline
+    // reach 2 px below the figures' top, so at a whole number they cut its
+    // top off ("7" read as "/"), and the large seal shows the value anyway.
     final every = (x1 - x0) / 9 >= 28;
     final figureStyle = AppTheme.hankoSans(
       fontSize: AppTheme.hankoDataSmallSize,
@@ -262,7 +265,8 @@ class _RulerPainter extends CustomPainter {
       tabular: true,
     ).copyWith(leadingDistribution: TextLeadingDistribution.even);
     for (var k = 1; k <= 10; k++) {
-      if (every || k.isEven) {
+      final underThumb = v != null && (xOf(k.toDouble()) - xOf(v)).abs() < 13;
+      if ((every || k.isEven) && !underThumb) {
         _text(canvas, '$k', figureStyle, xOf(k.toDouble()), railTop + 15, size.width, centre: true);
       }
     }
