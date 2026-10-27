@@ -208,6 +208,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               .take(3)
               .map((e) => e.key)
               .toList();
+          final shelves = _shelves(entries);
 
           return MediaQuery.removePadding(
             context: context,
@@ -355,6 +356,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 SliverToBoxAdapter(
                   key: const ValueKey('profile-diary'),
                   child: _column(_buildDiary(_diary(entries))),
+                ),
+
+              // ── Shelves (Hanko stage H5, item g) ─────────
+              // Only once a shelf exists: nothing in the app makes one
+              // until stage H7, so for now this never shows.
+              if (shelves.isNotEmpty)
+                SliverToBoxAdapter(
+                  key: const ValueKey('profile-shelves'),
+                  child: _column(_buildShelves(shelves)),
                 ),
 
               // ── Hanj Cards ───────────────────────────────
@@ -786,6 +796,137 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return items.take(5).toList();
   }
 
+  /// Shelves (Hanko stage H5, item g): your list entries grouped by their
+  /// tags, the field the uncalled tags API writes (firestore_service.dart's
+  /// updateTags), read from the list Profile already has, so it costs no
+  /// request. Stage H7 builds the shelves themselves; nothing writes a tag
+  /// yet, so today this section never shows, and it promises nothing in
+  /// the meantime. Once a shelf exists it appears here as hanko.html draws
+  /// it, under the privacy line the repo rules call for: list entries are
+  /// readable by any signed-in user (firestore.rules, animeList).
+  ///
+  /// Biggest shelf first, then by name; three shelves at most, each with
+  /// its first three covers and how many more.
+  Widget _buildShelves(List<_Shelf> shelves) {
+    final quiet = AppTheme.hankoSans(
+      fontSize: AppTheme.hankoLabelSize,
+      color: AppTheme.hankoStone,
+      height: 1.35,
+    );
+    final more = shelves.length - 3;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+          AppTheme.hankoGutter, 26, AppTheme.hankoGutter, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const _SectionHead('Shelves', bottom: 8),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Padding(
+                padding: EdgeInsets.only(top: 1),
+                child: Icon(Icons.visibility_sharp,
+                    size: 16, color: AppTheme.hankoStone),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text('Shelves are visible to signed-in Hanj users.',
+                    style: quiet),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          for (var i = 0; i < shelves.length && i < 3; i++) ...[
+            if (i > 0) const SizedBox(height: 18),
+            _shelf(shelves[i], quiet),
+          ],
+          if (more > 0) ...[
+            const SizedBox(height: 14),
+            Text(more == 1 ? 'and 1 more shelf' : 'and $more more shelves',
+                style: quiet),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _shelf(_Shelf shelf, TextStyle quiet) {
+    final count = shelf.entries.length;
+    final rest = count - 3;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          alignment: WrapAlignment.spaceBetween,
+          crossAxisAlignment: WrapCrossAlignment.end,
+          spacing: 12,
+          runSpacing: 2,
+          children: [
+            Text(shelf.name,
+                style: AppTheme.hankoSerif(
+                    fontSize: AppTheme.hankoListTitleSize, height: 1.25)),
+            Text(count == 1 ? '1 title' : '$count titles', style: quiet),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            for (var i = 0; i < count && i < 3; i++) ...[
+              if (i > 0) const SizedBox(width: 8),
+              Semantics(
+                button: true,
+                label: (shelf.entries[i]['title'] as String?) ?? 'Unknown',
+                excludeSemantics: true,
+                child: GestureDetector(
+                  onTap: () => _openEntry(shelf.entries[i]),
+                  child: _Cover(
+                    url: shelf.entries[i]['imageUrl'] as String?,
+                    width: 64,
+                    height: 90,
+                  ),
+                ),
+              ),
+            ],
+            if (rest > 0)
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 12),
+                  child: Text('and $rest more', style: quiet),
+                ),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  static List<_Shelf> _shelves(List<Map<String, dynamic>> entries) {
+    final byTag = <String, List<Map<String, dynamic>>>{};
+    for (final e in entries) {
+      final tags = e['tags'];
+      if (tags is! List) continue;
+      final names = {
+        for (final t in tags.whereType<String>())
+          if (t.trim().isNotEmpty) t.trim(),
+      };
+      for (final name in names) {
+        byTag.putIfAbsent(name, () => []).add(e);
+      }
+    }
+    final shelves = [
+      for (final s in byTag.entries) _Shelf(s.key, s.value),
+    ];
+    shelves.sort((a, b) {
+      final bySize = b.entries.length.compareTo(a.entries.length);
+      return bySize != 0
+          ? bySize
+          : a.name.toLowerCase().compareTo(b.name.toLowerCase());
+    });
+    return shelves;
+  }
+
   /// Whether a stored rating lands on Hanj's 1–10 scale at its nearest
   /// half step, as the seal register places it.
   static bool _onScale(double rating) {
@@ -1187,6 +1328,14 @@ class _Cover extends StatelessWidget {
       ),
     );
   }
+}
+
+/// A shelf: one of your tags and the list entries that carry it.
+class _Shelf {
+  const _Shelf(this.name, this.entries);
+
+  final String name;
+  final List<Map<String, dynamic>> entries;
 }
 
 /// One line of the recent diary: a rating, an update, or a day's batch of
