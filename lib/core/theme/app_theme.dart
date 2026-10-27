@@ -488,7 +488,9 @@ class AppTheme {
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           backgroundColor: primary,
-          foregroundColor: textPrimary,
+          // Sumi on coral, Hanko's rule for the seal: 5.64:1. Washi on coral
+          // is 2.72:1, under AA for a 15 px label.
+          foregroundColor: textInverse,
           minimumSize: const Size(double.infinity, 52),
           shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(30)),

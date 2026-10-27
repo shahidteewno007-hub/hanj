@@ -175,7 +175,7 @@ class _ShareCardSheetState extends State<ShareCardSheet> {
                   label: Text(_isCapturing ? 'Saving...' : 'Save Image'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppTheme.primary,
-                    foregroundColor: Colors.white,
+                    foregroundColor: AppTheme.textInverse, // sumi on coral, 5.64:1
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12)),

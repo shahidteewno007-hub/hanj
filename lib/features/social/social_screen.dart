@@ -342,7 +342,7 @@ class _SocialScreenState extends State<SocialScreen> {
                   label: Text(_isComparing ? 'Comparing...' : 'Compare'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppTheme.primary,
-                    foregroundColor: Colors.white,
+                    foregroundColor: AppTheme.textInverse, // sumi on coral, 5.64:1
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
