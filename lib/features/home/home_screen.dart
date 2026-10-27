@@ -232,19 +232,146 @@ class _HomeScreenState extends State<HomeScreen> {
     return 'NIGHT';
   }
 
+  // Hanko's dateline: "Tuesday, 27 October", a sentence rather than an
+  // eyebrow, so it reads as the page's date the way a journal entry does.
   String _getTodayLabel() {
-    return DateFormat('EEEE · MMM d').format(DateTime.now()).toUpperCase();
+    return DateFormat('EEEE, d MMMM').format(DateTime.now());
+  }
+
+  Widget _buildDateline() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+          AppTheme.hankoGutter, 6, AppTheme.hankoGutter, 0),
+      child: Text(
+        _getTodayLabel(),
+        style: AppTheme.hankoSans(
+            fontSize: AppTheme.hankoMetaSize,
+            color: AppTheme.hankoStone,
+            height: 1.3),
+      ),
+    );
+  }
+
+  // Hanko's press: an 8% washi wash, no ripple, square corners.
+  static const ButtonStyle _hankoIconButtonStyle = ButtonStyle(
+    overlayColor: WidgetStatePropertyAll(AppTheme.hankoPressWash),
+    splashFactory: NoSplash.splashFactory,
+    shape: WidgetStatePropertyAll(RoundedRectangleBorder(
+      borderRadius: BorderRadius.all(Radius.circular(AppTheme.hankoRadius)),
+    )),
+  );
+
+  /// The top line (Hanko stage H4, item g): the coral wing beside "Hanj" in
+  /// Shippori Mincho, and Search as a 48 dp button. The wing is the text cut
+  /// (MARK-SIZES.md §1), drawn for 18 px and validated to 48, here at 20.
+  Widget _buildTopLine() {
+    return SizedBox(
+      height: 48,
+      child: Row(
+        children: [
+          const SizedBox(width: AppTheme.hankoGutter),
+          // One logo, so one label; it keeps its drawn size at any text
+          // size, as the login wordmark does.
+          Semantics(
+            label: 'Hanj',
+            excludeSemantics: true,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Image.asset(
+                  'assets/images/hanj_wing_transparent.png',
+                  width: 20,
+                  height: 20,
+                  fit: BoxFit.contain,
+                ),
+                const SizedBox(width: 9),
+                Text(
+                  'Hanj',
+                  textScaler: TextScaler.noScaling,
+                  style: AppTheme.hankoSerif(
+                      fontSize: 21, height: 1, letterSpacing: 0.2),
+                ),
+              ],
+            ),
+          ),
+          const Spacer(),
+          // Loki is locked until Hanj+ ships: the entry is
+          // compiled out while kLokiEnabled is false.
+          if (kLokiEnabled) ...[
+            // Tomo — AI anime companion
+            GestureDetector(
+              onTap: () => Navigator.push(context,
+                  MaterialPageRoute(
+                      builder: (_) => const TomoScreen())),
+              child: Container(
+                width: 30,
+                height: 30,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFFF97316), Color(0xFFE8624A)],
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFFF97316).withValues(alpha: 0.4),
+                      blurRadius: 10,
+                      spreadRadius: -2,
+                    ),
+                  ],
+                ),
+                alignment: Alignment.center,
+                child: const Text(
+                  '友',
+                  style: TextStyle(
+                    color: Color(0xFF0A0A0A),
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+          ],
+          IconButton(
+            onPressed: () => Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const SearchScreen())),
+            tooltip: 'Search',
+            icon: const Icon(Icons.search_sharp, size: 24),
+            color: AppTheme.hankoWashi,
+            style: _hankoIconButtonStyle,
+          ),
+          const SizedBox(width: 6),
+        ],
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return const Scaffold(
+      // The top line and the date need no data, so they are there from the
+      // first frame and stay put when the list arrives (§6c: no states).
+      return Scaffold(
         backgroundColor: AppTheme.background,
-        body: Center(
-          child: CircularProgressIndicator(
-            color: AppTheme.primary,
-            strokeWidth: 1.5,
+        body: Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildTopLine(),
+              _buildDateline(),
+              const SizedBox(height: 48),
+              const Center(
+                child: SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    color: AppTheme.hankoWashi,
+                    strokeWidth: 1.5,
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       );
@@ -258,82 +385,22 @@ class _HomeScreenState extends State<HomeScreen> {
         backgroundColor: AppTheme.surfaceMid,
         child: CustomScrollView(
           slivers: [
-            // ── Header ──────────────────────────────────────
+            // ── Top line, date and headline ─────────────────
             SliverToBoxAdapter(
               key: const ValueKey('home-header'),
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+                padding: const EdgeInsets.only(top: 4, bottom: 20),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Greeting row with search icon
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        Text(
-                          '${_getGreeting()} · ${_getTodayLabel()}',
-                          style: AppTheme.mono(
-                              fontSize: 11,
-                              color: AppTheme.textMuted,
-                              letterSpacing: 1.2),
-                        ),
-                        Row(
-                          children: [
-                            // Loki is locked until Hanj+ ships: the entry is
-                            // compiled out while kLokiEnabled is false.
-                            if (kLokiEnabled) ...[
-                              // Tomo — AI anime companion
-                              GestureDetector(
-                                onTap: () => Navigator.push(context,
-                                    MaterialPageRoute(
-                                        builder: (_) => const TomoScreen())),
-                                child: Container(
-                                  width: 30,
-                                  height: 30,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    gradient: const LinearGradient(
-                                      colors: [Color(0xFFF97316), Color(0xFFE8624A)],
-                                    ),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: const Color(0xFFF97316).withValues(alpha: 0.4),
-                                        blurRadius: 10,
-                                        spreadRadius: -2,
-                                      ),
-                                    ],
-                                  ),
-                                  alignment: Alignment.center,
-                                  child: const Text(
-                                    '友',
-                                    style: TextStyle(
-                                      color: Color(0xFF0A0A0A),
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 16),
-                            ] else
-                              // Holds the row at the button's 30 px so the
-                              // headline below doesn't move up.
-                              const SizedBox(height: 30),
-                            GestureDetector(
-                              onTap: () => Navigator.push(context,
-                                  MaterialPageRoute(
-                                      builder: (_) => const SearchScreen())),
-                              child: const Icon(Icons.search_rounded,
-                                  color: AppTheme.textSecondary, size: 22),
-                            ),
-                          ],
-                        ),
-                      ],
+                    _buildTopLine(),
+                    _buildDateline(),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(
+                          AppTheme.hankoGutter, 6, AppTheme.hankoGutter, 0),
+                      // Dynamic headline
+                      child: _buildHeadline(),
                     ),
-                    const SizedBox(height: 8),
-                    // Dynamic headline
-                    _buildHeadline(),
                   ],
                 ),
               ),
