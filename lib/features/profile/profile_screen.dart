@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:intl/intl.dart';
 
 import '../../core/responsive.dart';
 import '../../core/theme/app_theme.dart';
@@ -153,8 +154,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
           int watching = 0;
           int planToWatch = 0;
           int dropped = 0;
-          double totalRating = 0;
-          int ratedCount = 0;
+          // Episodes under one definition (stage H5, item e), the one
+          // Advanced Stats uses (stats_screen.dart): a completed show counts
+          // its episode total, and any other show the episode you logged,
+          // dropped and paused ones included, since you watched those too.
+          // Rewatches aren't counted: the list keeps no rewatch count.
           int totalEpisodes = 0;
           Map<String, int> genreCounts = {};
           // Every rating as stored, for the seal register (item d).
@@ -165,11 +169,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
             switch (data['status']) {
               case 'COMPLETED':
                 completed++;
-                totalEpisodes += (data['episodes'] as int?) ?? 0;
                 break;
               case 'WATCHING':
                 watching++;
-                totalEpisodes += (data['currentEpisode'] as int?) ?? 0;
                 break;
               case 'PLAN_TO_WATCH':
                 planToWatch++;
@@ -178,10 +180,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 dropped++;
                 break;
             }
+            final total = (data['episodes'] as num?)?.toInt();
+            final current = (data['currentEpisode'] as num?)?.toInt();
+            if (data['status'] == 'COMPLETED' && total != null) {
+              totalEpisodes += total;
+            } else if (current != null) {
+              totalEpisodes += current;
+            }
             if (data['userRating'] != null) {
-              totalRating +=
-                  (data['userRating'] as num).toDouble();
-              ratedCount++;
               ratings.add((data['userRating'] as num).toDouble());
             }
             final genres =
@@ -191,9 +197,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
             }
           }
 
-          final avgRating =
-              ratedCount > 0 ? totalRating / ratedCount : 0.0;
-          final watchTimeMinutes = totalEpisodes * 24;
           final topGenres = (genreCounts.entries.toList()
                 ..sort((a, b) => b.value.compareTo(a.value)))
               .take(3)
@@ -429,64 +432,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               ),
 
-              // ── Stat tiles ───────────────────────────────
+              // ── The counts (Hanko stage H5, item e) ──────
+              // In words, in place of the four stat tiles, "By status" and
+              // "Top genres".
               SliverToBoxAdapter(
-                key: const ValueKey('profile-section-a'),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: _StatTile(
-                          label: 'EPISODES',
-                          value: '$totalEpisodes',
-                          sub: 'watched',
-                          icon: Icons.play_arrow_rounded,
-                          iconColor: AppTheme.watching,
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: _StatTile(
-                          label: 'AVG RATING',
-                          value: avgRating.toStringAsFixed(1),
-                          sub: 'of 10',
-                          icon: Icons.star_rounded,
-                          iconColor: AppTheme.accent,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              SliverToBoxAdapter(
-                key: const ValueKey('profile-section-b'),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: _StatTile(
-                          label: 'WATCH TIME',
-                          value: _formatWatchTime(watchTimeMinutes),
-                          sub: 'lifetime',
-                          icon: Icons.access_time_rounded,
-                          iconColor: AppTheme.primary,
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: _StatTile(
-                          label: 'COMPLETED',
-                          value: '$completed',
-                          sub: 'series',
-                          icon: Icons.check_rounded,
-                          iconColor: AppTheme.completed,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+                key: const ValueKey('profile-counts'),
+                child: _column(_buildCounts(
+                  titles: totalAnime,
+                  episodes: totalEpisodes,
+                  watching: watching,
+                  completed: completed,
+                  planned: planToWatch,
+                  dropped: dropped,
+                  genres: topGenres,
+                )),
               ),
 
               // ── Your ratings (Hanko stage H5, item d) ────
@@ -526,74 +485,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   child: Padding(
                     padding: EdgeInsets.fromLTRB(20, 16, 20, 0),
                     child: TasteProfileCard(),
-                  ),
-                ),
-
-              // ── By Status bar ────────────────────────────
-              if (totalAnime > 0)
-                SliverToBoxAdapter(
-                  key: const ValueKey('profile-stats'),
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-                    child: _StatusBreakdown(
-                      watching: watching,
-                      completed: completed,
-                      planToWatch: planToWatch,
-                      dropped: dropped,
-                      total: totalAnime,
-                    ),
-                  ),
-                ),
-
-              // ── Top Genres ───────────────────────────────
-              if (topGenres.isNotEmpty)
-                SliverToBoxAdapter(
-                  key: const ValueKey('profile-genres'),
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-                    child: Container(
-                      padding: const EdgeInsets.all(20),
-                      decoration: BoxDecoration(
-                        color: AppTheme.surfaceLight,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: AppTheme.border),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('Top genres',
-                              style: AppTheme.serif(
-                                  fontSize: 18,
-                                  weight: FontWeight.w600)),
-                          const SizedBox(height: 12),
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: topGenres
-                                .map((g) => Container(
-                                      padding:
-                                          const EdgeInsets.symmetric(
-                                              horizontal: 12,
-                                              vertical: 6),
-                                      decoration: BoxDecoration(
-                                        color: AppTheme.primary
-                                            .withValues(alpha: 0.12),
-                                        borderRadius:
-                                            BorderRadius.circular(20),
-                                        border: Border.all(
-                                            color: AppTheme.primary
-                                                .withValues(alpha: 0.3)),
-                                      ),
-                                      child: Text(g,
-                                          style: AppTheme.sans(
-                                              fontSize: 13,
-                                              color: AppTheme.primary)),
-                                    ))
-                                .toList(),
-                          ),
-                        ],
-                      ),
-                    ),
                   ),
                 ),
 
@@ -733,6 +624,71 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
     );
   }
+
+  /// The counts you can trust now (Hanko stage H5, item e), in words: titles
+  /// all time and episodes, as one sentence in Shippori, then the statuses
+  /// and the top genres in Jost. "This year" and hours wait for completion
+  /// dates and episode lengths, which the list doesn't keep (question 27).
+  ///
+  /// Words, not tiles or pills: this is what "By status", "Top genres" and
+  /// the header's "PACE · 6 WATCHING" and "7 DONE" pills said. As text on
+  /// the page it reads in washi and stone on sumi (15.3:1 and 6.9:1) and
+  /// wraps at any text size, where the pills measured 4.51:1 and 4.42:1 at
+  /// 9 px and overflowed by 15 px at 1.3x (H2 QA, N8 and S2).
+  Widget _buildCounts({
+    required int titles,
+    required int episodes,
+    required int watching,
+    required int completed,
+    required int planned,
+    required int dropped,
+    required List<String> genres,
+  }) {
+    final n = NumberFormat.decimalPattern();
+    String count(int value, String one, String many) =>
+        '${n.format(value)} ${value == 1 ? one : many}';
+
+    final sentence = titles == 0
+        ? 'Nothing logged yet.'
+        : episodes == 0
+            ? 'You\'ve logged ${count(titles, 'title', 'titles')}.'
+            : 'You\'ve logged ${count(titles, 'title', 'titles')} and '
+                'watched ${count(episodes, 'episode', 'episodes')}.';
+    final statuses = [
+      if (watching > 0) '${n.format(watching)} watching',
+      if (completed > 0) '${n.format(completed)} completed',
+      if (planned > 0) '${n.format(planned)} on your watchlist',
+      if (dropped > 0) '${n.format(dropped)} dropped',
+    ];
+    final quiet = AppTheme.hankoSans(
+      fontSize: AppTheme.hankoMetaSize,
+      color: AppTheme.hankoStone,
+      height: 1.4,
+    );
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+          AppTheme.hankoGutter, 22, AppTheme.hankoGutter, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(sentence, style: AppTheme.hankoSerif(fontSize: 17, height: 1.5)),
+          if (statuses.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text('${statuses.join(', ')}.', style: quiet),
+          ],
+          if (genres.isNotEmpty) ...[
+            const SizedBox(height: 2),
+            Text('Top genres: ${_inList(genres)}.', style: quiet),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// "A", "A and B", "A, B and C".
+  static String _inList(List<String> items) => items.length < 2
+      ? items.join()
+      : '${items.sublist(0, items.length - 1).join(', ')} and ${items.last}';
 
   /// Your ratings as Hanko's seal register (stage H5, item d; question 39):
   /// each score keeps its place on Hanj's 1–10 ruler in half steps, and how
