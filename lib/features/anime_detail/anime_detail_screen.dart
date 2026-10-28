@@ -1315,9 +1315,13 @@ class HankoDetailHeader extends StatefulWidget {
     );
   }
 
-  /// The colophon's fact lines: "TV, Fall 2023", "28 episodes", "24 min
-  /// each". What's missing is left out, never guessed. A season keeps its
-  /// year on its line ("Fall 2023" never breaks).
+  /// The colophon's fact lines: "TV", "Fall 2023", "28 episodes", "24 min
+  /// each". What's missing is left out, never guessed. The format has a line
+  /// of its own: in the column beside the print (92 dp on a 360 dp phone),
+  /// "TV, Spring 2009" wrapped and left "TV," alone. The season and its year
+  /// share the next line whenever they fit; when larger text can't fit them,
+  /// they break between the two words, never inside the year (a no-break
+  /// space there split "Spring 200 / 9" at 1.3×).
   static List<String> _factsFor({
     String? format,
     String? season,
@@ -1340,12 +1344,13 @@ class HankoDetailHeader extends StatefulWidget {
       if (season != null && season.isNotEmpty)
         '${season[0]}${season.substring(1).toLowerCase()}',
       if (seasonYear != null) '$seasonYear',
-    ].join(' ');
+    ].join(' ');
     final count = film || episodes == null || episodes <= 0
         ? null
         : '$episodes ${episodes == 1 ? 'episode' : 'episodes'}';
     return [
-      [?formatWord, if (seasonWord.isNotEmpty) seasonWord].join(', '),
+      ?formatWord,
+      seasonWord,
       ?count,
       if (airing) 'Airing',
       if (duration != null && duration > 0)
