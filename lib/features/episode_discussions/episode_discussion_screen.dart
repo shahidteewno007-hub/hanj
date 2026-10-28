@@ -404,7 +404,7 @@ class _EpisodeDiscussionScreenState extends State<EpisodeDiscussionScreen> {
                         label: Text(_isSubmitting ? 'Posting...' : 'Post'),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: AppTheme.primary,
-                          foregroundColor: Colors.white,
+                          foregroundColor: AppTheme.textInverse, // sumi on coral, 5.64:1
                           minimumSize: Size.zero,
                           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                           padding: const EdgeInsets.symmetric(
