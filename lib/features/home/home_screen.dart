@@ -51,6 +51,13 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isFromCache = false;
   bool _importPending = false;
 
+  // ── Up next is hidden (question 45) ────────────────────────
+  // Its strip of your watchlist repeated tonight's watchlist pick, a few
+  // rows above it. The pick now ends with "See your watchlist (N)", which
+  // opens the same filter Up next's "SEE ALL" did. The block is kept intact
+  // in build(); don't set this to true while the pick shows the same list.
+  static const bool _showUpNext = false;
+
   // ── The airing batch, lifted out of Coming up (Stage 2 item a) ──
   // One AniList request for every show you're watching: its next episode
   // and when it airs. Coming up lists the soonest three, and each Continue
@@ -820,9 +827,31 @@ class _HomeScreenState extends State<HomeScreen> {
                       AppTheme.hankoGutter, 24, AppTheme.hankoGutter, 0),
                   child: Builder(builder: (context) {
                     final pick = _watchlistPick();
-                    return _WatchlistPick(
-                      entry: pick,
-                      onOpen: () => _openEntry(pick),
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _WatchlistPick(
+                          entry: pick,
+                          onOpen: () => _openEntry(pick),
+                        ),
+                        // Up next folds in here (question 45): the rest of
+                        // your watchlist is one tap away, on My List's
+                        // watchlist filter. Only when there is more than the
+                        // pick, as Continue's "See all" shows only when there
+                        // are more rows than Home has room for.
+                        if (_planToWatch.length > 1)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 6),
+                            child: _QuietLink(
+                              label:
+                                  'See your watchlist (${_planToWatch.length})',
+                              onTap: () => _open(MaterialPageRoute(
+                                  builder: (_) => const MyListScreen(
+                                      initialStatus: 'PLAN_TO_WATCH',
+                                      showBackButton: true))),
+                            ),
+                          ),
+                      ],
                     );
                   }),
                 )),
@@ -850,7 +879,8 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
 
             // ── Plan to Watch ────────────────────────────────
-            if (_planToWatch.isNotEmpty) ...[
+            // Hidden (question 45, see _showUpNext); kept intact below.
+            if (_showUpNext && _planToWatch.isNotEmpty) ...[
               SliverToBoxAdapter(
                 key: const ValueKey('home-plan-header'),
                 child: Padding(
