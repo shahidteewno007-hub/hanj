@@ -193,9 +193,13 @@ class _EpisodeDiscussionScreenState extends State<EpisodeDiscussionScreen> {
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(widget.anime.title,
+            // The title Detail shows (English when AniList has one), ending
+            // in Hanko's fade rather than an ellipsis.
+            Text(widget.anime.titleEnglish ?? widget.anime.title,
                 style: const TextStyle(fontSize: 16),
-                overflow: TextOverflow.ellipsis),
+                maxLines: 1,
+                softWrap: false,
+                overflow: TextOverflow.fade),
             Text(
               widget.episodeNumber == 0
                   ? 'Discussion'
