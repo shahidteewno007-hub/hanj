@@ -2155,11 +2155,12 @@ class _ComingUpSectionState extends State<_ComingUpSection> {
                     ),
                     // Bell toggle
                     GestureDetector(
-                      onTap: () {
+                      onTap: () async {
                         final newVal = !isOn;
+                        Future<void>? saving;
                         if (animeId.isNotEmpty) {
                           widget.onToggleReminder(animeId, newVal);
-                          _saveReminder(context, animeId, newVal);
+                          saving = _saveReminder(context, animeId, newVal);
                         }
                         final animeTitle = item['title'] as String;
                         final episode = item['episode'] as int;
@@ -2177,6 +2178,38 @@ class _ComingUpSectionState extends State<_ComingUpSection> {
                             duration: const Duration(seconds: 2),
                           ),
                         );
+                        // The write is awaited and caught. Unawaited, a refused
+                        // write (by the rules, say) went to
+                        // PlatformDispatcher.onError, which main.dart reports
+                        // to Crashlytics as fatal, and the bell went on showing
+                        // a reminder that wasn't saved. Now the bell goes back
+                        // and the message says so, naming no cause. Offline,
+                        // the write waits for the connection and the bell
+                        // stays as tapped.
+                        if (saving == null) return;
+                        try {
+                          await saving;
+                        } catch (_) {
+                          if (!context.mounted) return;
+                          widget.onToggleReminder(animeId, isOn);
+                          // In place of "Reminder set" if it's still showing.
+                          ScaffoldMessenger.of(context)
+                            ..hideCurrentSnackBar()
+                            ..showSnackBar(
+                              SnackBar(
+                                content: Text(newVal
+                                    ? "Couldn't set the reminder. Try again."
+                                    : "Couldn't remove the reminder. Try again."),
+                                backgroundColor: AppTheme.surfaceLight,
+                                behavior: SnackBarBehavior.floating,
+                                margin:
+                                    const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                            );
+                        }
                       },
                       child: AnimatedContainer(
                         duration: const Duration(milliseconds: 250),
