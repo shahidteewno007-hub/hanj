@@ -1041,45 +1041,39 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
 
             // ── Coming Up ─────────────────────────────────────
+            // A Hanko section (question 46): a Mincho heading with the
+            // calendar as a quiet link, no coral, and rows drawn like the
+            // Continue rows above. It keeps the record's 440 px column on a
+            // wide window, as the rows it continues do (item i).
             SliverToBoxAdapter(
               key: const ValueKey('home-section-a'),
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 32, 20, 16),
+              child: _recordColumn(Padding(
+                padding: const EdgeInsets.fromLTRB(
+                    AppTheme.hankoGutter, 24, AppTheme.hankoGutter, 4),
                 child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Row(
-                      children: [
-                        const Icon(Icons.calendar_today_rounded,
-                            color: AppTheme.textMuted, size: 14),
-                        const SizedBox(width: 8),
-                        Text('Coming up',
-                            style: AppTheme.serif(
-                                fontSize: 20, weight: FontWeight.w600)),
-                      ],
-                    ),
-                    InkWell(
-                      onTap: () => _open(
-                          MaterialPageRoute(builder: (_) => const AnimeCalendarScreen())),
-                      borderRadius: BorderRadius.circular(8),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 6),
-                        child: Text('CALENDAR →',
-                            style: AppTheme.mono(
-                                fontSize: 11,
-                                color: AppTheme.primary,
-                                letterSpacing: 1)),
+                    Expanded(
+                      child: Semantics(
+                        header: true,
+                        child: Text('Coming up',
+                            style: AppTheme.hankoSerif(height: 1.3)),
                       ),
+                    ),
+                    const SizedBox(width: 12),
+                    _QuietLink(
+                      label: 'Calendar',
+                      onTap: () => _open(MaterialPageRoute(
+                          builder: (_) => const AnimeCalendarScreen())),
                     ),
                   ],
                 ),
-              ),
+              )),
             ),
             SliverToBoxAdapter(
               key: const ValueKey('home-section-b'),
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
+              child: _recordColumn(Padding(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: AppTheme.hankoGutter),
                 child: _ComingUpSection(
                     items: _comingUpItems(),
                     loading: _airingLoading,
@@ -1094,7 +1088,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         }
                       });
                     }),
-              ),
+              )),
             ),
 
             // ── Recommendations ──────────────────────────────
@@ -2930,219 +2924,187 @@ class _ComingUpSection extends StatefulWidget {
 }
 
 class _ComingUpSectionState extends State<_ComingUpSection> {
-  static const _days = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
-
   @override
   Widget build(BuildContext context) {
     final items = widget.items;
 
+    // Hanko (question 46): no card around the block and no coral. The rows
+    // are drawn like Continue's: the cover, the title on up to two lines,
+    // a line of facts in Jost, and a 48 dp tile on the right, here the
+    // reminder bell, drawn as Detail's is.
     if (widget.loading) {
-      return Container(
-        padding: const EdgeInsets.all(28),
-        decoration: BoxDecoration(
-          color: AppTheme.surfaceLight,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppTheme.border),
-        ),
-        child: const Center(
+      // About one row tall, so the page moves little when the rows land.
+      return const SizedBox(
+        height: 64,
+        child: Center(
           child: SizedBox(
-            width: 22,
-            height: 22,
-            child: CircularProgressIndicator(strokeWidth: 2),
+            width: 20,
+            height: 20,
+            child: CircularProgressIndicator(
+                color: AppTheme.hankoWashi, strokeWidth: 1.5),
           ),
         ),
       );
     }
 
     if (items.isEmpty) {
-      return Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: AppTheme.surfaceLight,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppTheme.border),
-        ),
-        child: Center(
-          child: Text(
-            'Add anime to your watching list\nto see upcoming episodes',
-            textAlign: TextAlign.center,
-            style: AppTheme.sans(
-                fontSize: 13, color: AppTheme.textMuted, height: 1.5),
-          ),
+      // Says what the block is for, which is true whatever the reason it is
+      // empty: nothing in Watching, nothing scheduled, a MyAnimeList import,
+      // or a batch that didn't arrive. The old line asked everyone to add a
+      // show to Watching, including people whose shows simply aren't airing.
+      return Padding(
+        padding: const EdgeInsets.only(top: 4, bottom: 4),
+        child: Text(
+          "The next episodes of the shows you're watching appear here.",
+          style: AppTheme.hankoSans(
+              fontSize: AppTheme.hankoMetaSize,
+              color: AppTheme.hankoStone,
+              height: 1.4),
         ),
       );
     }
 
-    return Container(
-      decoration: BoxDecoration(
-        color: AppTheme.surfaceLight,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.border),
-      ),
-      child: Column(
-        children: items.asMap().entries.map((e) {
-          final i = e.key;
-          final item = e.value;
-          final date = item['date'] as DateTime;
-          final animeId = (item['animeId'] ?? '').toString();
-          final isOn = animeId.isNotEmpty && widget.reminderIds.contains(animeId);
-          return Column(
-            children: [
-              InkWell(
-                onTap: () => _openDetail(context, animeId),
-                borderRadius: BorderRadius.circular(12),
-                child: Padding(
-                padding: const EdgeInsets.all(14),
-                child: Row(
-                  children: [
-                    // Anime cover
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: SizedBox(
-                        width: 40,
-                        height: 56,
-                        child: (item['imageUrl'] as String).isNotEmpty
-                            ? CachedNetworkImage(
-                                imageUrl: item['imageUrl'] as String,
-                                fit: BoxFit.cover,
-                                errorWidget: (_, _, _) =>
-                                    Container(color: AppTheme.surfaceMid),
-                              )
-                            : Container(color: AppTheme.surfaceMid),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    // Date badge: 40 x 40, and taller when large text
-                    // needs it. Fixed at 40 it overflowed 7 px at 1.3x
-                    // (H2 QA §1c, before H2 as well as after).
-                    Container(
-                      constraints: const BoxConstraints(
-                          minWidth: 40, minHeight: 40),
-                      decoration: BoxDecoration(
-                        color: AppTheme.surfaceMid,
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: AppTheme.border),
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(
-                            _days[date.weekday - 1],
-                            style: AppTheme.mono(
-                                fontSize: 8,
-                                color: AppTheme.primary,
-                                letterSpacing: 0.5,
-                                weight: FontWeight.w600),
-                          ),
-                          Text(
-                            '${date.day}',
-                            style: AppTheme.sans(
-                                fontSize: 15,
-                                weight: FontWeight.w700,
-                                color: AppTheme.textPrimary),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    // Title + episode
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Two lines, fading where a cut remains (H2 QA W1):
-                          // in Shippori one line held about 16 characters,
-                          // "STEEL BALL RUN J⋯". Two lines fit beside the
-                          // 56 px cover without making the row taller.
-                          _FadeTitle(
-                            item['title'] as String,
-                            maxLines: 2,
-                            style: AppTheme.serif(
-                                fontSize: 13, weight: FontWeight.w600,
-                                height: 1.25),
-                          ),
-                          const SizedBox(height: 3),
-                          Text(
-                            'Ep ${item['episode']} · ${_formatTime(date)}',
-                            style: AppTheme.mono(
-                                fontSize: 10, color: AppTheme.textMuted),
-                          ),
-                        ],
-                      ),
-                    ),
-                    // Room for the fade before the bell: a cut title fades
-                    // out to its column's edge, which met the bell, where
-                    // the old "…" stopped short of it. 12, the row's gap.
-                    const SizedBox(width: 12),
-                    // Bell toggle
-                    GestureDetector(
-                      onTap: () {
-                        final newVal = !isOn;
-                        if (animeId.isNotEmpty) {
-                          widget.onToggleReminder(animeId, newVal);
-                          _saveReminder(context, animeId, newVal);
-                        }
-                        final animeTitle = item['title'] as String;
-                        final episode = item['episode'] as int;
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(newVal
-                                ? 'Reminder set for $animeTitle Ep $episode'
-                                : 'Reminder removed for $animeTitle Ep $episode'),
-                            backgroundColor: AppTheme.surfaceLight,
-                            behavior: SnackBarBehavior.floating,
-                            margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            duration: const Duration(seconds: 2),
-                          ),
-                        );
-                      },
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 250),
-                        curve: Curves.easeOut,
-                        width: 32,
-                        height: 32,
-                        decoration: BoxDecoration(
-                          color: isOn
-                              ? AppTheme.primary
-                              : AppTheme.surfaceMid,
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: isOn
-                                ? AppTheme.primary
-                                : AppTheme.border,
-                          ),
-                          boxShadow: isOn
-                              ? [BoxShadow(
-                                  color: AppTheme.primary.withValues(alpha: 0.4),
-                                  blurRadius: 8,
-                                  spreadRadius: 1,
-                                )]
-                              : [],
-                        ),
-                        child: Icon(
-                          isOn
-                              ? Icons.notifications_rounded
-                              : Icons.notifications_none_rounded,
-                          color: isOn ? Colors.white : AppTheme.textMuted,
-                          size: 14,
-                        ),
-                      ),
-                    ),
-                  ],
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final (i, item) in items.indexed) ...[
+          if (i > 0) const SizedBox(height: 16),
+          _buildRow(context, item),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildRow(BuildContext context, Map<String, dynamic> item) {
+    final date = item['date'] as DateTime;
+    final animeId = (item['animeId'] ?? '').toString();
+    final isOn = animeId.isNotEmpty && widget.reminderIds.contains(animeId);
+    final title = item['title'] as String;
+    final episode = item['episode'] as int;
+
+    return InkWell(
+      onTap: () => _openDetail(context, animeId),
+      splashFactory: NoSplash.splashFactory,
+      highlightColor: AppTheme.hankoPressWash,
+      hoverColor: AppTheme.hankoPressWash,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: _HankoCover(
+                url: item['imageUrl'] as String?, width: 42, height: 60),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _FadeTitle(
+                  title,
+                  maxLines: 2,
+                  style: AppTheme.hankoSerif(
+                      fontSize: AppTheme.hankoListTitleSize, height: 1.25),
                 ),
-              ),
-              ),
-              if (i < items.length - 1)
-                const Divider(height: 1, color: AppTheme.border),
-            ],
-          );
-        }).toList(),
+                const SizedBox(height: 7),
+                Text(
+                  'Episode $episode, ${_when(date)}',
+                  style: AppTheme.hankoSans(
+                    fontSize: AppTheme.hankoLabelSize,
+                    weight: FontWeight.w500,
+                    color: AppTheme.hankoStone,
+                    height: 1.3,
+                    tabular: true,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // Room for a cut title's fade before the bell (3dbd8fd).
+          const SizedBox(width: 12),
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: _bell(context, animeId, title, episode, isOn),
+          ),
+        ],
       ),
     );
+  }
+
+  /// The reminder bell, drawn as Detail's (Hanko H3): a 36 dp square in a
+  /// 48 dp target, an edge outline when off, washi with a sumi bell when on.
+  /// It does what the round coral bell did: the same callback, the same
+  /// write, the same message.
+  Widget _bell(BuildContext context, String animeId, String title,
+      int episode, bool isOn) {
+    return Semantics(
+      button: true,
+      toggled: isOn,
+      label: 'Remind me when episode $episode of $title airs',
+      excludeSemantics: true,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () {
+          final newVal = !isOn;
+          if (animeId.isNotEmpty) {
+            widget.onToggleReminder(animeId, newVal);
+            _saveReminder(context, animeId, newVal);
+          }
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(newVal
+                  ? 'Reminder set for $title Ep $episode'
+                  : 'Reminder removed for $title Ep $episode'),
+              backgroundColor: AppTheme.surfaceLight,
+              behavior: SnackBarBehavior.floating,
+              margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+              ),
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        },
+        child: SizedBox.square(
+          dimension: AppTheme.hankoTouch,
+          child: Center(
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 250),
+              curve: Curves.easeOut,
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: isOn ? AppTheme.hankoWashi : Colors.transparent,
+                borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+                border: isOn ? null : Border.all(color: AppTheme.hankoEdge),
+              ),
+              child: Icon(
+                isOn
+                    ? Icons.notifications_sharp
+                    : Icons.notifications_none_outlined,
+                color: isOn ? AppTheme.hankoSumi : AppTheme.hankoWashi,
+                size: 18,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// When the episode airs, in the lede's journal voice: "today at 13:00",
+  /// "tomorrow at 13:00", "Friday at 13:00" (2 to 6 days on), "13 Nov at
+  /// 13:00" (a week or more). By the device's own calendar and clock.
+  String _when(DateTime t) {
+    final now = DateTime.now();
+    final days = DateTime.utc(t.year, t.month, t.day)
+        .difference(DateTime.utc(now.year, now.month, now.day))
+        .inDays;
+    final time = _formatTime(t);
+    if (days <= 0) return 'today at $time';
+    if (days == 1) return 'tomorrow at $time';
+    if (days < 7) return '${DateFormat('EEEE').format(t)} at $time';
+    return '${DateFormat('d MMM').format(t)} at $time';
   }
 
   String _formatTime(DateTime dt) {
