@@ -230,7 +230,10 @@ What each covers:
   - `functions/index.js`. Every FCM payload sets `color: '#E8624A'`, which overrides the Android default. It only takes effect after a deploy.
 
   Regenerating assets and deploying are Shahid's steps, so list what needs doing rather than doing it.
-- **Firebase.** The Firebase MCP tools are withheld from you. Don't reach the same services through Bash either. Never run the `firebase` CLI.
+- **Firebase.** The Firebase MCP tools are withheld from you. Don't reach the real project through Bash either. Never run the `firebase` CLI against it: no `deploy`, no rules, data or auth commands, no `login`.
+  - **The local emulators are allowed** (Shahid, 2026-10-27: "allow local emulators for the designer"). Use `emulators:start` / `emulators:exec` to check signed-in screens with seeded test data.
+  - Start them the way the main session's memory notes describe: `web-emulator-e2e.md`, `rules-emulator-quirks.md` and `firebase-cli-deploy.md` in `C:/Users/ABC/.claude/projects/C--Users-ABC-anime-tracker/memory/`. That means using firestore-tests' local CLI, building from a git-archive export wired to the emulators, blocking production hosts, and never reloading while signed in.
+  - Check the ports are free first, and stop everything you start.
 
 ## How restyling fits the repo rules
 
