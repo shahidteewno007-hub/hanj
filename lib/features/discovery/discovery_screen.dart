@@ -2057,7 +2057,8 @@ class _HanjFilterSheetState extends State<_HanjFilterSheet> {
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     ),
                     child: Text('Apply Filters',
-                        style: AppTheme.sans(fontSize: 14, color: Colors.white, weight: FontWeight.w600)),
+                        // Sumi on coral, 5.64:1 (Hanko's rule; white was 3.35:1).
+                        style: AppTheme.sans(fontSize: 14, color: AppTheme.textInverse, weight: FontWeight.w600)),
                   ),
                 ),
               ),
