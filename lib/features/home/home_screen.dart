@@ -1509,11 +1509,16 @@ Future<String?> showHanjListSheet({
 }) {
   final firestoreService = FirestoreService();
 
+  // Hanko (question 46): each status is told by its sharp icon and its
+  // word, as Detail's status button tells it, not by a colour of its own.
+  // The four coloured tiles' labels measured 2.18-3.12:1, under AA. Now
+  // every label is washi on sumi 3 (13.02:1), or sumi on washi once
+  // chosen (15.34:1), and each tile's edge outline is 3.74:1 on the sheet.
   const statuses = [
-    ('WATCHING',      'Watching',      Icons.play_circle_rounded,  Color(0xFFE8624A)),
-    ('PLAN_TO_WATCH', 'Plan to Watch', Icons.bookmark_rounded,      Color(0xFF5B8DEF)),
-    ('COMPLETED',     'Completed',     Icons.check_circle_rounded,  Color(0xFF4CAF7D)),
-    ('DROPPED',       'Dropped',       Icons.cancel_rounded,        Color(0xFFEF5B5B)),
+    ('WATCHING',      'Watching',      Icons.play_circle_sharp),
+    ('PLAN_TO_WATCH', 'Plan to watch', Icons.bookmark_sharp),
+    ('COMPLETED',     'Completed',     Icons.check_circle_sharp),
+    ('DROPPED',       'Dropped',       Icons.cancel_sharp),
   ];
 
   return showModalBottomSheet<String>(
@@ -1523,120 +1528,181 @@ Future<String?> showHanjListSheet({
     builder: (ctx) {
       String? selected = currentStatus;
 
-      return StatefulBuilder(
-        builder: (ctx, setLocal) => Container(
-          decoration: const BoxDecoration(
-            color: Color(0xFF13100D),
-            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-          ),
-          padding: const EdgeInsets.fromLTRB(24, 12, 24, 36),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Handle
-              Container(
-                width: 36, height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.white12,
-                  borderRadius: BorderRadius.circular(2),
+      Widget tile((String, String, IconData) s, BuildContext ctx,
+          StateSetter setLocal) {
+        final isSelected = selected == s.$1;
+        final ink = isSelected ? AppTheme.hankoSumi : AppTheme.hankoWashi;
+        return Semantics(
+          button: true,
+          selected: isSelected,
+          child: Material(
+            color: isSelected ? AppTheme.hankoWashi : AppTheme.hankoSumi3,
+            animationDuration: const Duration(milliseconds: 150),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+              side: isSelected
+                  ? BorderSide.none
+                  : const BorderSide(color: AppTheme.hankoEdge),
+            ),
+            child: InkWell(
+              onTap: () async {
+                // 1. Highlight immediately
+                setLocal(() => selected = s.$1);
+                // 2. Close sheet and return result
+                await Future.delayed(const Duration(milliseconds: 180));
+                // Dismissed during those 180 ms: ctx is gone and the
+                // caller already got null, so don't pop and don't save.
+                if (!ctx.mounted) return;
+                Navigator.pop(ctx, s.$1);
+                // 3. Save to Firestore (fire and forget — UI already updated)
+                // Caught: uncaught, a rejected write was a fatal Crashlytics report.
+                firestoreService.addAnimeToList(anime: anime, status: s.$1)
+                    .catchError((_) {});
+              },
+              splashFactory: NoSplash.splashFactory,
+              highlightColor: AppTheme.hankoPressWash,
+              hoverColor: AppTheme.hankoPressWash,
+              borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: 52),
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(s.$3, color: ink, size: 20),
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          s.$2,
+                          style: AppTheme.hankoSans(
+                              fontSize: 15,
+                              weight: FontWeight.w500,
+                              color: ink,
+                              height: 1.2),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-              const SizedBox(height: 24),
-              // Three lines, fading where a cut remains (H2 QA W2): in
-              // Shippori two lines cut "…Skill to Rise in⋯" where Playfair
-              // showed "…Skill to Rise in the Wo…". Shared with Detail.
-              _FadeTitle(
-                anime.titleEnglish ?? anime.title,
-                maxLines: 3,
-                textAlign: TextAlign.center,
-                style: AppTheme.serif(fontSize: 18, weight: FontWeight.w700, color: AppTheme.textPrimary, height: 1.25),
+            ),
+          ),
+        );
+      }
+
+      // Two tiles side by side, as tall as the taller one when a label
+      // wraps at large text.
+      Widget pair(int first, BuildContext ctx, StateSetter setLocal) =>
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(child: tile(statuses[first], ctx, setLocal)),
+                const SizedBox(width: 8),
+                Expanded(child: tile(statuses[first + 1], ctx, setLocal)),
+              ],
+            ),
+          );
+
+      return StatefulBuilder(
+        builder: (ctx, setLocal) => Container(
+          // hanko.html's sheet: sumi 2, 6 px top corners, the 20 px gutter.
+          decoration: const BoxDecoration(
+            color: AppTheme.hankoSumi2,
+            borderRadius: BorderRadius.vertical(
+                top: Radius.circular(AppTheme.hankoSheetRadius)),
+          ),
+          padding: const EdgeInsets.fromLTRB(
+              AppTheme.hankoGutter, 10, AppTheme.hankoGutter, 32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Handle
+              Center(
+                child: Container(
+                  width: 32,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AppTheme.hankoEdge.withValues(alpha: 0.7),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
               ),
-              const SizedBox(height: 4),
-              Text(
-                'Where does this one live?',
-                style: AppTheme.sans(fontSize: 12, color: AppTheme.textMuted),
-              ),
-              const SizedBox(height: 24),
-              // 2×2 grid
-              GridView.count(
-                crossAxisCount: 2,
-                crossAxisSpacing: 10,
-                mainAxisSpacing: 10,
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                childAspectRatio: 2.4,
-                children: statuses.map((s) {
-                  final isSelected = selected == s.$1;
-                  return GestureDetector(
-                    onTap: () async {
-                      // 1. Highlight immediately
-                      setLocal(() => selected = s.$1);
-                      // 2. Close sheet and return result
-                      await Future.delayed(const Duration(milliseconds: 180));
-                      // Dismissed during those 180 ms: ctx is gone and the
-                      // caller already got null, so don't pop and don't save.
-                      if (!ctx.mounted) return;
-                      Navigator.pop(ctx, s.$1);
-                      // 3. Save to Firestore (fire and forget — UI already updated)
-                      // Caught: uncaught, a rejected write was a fatal Crashlytics report.
-                      firestoreService.addAnimeToList(anime: anime, status: s.$1)
-                          .catchError((_) {});
-                    },
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 150),
-                      decoration: BoxDecoration(
-                        color: isSelected
-                            ? s.$4.withValues(alpha: 0.22)
-                            : s.$4.withValues(alpha: 0.08),
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(
-                          color: isSelected ? s.$4 : s.$4.withValues(alpha: 0.3),
-                          width: isSelected ? 2 : 1,
+              const SizedBox(height: 14),
+              // The show's cover beside its name, as the sheet's head in
+              // hanko.html draws it: pictures for what the show is.
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _HankoCover(url: anime.imageUrl, width: 36, height: 51),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Three lines, fading where a cut remains (H2 QA
+                        // W2). Shared with Detail. Set from the left now,
+                        // beside the cover; it was centred.
+                        _FadeTitle(
+                          anime.titleEnglish ?? anime.title,
+                          maxLines: 3,
+                          textAlign: TextAlign.start,
+                          style: AppTheme.hankoSerif(
+                              fontSize: 20, height: 1.15),
                         ),
-                        boxShadow: isSelected
-                            ? [BoxShadow(
-                                color: s.$4.withValues(alpha: 0.45),
-                                blurRadius: 12,
-                                spreadRadius: 0,
-                              )]
-                            : [],
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(s.$3,
-                              color: isSelected ? s.$4 : s.$4.withValues(alpha: 0.6),
-                              size: 17),
-                          const SizedBox(width: 8),
-                          Text(
-                            s.$2,
-                            style: AppTheme.sans(
-                              fontSize: 13,
-                              weight: FontWeight.w600,
-                              color: isSelected ? s.$4 : s.$4.withValues(alpha: 0.6),
-                            ),
-                          ),
-                        ],
-                      ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Where does this one live?',
+                          style: AppTheme.hankoSans(
+                              fontSize: AppTheme.hankoLabelSize,
+                              color: AppTheme.hankoStone,
+                              height: 1.3),
+                        ),
+                      ],
                     ),
-                  );
-                }).toList(),
+                  ),
+                ],
               ),
+              const SizedBox(height: 20),
+              pair(0, ctx, setLocal),
+              const SizedBox(height: 8),
+              pair(2, ctx, setLocal),
               if (currentStatus != null) ...[
                 const SizedBox(height: 12),
-                GestureDetector(
-                  onTap: () => Navigator.pop(ctx, '__REMOVE__'),
-                  child: Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(vertical: 13),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: Colors.white10),
+                Semantics(
+                  button: true,
+                  child: Material(
+                    color: Colors.transparent,
+                    shape: RoundedRectangleBorder(
+                      borderRadius:
+                          BorderRadius.circular(AppTheme.hankoRadius),
+                      side: const BorderSide(color: AppTheme.hankoEdge),
                     ),
-                    child: Text(
-                      'Remove from list',
-                      textAlign: TextAlign.center,
-                      style: AppTheme.sans(fontSize: 13, color: AppTheme.textMuted),
+                    child: InkWell(
+                      onTap: () => Navigator.pop(ctx, '__REMOVE__'),
+                      splashFactory: NoSplash.splashFactory,
+                      highlightColor: AppTheme.hankoPressWash,
+                      hoverColor: AppTheme.hankoPressWash,
+                      borderRadius:
+                          BorderRadius.circular(AppTheme.hankoRadius),
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(
+                            minHeight: AppTheme.hankoTouch),
+                        child: Center(
+                          child: Text(
+                            'Remove from list',
+                            textAlign: TextAlign.center,
+                            style: AppTheme.hankoSans(
+                                fontSize: AppTheme.hankoBodySize,
+                                weight: FontWeight.w500,
+                                color: AppTheme.hankoStone,
+                                height: 1.2),
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                 ),
