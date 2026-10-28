@@ -2327,8 +2327,10 @@ class _HankoLink extends StatelessWidget {
 }
 
 /// The title on the field, Shippori Mincho 24. Past two lines it splits at
-/// its first ": " into a smaller subtitle (the spec's rule), and it fades
-/// rather than ending in "…", which Shippori draws as the centred ⋯.
+/// its first ": " into a smaller subtitle (the spec's rule). The whole title
+/// shows, at the default text size and at larger ones: only an extreme
+/// length reaches the line limit, and fades there rather than end in "…",
+/// which Shippori draws as the centred ⋯.
 class _HankoTitle extends StatelessWidget {
   const _HankoTitle({required this.title});
 
@@ -2336,9 +2338,24 @@ class _HankoTitle extends StatelessWidget {
 
   static const double _maxWidth = 280;
 
+  /// Lines at the default text size. "As a Reincarnated Aristocrat, I'll Use
+  /// My Appraisal Skill to Rise in the World Season 3" fits four exactly, so
+  /// six leave two spare; the subtitle's three get one more.
+  static const int _lines = 6;
+  static const int _subLines = 4;
+
+  /// [lines] at the default size, grown with the text: at 1.3× the same words
+  /// need about 1.3 times the lines (it was a fixed four, and at 1.3× the
+  /// title above lost "World Season 3"). The scale is read at [fontSize],
+  /// since the phone may scale large text less than small.
+  static int _linesAt(TextScaler scaler, double fontSize, int lines) =>
+      (lines * scaler.scale(fontSize) / fontSize).ceil();
+
   @override
   Widget build(BuildContext context) {
     final style = AppTheme.hankoSerif(fontSize: AppTheme.hankoDisplaySize, height: 1.18);
+    final subStyle = AppTheme.hankoSans(color: AppTheme.hankoStone, height: 1.4);
+    final scaler = MediaQuery.textScalerOf(context);
     return LayoutBuilder(
       builder: (context, constraints) {
         final width = math.min(_maxWidth, constraints.maxWidth);
@@ -2348,7 +2365,7 @@ class _HankoTitle extends StatelessWidget {
         if (colon > 0) {
           final painter = TextPainter(
             text: TextSpan(text: title, style: style),
-            textScaler: MediaQuery.textScalerOf(context),
+            textScaler: scaler,
             textDirection: TextDirection.ltr,
           )..layout(maxWidth: width);
           final lines = painter.computeLineMetrics().length;
@@ -2367,15 +2384,20 @@ class _HankoTitle extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(main, style: style, maxLines: 4, overflow: TextOverflow.fade),
+                  Text(
+                    main,
+                    style: style,
+                    maxLines: _linesAt(scaler, style.fontSize!, _lines),
+                    overflow: TextOverflow.fade,
+                  ),
                   if (sub != null && sub.isNotEmpty)
                     Padding(
                       padding: const EdgeInsets.only(top: 5),
                       child: Text(
                         sub,
-                        maxLines: 3,
+                        maxLines: _linesAt(scaler, subStyle.fontSize!, _subLines),
                         overflow: TextOverflow.fade,
-                        style: AppTheme.hankoSans(color: AppTheme.hankoStone, height: 1.4),
+                        style: subStyle,
                       ),
                     ),
                 ],
