@@ -753,13 +753,15 @@ class _HomeScreenState extends State<HomeScreen> {
             if (_importPending)
               SliverToBoxAdapter(
                 key: const ValueKey('home-import-banner'),
-                child: _ImportPendingBanner(
+                // The record's column on a wide window, like the lede above
+                // it and the rows below (item i).
+                child: _recordColumn(_ImportPendingBanner(
                   open: _open,
                   onDismiss: () async {
                     await _firestoreService.dismissImportBanner();
                     if (mounted) setState(() => _importPending = false);
                   },
-                ),
+                )),
               ),
 
             // ── Continue Watching ────────────────────────────
@@ -1659,97 +1661,101 @@ class _ImportPendingBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Hanko (question 46): a raised sumi 2 note with square corners instead
+    // of a coral-framed card, so it reads as a notice for you rather than
+    // part of your record, without a colour of its own. "Import" is the
+    // one washi tile, the main action; "Dismiss" is quiet.
+    //
+    // importPending only records the import you picked in onboarding. No
+    // import runs on its own and nothing notifies anyone, so the note no
+    // longer says "We'll notify you when it's ready": it says what is
+    // true, and both taps do what they did.
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
+      padding: const EdgeInsets.fromLTRB(
+          AppTheme.hankoGutter, 0, AppTheme.hankoGutter, 20),
+      child: DecoratedBox(
         decoration: BoxDecoration(
-          color: const Color(0xFF1E1508),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppTheme.primary.withValues(alpha: 0.5)),
-          boxShadow: [
-            BoxShadow(
-              color: AppTheme.primary.withValues(alpha: 0.08),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
-            ),
-          ],
+          color: AppTheme.hankoSumi2,
+          borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
         ),
-        child: Row(
-          children: [
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: AppTheme.primary.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(10),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Semantics(
+                header: true,
+                child: Text('Finish your import',
+                    style: AppTheme.hankoSerif(height: 1.3)),
               ),
-              child: const Icon(Icons.download_rounded,
-                  color: AppTheme.primary, size: 18),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              const SizedBox(height: 4),
+              Text(
+                "Bring your list over from AniList or MyAnimeList whenever "
+                "you're ready.",
+                style: AppTheme.hankoSans(
+                    fontSize: AppTheme.hankoMetaSize,
+                    color: AppTheme.hankoStone,
+                    height: 1.4),
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
                 children: [
-                  Text(
-                    'Finish your import',
-                    style: AppTheme.sans(
-                        fontSize: 13,
-                        weight: FontWeight.w700,
-                        color: AppTheme.textPrimary),
+                  _tile(
+                    'Import',
+                    main: true,
+                    onTap: () => open(MaterialPageRoute(
+                        builder: (_) => const AnilistImportScreen())),
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    'Your AniList/MAL import is pending. We\'ll notify you when it\'s ready.',
-                    style: AppTheme.sans(
-                        fontSize: 11,
-                        color: AppTheme.textMuted,
-                        height: 1.4),
-                  ),
+                  _tile('Dismiss', main: false, onTap: onDismiss),
                 ],
               ),
-            ),
-            const SizedBox(width: 8),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                GestureDetector(
-                  onTap: () {
-                    open(
-                      MaterialPageRoute(
-                        builder: (_) => const AnilistImportScreen(),
-                      ),
-                    );
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 10, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: AppTheme.primary,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Text(
-                      'Go →',
-                      style: AppTheme.sans(
-                          fontSize: 11,
-                          weight: FontWeight.w700,
-                          color: Colors.white),
-                    ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// hanko.html's sheet buttons: the main tile in washi with a sumi label,
+  /// the quiet one with no fill and a washi label. 48 dp tall, square
+  /// corners, the 8% washi press.
+  static Widget _tile(String label,
+      {required bool main, required VoidCallback onTap}) {
+    return Semantics(
+      button: true,
+      child: Material(
+        color: main ? AppTheme.hankoWashi : Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+        ),
+        child: InkWell(
+          onTap: onTap,
+          splashFactory: NoSplash.splashFactory,
+          highlightColor: main ? const Color(0x14121110) : AppTheme.hankoPressWash,
+          hoverColor: main ? const Color(0x14121110) : AppTheme.hankoPressWash,
+          borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(
+                minHeight: AppTheme.hankoTouch, minWidth: AppTheme.hankoTouch),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 18),
+              child: Center(
+                widthFactor: 1,
+                heightFactor: 1,
+                child: Text(
+                  label,
+                  style: AppTheme.hankoSans(
+                    fontSize: 15,
+                    weight: main ? FontWeight.w600 : FontWeight.w500,
+                    color: main ? AppTheme.hankoSumi : AppTheme.hankoWashi,
+                    height: 1,
                   ),
                 ),
-                const SizedBox(height: 6),
-                GestureDetector(
-                  onTap: onDismiss,
-                  child: Text(
-                    'Dismiss',
-                    style: AppTheme.sans(
-                        fontSize: 10, color: AppTheme.textMuted),
-                  ),
-                ),
-              ],
+              ),
             ),
-          ],
+          ),
         ),
       ),
     );
