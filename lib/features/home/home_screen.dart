@@ -51,6 +51,18 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isFromCache = false;
   bool _importPending = false;
 
+  // ── Up next is hidden (question 45) ────────────────────────
+  // Its strip of your watchlist repeated tonight's watchlist pick, a few
+  // rows above it. The pick now ends with "See your watchlist (N)", which
+  // opens the same filter Up next's "SEE ALL" did. The block is kept intact
+  // in build(); don't set this to true while the pick shows the same list.
+  static const bool _showUpNext = false;
+
+  // "Because you loved" draws Hanko's poster strip (question 46). The
+  // classic 140 px cards (_TrendingCard), with their rank and coral NEW
+  // badges, are kept intact and switched off here.
+  static const bool _classicRecs = false;
+
   // ── The airing batch, lifted out of Coming up (Stage 2 item a) ──
   // One AniList request for every show you're watching: its next episode
   // and when it airs. Coming up lists the soonest three, and each Continue
@@ -741,13 +753,15 @@ class _HomeScreenState extends State<HomeScreen> {
             if (_importPending)
               SliverToBoxAdapter(
                 key: const ValueKey('home-import-banner'),
-                child: _ImportPendingBanner(
+                // The record's column on a wide window, like the lede above
+                // it and the rows below (item i).
+                child: _recordColumn(_ImportPendingBanner(
                   open: _open,
                   onDismiss: () async {
                     await _firestoreService.dismissImportBanner();
                     if (mounted) setState(() => _importPending = false);
                   },
-                ),
+                )),
               ),
 
             // ── Continue Watching ────────────────────────────
@@ -820,9 +834,31 @@ class _HomeScreenState extends State<HomeScreen> {
                       AppTheme.hankoGutter, 24, AppTheme.hankoGutter, 0),
                   child: Builder(builder: (context) {
                     final pick = _watchlistPick();
-                    return _WatchlistPick(
-                      entry: pick,
-                      onOpen: () => _openEntry(pick),
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _WatchlistPick(
+                          entry: pick,
+                          onOpen: () => _openEntry(pick),
+                        ),
+                        // Up next folds in here (question 45): the rest of
+                        // your watchlist is one tap away, on My List's
+                        // watchlist filter. Only when there is more than the
+                        // pick, as Continue's "See all" shows only when there
+                        // are more rows than Home has room for.
+                        if (_planToWatch.length > 1)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 6),
+                            child: _QuietLink(
+                              label:
+                                  'See your watchlist (${_planToWatch.length})',
+                              onTap: () => _open(MaterialPageRoute(
+                                  builder: (_) => const MyListScreen(
+                                      initialStatus: 'PLAN_TO_WATCH',
+                                      showBackButton: true))),
+                            ),
+                          ),
+                      ],
                     );
                   }),
                 )),
@@ -850,7 +886,8 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
 
             // ── Plan to Watch ────────────────────────────────
-            if (_planToWatch.isNotEmpty) ...[
+            // Hidden (question 45, see _showUpNext); kept intact below.
+            if (_showUpNext && _planToWatch.isNotEmpty) ...[
               SliverToBoxAdapter(
                 key: const ValueKey('home-plan-header'),
                 child: Padding(
@@ -916,13 +953,16 @@ class _HomeScreenState extends State<HomeScreen> {
             // fallback (OfflineCacheService.getSeasonal), inside the throttle.
             if (_seasonAnime.isNotEmpty) ...[
               // The one hairline the screen has: it sets the season's chart
-              // off from your own record above it.
+              // off from your own record above it. 28 above it, as hanko.html
+              // has: with Up next hidden it follows Tonight's watch, whose
+              // mood tile it otherwise met 8 px below (question 45). Up next's
+              // strip used to supply the rest of the gap.
               SliverToBoxAdapter(
                 key: const ValueKey('home-chart-rule'),
                 child: Container(
                   height: 1,
-                  margin: const EdgeInsets.fromLTRB(
-                      AppTheme.hankoGutter, 8, AppTheme.hankoGutter, 0),
+                  margin: EdgeInsets.fromLTRB(AppTheme.hankoGutter,
+                      _showUpNext ? 8 : 28, AppTheme.hankoGutter, 0),
                   color: AppTheme.hankoHairline,
                 ),
               ),
@@ -1011,45 +1051,39 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
 
             // ── Coming Up ─────────────────────────────────────
+            // A Hanko section (question 46): a Mincho heading with the
+            // calendar as a quiet link, no coral, and rows drawn like the
+            // Continue rows above. It keeps the record's 440 px column on a
+            // wide window, as the rows it continues do (item i).
             SliverToBoxAdapter(
               key: const ValueKey('home-section-a'),
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 32, 20, 16),
+              child: _recordColumn(Padding(
+                padding: const EdgeInsets.fromLTRB(
+                    AppTheme.hankoGutter, 24, AppTheme.hankoGutter, 4),
                 child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Row(
-                      children: [
-                        const Icon(Icons.calendar_today_rounded,
-                            color: AppTheme.textMuted, size: 14),
-                        const SizedBox(width: 8),
-                        Text('Coming up',
-                            style: AppTheme.serif(
-                                fontSize: 20, weight: FontWeight.w600)),
-                      ],
-                    ),
-                    InkWell(
-                      onTap: () => _open(
-                          MaterialPageRoute(builder: (_) => const AnimeCalendarScreen())),
-                      borderRadius: BorderRadius.circular(8),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 6),
-                        child: Text('CALENDAR →',
-                            style: AppTheme.mono(
-                                fontSize: 11,
-                                color: AppTheme.primary,
-                                letterSpacing: 1)),
+                    Expanded(
+                      child: Semantics(
+                        header: true,
+                        child: Text('Coming up',
+                            style: AppTheme.hankoSerif(height: 1.3)),
                       ),
+                    ),
+                    const SizedBox(width: 12),
+                    _QuietLink(
+                      label: 'Calendar',
+                      onTap: () => _open(MaterialPageRoute(
+                          builder: (_) => const AnimeCalendarScreen())),
                     ),
                   ],
                 ),
-              ),
+              )),
             ),
             SliverToBoxAdapter(
               key: const ValueKey('home-section-b'),
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
+              child: _recordColumn(Padding(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: AppTheme.hankoGutter),
                 child: _ComingUpSection(
                     items: _comingUpItems(),
                     loading: _airingLoading,
@@ -1064,36 +1098,41 @@ class _HomeScreenState extends State<HomeScreen> {
                         }
                       });
                     }),
-              ),
+              )),
             ),
 
             // ── Recommendations ──────────────────────────────
+            // "Because you loved" in Hanko (question 46): the eyebrow becomes
+            // a sentence heading in Mincho, as the other sections are, and
+            // its aside says what the row is: a genre search, highest AniList
+            // score first (_loadRecommendations), not AniList's own
+            // recommendations. The covers are a poster strip like This
+            // season's. Same request, same shows, same taps.
             for (final row in _recommendationRows) ...[
               SliverToBoxAdapter(
                 key: ValueKey('rec-header-${row['genre']}'),
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 44, 20, 16),
+                  padding: const EdgeInsets.fromLTRB(
+                      AppTheme.hankoGutter, 24, AppTheme.hankoGutter, 12),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        'BECAUSE YOU LOVED',
-                        style: AppTheme.mono(
-                            fontSize: 10,
-                            color: AppTheme.textMuted,
-                            letterSpacing: 1.5),
+                      // Two lines, fading where a cut remains (H2 QA N3).
+                      Semantics(
+                        header: true,
+                        child: _FadeTitle(
+                          'Because you loved ${row['sourceTitle']}',
+                          maxLines: 2,
+                          style: AppTheme.hankoSerif(height: 1.3),
+                        ),
                       ),
-                      const SizedBox(height: 4),
-                      // Two lines, fading where a cut remains (H2 QA N3):
-                      // Shippori is about 8% wider than Playfair was, so one
-                      // line cut "The Apothecary Diaries Season 3" with
-                      // Shippori's centred ⋯.
-                      _FadeTitle(
-                        row['sourceTitle'] as String,
-                        maxLines: 2,
-                        style: AppTheme.serif(
-                            fontSize: 20, weight: FontWeight.w600,
-                            height: 1.25),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${row['genre']}, by AniList score',
+                        style: AppTheme.hankoSans(
+                            fontSize: AppTheme.hankoLabelSize,
+                            color: AppTheme.hankoStone,
+                            height: 1.3),
                       ),
                     ],
                   ),
@@ -1102,19 +1141,32 @@ class _HomeScreenState extends State<HomeScreen> {
               SliverToBoxAdapter(
                 key: ValueKey('rec-row-${row['genre']}'),
                 child: SizedBox(
-                  height: 260,
+                  height: _classicRecs
+                      ? 260
+                      : _StripItem.heightFor(MediaQuery.textScalerOf(context)),
                   child: ListView.builder(
                     scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: AppTheme.hankoGutter),
                     physics: const BouncingScrollPhysics(),
                     itemCount: (row['anime'] as List<Anime>).length,
-                    itemBuilder: (context, index) => _TrendingCard(
-                      key: ValueKey(
-                          'rec-${row['genre']}-${(row['anime'] as List<Anime>)[index].id}'),
-                      anime: (row['anime'] as List<Anime>)[index],
-                      rank: index + 1,
-                      open: _open,
-                    ),
+                    itemBuilder: (context, index) {
+                      final anime = (row['anime'] as List<Anime>)[index];
+                      final key = ValueKey('rec-${row['genre']}-${anime.id}');
+                      // The classic card is kept, switched off.
+                      return _classicRecs
+                          ? _TrendingCard(
+                              key: key,
+                              anime: anime,
+                              rank: index + 1,
+                              open: _open,
+                            )
+                          : Padding(
+                              key: key,
+                              padding: const EdgeInsets.only(right: 10),
+                              child: _StripItem(anime: anime, open: _open),
+                            );
+                    },
                   ),
                 ),
               ),
@@ -1128,11 +1180,17 @@ class _HomeScreenState extends State<HomeScreen> {
             // sliver's element gets handed a recommendation row instead,
             // unmounting UpcomingAnimeRow and remounting it further down. That
             // cost a second identical AniList request on every Home load.
-            const SliverToBoxAdapter(
-              key: ValueKey('upcoming-this-season'),
+            //
+            // It reads the same request as the season chart, so it starts
+            // after the chart's shows instead of repeating them (question
+            // 44). No request is added.
+            SliverToBoxAdapter(
+              key: const ValueKey('upcoming-this-season'),
               child: Padding(
-                padding: EdgeInsets.only(top: 24),
-                child: UpcomingAnimeRow(),
+                padding: const EdgeInsets.only(top: 24),
+                child: UpcomingAnimeRow(skip: {
+                  for (final anime in _seasonAnime.take(_chartLength)) anime.id,
+                }),
               ),
             ),
 
@@ -1143,8 +1201,12 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  /// The chart's rows: five, as Hanko draws them. This season's strip
+  /// starts after the same shows (question 44).
+  static const int _chartLength = 5;
+
   /// Shared by the chart's SliverList and SliverGrid so the two branches
-  /// cannot drift in what they build. Five rows, as Hanko draws them.
+  /// cannot drift in what they build.
   SliverChildBuilderDelegate _chartDelegate() {
     return SliverChildBuilderDelegate(
       (context, index) {
@@ -1163,7 +1225,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         );
       },
-      childCount: _seasonAnime.length.clamp(0, 5),
+      childCount: _seasonAnime.length.clamp(0, _chartLength),
     );
   }
 
@@ -1330,31 +1392,36 @@ class _HomeScreenState extends State<HomeScreen> {
         lastWatched != null &&
         ratedAt.difference(lastWatched).inMinutes.abs() <= 6 * 60;
 
-    // A short title stays on one line, as the mockup's no-break span does;
-    // a long one may wrap.
-    final title = rawTitle.length <= 18
-        ? rawTitle.replaceAll(' ', ' ')
-        : rawTitle;
     final when = _whenRated(ratedAt);
-    // "sealed it" and the seal stay together: a no-break space before the
-    // seal, as the mockup's &nbsp; does.
-    final String sentence;
-    if (finishedThen && episodes != null && episodes >= 2) {
-      sentence = '$when you finished $title, all ${_inWords(episodes)} '
-          'episodes, and sealed it ';
-    } else if (finishedThen) {
-      sentence = '$when you finished $title and sealed it ';
-    } else {
-      sentence = '$when you sealed $title ';
+    // The sentence, with three ways of keeping words together: a short
+    // title on one line ([wholeTitle], as the mockup's no-break span does),
+    // "you" with its verb ([bindVerb]), and always "sealed it" with the
+    // seal, a no-break space before it as the mockup's &nbsp; does.
+    String compose({required bool wholeTitle, bool bindVerb = false}) {
+      final title =
+          wholeTitle ? rawTitle.replaceAll(' ', ' ') : rawTitle;
+      final you = bindVerb ? 'you ' : 'you ';
+      if (finishedThen && episodes != null && episodes >= 2) {
+        return '$when ${you}finished $title, all ${_inWords(episodes)} '
+            'episodes, and sealed it ';
+      } else if (finishedThen) {
+        return '$when ${you}finished $title and sealed it ';
+      }
+      return '$when ${you}sealed $title ';
     }
 
     final scaler = MediaQuery.textScalerOf(context);
     final score = HankoSeal.formatScore(rating);
+    // The seal sits inline at the sentence's size: 32 x 28 with 14 px
+    // numerals at 22 px, as the mockup's .seal--in. Its box follows the
+    // text size setting; HankoSeal shrinks the numerals to fit.
+    final seal = Size(scaler.scale(32), scaler.scale(28));
     // excludeSemantics drops the InkWell's own tap action with the rest of
     // the subtree, so the node carries onTap itself.
     return Semantics(
       button: true,
-      label: '${sentence.replaceAll(' ', ' ').trim()} $score',
+      label: '${compose(wholeTitle: false).replaceAll(' ', ' ').trim()} '
+          '$score',
       onTap: () => _openEntry(entry),
       onTapHint: 'open ${rawTitle.trim()}',
       excludeSemantics: true,
@@ -1365,34 +1432,88 @@ class _HomeScreenState extends State<HomeScreen> {
         hoverColor: AppTheme.hankoPressWash,
         child: ConstrainedBox(
           constraints: const BoxConstraints(minHeight: AppTheme.hankoTouch),
-          child: Text.rich(
-            TextSpan(
-              style: style,
-              children: [
-                TextSpan(text: sentence),
-                // The seal sits inline at the sentence's size: 32 x 28 with
-                // 14 px numerals at 22 px, as the mockup's .seal--in. Its box
-                // follows the text size setting; HankoSeal shrinks the
-                // numerals to fit.
-                WidgetSpan(
-                  alignment: PlaceholderAlignment.middle,
-                  child: HankoSeal.score(
-                    rating,
-                    size: scaler.scale(28),
-                    width: scaler.scale(32),
-                    fontSize: 14,
+          child: LayoutBuilder(builder: (context, constraints) {
+            // Q54: a short title kept whole can leave the word before it
+            // alone on a line. At 1.3x "On Monday you / finished / Cowboy
+            // Bebop, all ..." left "finished" by itself. So the first of
+            // these that leaves no word alone wins: the title whole; the
+            // title whole with "you" kept by its verb; the title free to
+            // break. A long title may always break, as before.
+            final candidates = rawTitle.length <= 18
+                ? [
+                    compose(wholeTitle: true),
+                    compose(wholeTitle: true, bindVerb: true),
+                    compose(wholeTitle: false),
+                  ]
+                : [compose(wholeTitle: false)];
+            final sentence = candidates.firstWhere(
+                (s) => !_leavesAWordAlone(
+                    s, style, scaler, seal, constraints.maxWidth),
+                orElse: () => candidates.first);
+            return Text.rich(
+              TextSpan(
+                style: style,
+                children: [
+                  TextSpan(text: sentence),
+                  WidgetSpan(
+                    alignment: PlaceholderAlignment.middle,
+                    child: HankoSeal.score(
+                      rating,
+                      size: seal.height,
+                      width: seal.width,
+                      fontSize: 14,
+                    ),
                   ),
-                ),
-              ],
-            ),
-          ),
+                ],
+              ),
+            );
+          }),
         ),
       ),
     );
   }
+
+  /// Whether [sentence], followed by the seal and laid out at [maxWidth],
+  /// leaves one word alone on a line before the last. Words joined by a
+  /// no-break space count as more than one word, so a short title on a
+  /// line of its own is fine. Each line's first character comes from x = 0
+  /// on that line, as _FadeTitle finds it (getLineBoundary misreports a
+  /// line's start on the web).
+  bool _leavesAWordAlone(String sentence, TextStyle style, TextScaler scaler,
+      Size seal, double maxWidth) {
+    final painter = TextPainter(
+      text: TextSpan(style: style, children: [
+        TextSpan(text: sentence),
+        const WidgetSpan(
+            alignment: PlaceholderAlignment.middle, child: SizedBox.shrink()),
+      ]),
+      textDirection: Directionality.of(context),
+      textScaler: scaler,
+    )
+      ..setPlaceholderDimensions([
+        PlaceholderDimensions(
+            size: seal, alignment: PlaceholderAlignment.middle),
+      ])
+      ..layout(maxWidth: maxWidth);
+    final lines = painter.computeLineMetrics();
+    int startOf(LineMetrics line) => painter
+        .getPositionForOffset(Offset(0, line.baseline - line.ascent / 2))
+        .offset;
+    var alone = false;
+    for (var i = 0; i + 1 < lines.length && !alone; i++) {
+      final start = startOf(lines[i]).clamp(0, sentence.length);
+      final end = startOf(lines[i + 1]).clamp(start, sentence.length);
+      final words = sentence.substring(start, end).trim();
+      alone = words.isNotEmpty &&
+          !words.contains(' ') &&
+          !words.contains(' ');
+    }
+    painter.dispose();
+    return alone;
+  }
 }
 
-/// A Hanko secondary tile with a word on it ("Retry"): sumi 3 with a 1 px
+// A Hanko secondary tile with a word on it ("Retry"): sumi 3 with a 1 px
 /// edge outline, Jost 600 15 washi, 48 dp tall.
 class _TextTile extends StatelessWidget {
   const _TextTile({required this.label, required this.onTap});
@@ -1450,11 +1571,16 @@ Future<String?> showHanjListSheet({
 }) {
   final firestoreService = FirestoreService();
 
+  // Hanko (question 46): each status is told by its sharp icon and its
+  // word, as Detail's status button tells it, not by a colour of its own.
+  // The four coloured tiles' labels measured 2.18-3.12:1, under AA. Now
+  // every label is washi on sumi 3 (13.02:1), or sumi on washi once
+  // chosen (15.34:1), and each tile's edge outline is 3.74:1 on the sheet.
   const statuses = [
-    ('WATCHING',      'Watching',      Icons.play_circle_rounded,  Color(0xFFE8624A)),
-    ('PLAN_TO_WATCH', 'Plan to Watch', Icons.bookmark_rounded,      Color(0xFF5B8DEF)),
-    ('COMPLETED',     'Completed',     Icons.check_circle_rounded,  Color(0xFF4CAF7D)),
-    ('DROPPED',       'Dropped',       Icons.cancel_rounded,        Color(0xFFEF5B5B)),
+    ('WATCHING',      'Watching',      Icons.play_circle_sharp),
+    ('PLAN_TO_WATCH', 'Plan to watch', Icons.bookmark_sharp),
+    ('COMPLETED',     'Completed',     Icons.check_circle_sharp),
+    ('DROPPED',       'Dropped',       Icons.cancel_sharp),
   ];
 
   return showModalBottomSheet<String>(
@@ -1464,120 +1590,181 @@ Future<String?> showHanjListSheet({
     builder: (ctx) {
       String? selected = currentStatus;
 
-      return StatefulBuilder(
-        builder: (ctx, setLocal) => Container(
-          decoration: const BoxDecoration(
-            color: Color(0xFF13100D),
-            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-          ),
-          padding: const EdgeInsets.fromLTRB(24, 12, 24, 36),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Handle
-              Container(
-                width: 36, height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.white12,
-                  borderRadius: BorderRadius.circular(2),
+      Widget tile((String, String, IconData) s, BuildContext ctx,
+          StateSetter setLocal) {
+        final isSelected = selected == s.$1;
+        final ink = isSelected ? AppTheme.hankoSumi : AppTheme.hankoWashi;
+        return Semantics(
+          button: true,
+          selected: isSelected,
+          child: Material(
+            color: isSelected ? AppTheme.hankoWashi : AppTheme.hankoSumi3,
+            animationDuration: const Duration(milliseconds: 150),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+              side: isSelected
+                  ? BorderSide.none
+                  : const BorderSide(color: AppTheme.hankoEdge),
+            ),
+            child: InkWell(
+              onTap: () async {
+                // 1. Highlight immediately
+                setLocal(() => selected = s.$1);
+                // 2. Close sheet and return result
+                await Future.delayed(const Duration(milliseconds: 180));
+                // Dismissed during those 180 ms: ctx is gone and the
+                // caller already got null, so don't pop and don't save.
+                if (!ctx.mounted) return;
+                Navigator.pop(ctx, s.$1);
+                // 3. Save to Firestore (fire and forget — UI already updated)
+                // Caught: uncaught, a rejected write was a fatal Crashlytics report.
+                firestoreService.addAnimeToList(anime: anime, status: s.$1)
+                    .catchError((_) {});
+              },
+              splashFactory: NoSplash.splashFactory,
+              highlightColor: AppTheme.hankoPressWash,
+              hoverColor: AppTheme.hankoPressWash,
+              borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: 52),
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(s.$3, color: ink, size: 20),
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          s.$2,
+                          style: AppTheme.hankoSans(
+                              fontSize: 15,
+                              weight: FontWeight.w500,
+                              color: ink,
+                              height: 1.2),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-              const SizedBox(height: 24),
-              // Three lines, fading where a cut remains (H2 QA W2): in
-              // Shippori two lines cut "…Skill to Rise in⋯" where Playfair
-              // showed "…Skill to Rise in the Wo…". Shared with Detail.
-              _FadeTitle(
-                anime.titleEnglish ?? anime.title,
-                maxLines: 3,
-                textAlign: TextAlign.center,
-                style: AppTheme.serif(fontSize: 18, weight: FontWeight.w700, color: AppTheme.textPrimary, height: 1.25),
+            ),
+          ),
+        );
+      }
+
+      // Two tiles side by side, as tall as the taller one when a label
+      // wraps at large text.
+      Widget pair(int first, BuildContext ctx, StateSetter setLocal) =>
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(child: tile(statuses[first], ctx, setLocal)),
+                const SizedBox(width: 8),
+                Expanded(child: tile(statuses[first + 1], ctx, setLocal)),
+              ],
+            ),
+          );
+
+      return StatefulBuilder(
+        builder: (ctx, setLocal) => Container(
+          // hanko.html's sheet: sumi 2, 6 px top corners, the 20 px gutter.
+          decoration: const BoxDecoration(
+            color: AppTheme.hankoSumi2,
+            borderRadius: BorderRadius.vertical(
+                top: Radius.circular(AppTheme.hankoSheetRadius)),
+          ),
+          padding: const EdgeInsets.fromLTRB(
+              AppTheme.hankoGutter, 10, AppTheme.hankoGutter, 32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Handle
+              Center(
+                child: Container(
+                  width: 32,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AppTheme.hankoEdge.withValues(alpha: 0.7),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
               ),
-              const SizedBox(height: 4),
-              Text(
-                'Where does this one live?',
-                style: AppTheme.sans(fontSize: 12, color: AppTheme.textMuted),
-              ),
-              const SizedBox(height: 24),
-              // 2×2 grid
-              GridView.count(
-                crossAxisCount: 2,
-                crossAxisSpacing: 10,
-                mainAxisSpacing: 10,
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                childAspectRatio: 2.4,
-                children: statuses.map((s) {
-                  final isSelected = selected == s.$1;
-                  return GestureDetector(
-                    onTap: () async {
-                      // 1. Highlight immediately
-                      setLocal(() => selected = s.$1);
-                      // 2. Close sheet and return result
-                      await Future.delayed(const Duration(milliseconds: 180));
-                      // Dismissed during those 180 ms: ctx is gone and the
-                      // caller already got null, so don't pop and don't save.
-                      if (!ctx.mounted) return;
-                      Navigator.pop(ctx, s.$1);
-                      // 3. Save to Firestore (fire and forget — UI already updated)
-                      // Caught: uncaught, a rejected write was a fatal Crashlytics report.
-                      firestoreService.addAnimeToList(anime: anime, status: s.$1)
-                          .catchError((_) {});
-                    },
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 150),
-                      decoration: BoxDecoration(
-                        color: isSelected
-                            ? s.$4.withValues(alpha: 0.22)
-                            : s.$4.withValues(alpha: 0.08),
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(
-                          color: isSelected ? s.$4 : s.$4.withValues(alpha: 0.3),
-                          width: isSelected ? 2 : 1,
+              const SizedBox(height: 14),
+              // The show's cover beside its name, as the sheet's head in
+              // hanko.html draws it: pictures for what the show is.
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _HankoCover(url: anime.imageUrl, width: 36, height: 51),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Three lines, fading where a cut remains (H2 QA
+                        // W2). Shared with Detail. Set from the left now,
+                        // beside the cover; it was centred.
+                        _FadeTitle(
+                          anime.titleEnglish ?? anime.title,
+                          maxLines: 3,
+                          textAlign: TextAlign.start,
+                          style: AppTheme.hankoSerif(
+                              fontSize: 20, height: 1.15),
                         ),
-                        boxShadow: isSelected
-                            ? [BoxShadow(
-                                color: s.$4.withValues(alpha: 0.45),
-                                blurRadius: 12,
-                                spreadRadius: 0,
-                              )]
-                            : [],
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(s.$3,
-                              color: isSelected ? s.$4 : s.$4.withValues(alpha: 0.6),
-                              size: 17),
-                          const SizedBox(width: 8),
-                          Text(
-                            s.$2,
-                            style: AppTheme.sans(
-                              fontSize: 13,
-                              weight: FontWeight.w600,
-                              color: isSelected ? s.$4 : s.$4.withValues(alpha: 0.6),
-                            ),
-                          ),
-                        ],
-                      ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Where does this one live?',
+                          style: AppTheme.hankoSans(
+                              fontSize: AppTheme.hankoLabelSize,
+                              color: AppTheme.hankoStone,
+                              height: 1.3),
+                        ),
+                      ],
                     ),
-                  );
-                }).toList(),
+                  ),
+                ],
               ),
+              const SizedBox(height: 20),
+              pair(0, ctx, setLocal),
+              const SizedBox(height: 8),
+              pair(2, ctx, setLocal),
               if (currentStatus != null) ...[
                 const SizedBox(height: 12),
-                GestureDetector(
-                  onTap: () => Navigator.pop(ctx, '__REMOVE__'),
-                  child: Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(vertical: 13),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: Colors.white10),
+                Semantics(
+                  button: true,
+                  child: Material(
+                    color: Colors.transparent,
+                    shape: RoundedRectangleBorder(
+                      borderRadius:
+                          BorderRadius.circular(AppTheme.hankoRadius),
+                      side: const BorderSide(color: AppTheme.hankoEdge),
                     ),
-                    child: Text(
-                      'Remove from list',
-                      textAlign: TextAlign.center,
-                      style: AppTheme.sans(fontSize: 13, color: AppTheme.textMuted),
+                    child: InkWell(
+                      onTap: () => Navigator.pop(ctx, '__REMOVE__'),
+                      splashFactory: NoSplash.splashFactory,
+                      highlightColor: AppTheme.hankoPressWash,
+                      hoverColor: AppTheme.hankoPressWash,
+                      borderRadius:
+                          BorderRadius.circular(AppTheme.hankoRadius),
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(
+                            minHeight: AppTheme.hankoTouch),
+                        child: Center(
+                          child: Text(
+                            'Remove from list',
+                            textAlign: TextAlign.center,
+                            style: AppTheme.hankoSans(
+                                fontSize: AppTheme.hankoBodySize,
+                                weight: FontWeight.w500,
+                                color: AppTheme.hankoStone,
+                                height: 1.2),
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                 ),
@@ -1602,97 +1789,101 @@ class _ImportPendingBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Hanko (question 46): a raised sumi 2 note with square corners instead
+    // of a coral-framed card, so it reads as a notice for you rather than
+    // part of your record, without a colour of its own. "Import" is the
+    // one washi tile, the main action; "Dismiss" is quiet.
+    //
+    // importPending only records the import you picked in onboarding. No
+    // import runs on its own and nothing notifies anyone, so the note no
+    // longer says "We'll notify you when it's ready": it says what is
+    // true, and both taps do what they did.
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
+      padding: const EdgeInsets.fromLTRB(
+          AppTheme.hankoGutter, 0, AppTheme.hankoGutter, 20),
+      child: DecoratedBox(
         decoration: BoxDecoration(
-          color: const Color(0xFF1E1508),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppTheme.primary.withValues(alpha: 0.5)),
-          boxShadow: [
-            BoxShadow(
-              color: AppTheme.primary.withValues(alpha: 0.08),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
-            ),
-          ],
+          color: AppTheme.hankoSumi2,
+          borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
         ),
-        child: Row(
-          children: [
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: AppTheme.primary.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(10),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Semantics(
+                header: true,
+                child: Text('Finish your import',
+                    style: AppTheme.hankoSerif(height: 1.3)),
               ),
-              child: const Icon(Icons.download_rounded,
-                  color: AppTheme.primary, size: 18),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              const SizedBox(height: 4),
+              Text(
+                "Bring your list over from AniList or MyAnimeList whenever "
+                "you're ready.",
+                style: AppTheme.hankoSans(
+                    fontSize: AppTheme.hankoMetaSize,
+                    color: AppTheme.hankoStone,
+                    height: 1.4),
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
                 children: [
-                  Text(
-                    'Finish your import',
-                    style: AppTheme.sans(
-                        fontSize: 13,
-                        weight: FontWeight.w700,
-                        color: AppTheme.textPrimary),
+                  _tile(
+                    'Import',
+                    main: true,
+                    onTap: () => open(MaterialPageRoute(
+                        builder: (_) => const AnilistImportScreen())),
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    'Your AniList/MAL import is pending. We\'ll notify you when it\'s ready.',
-                    style: AppTheme.sans(
-                        fontSize: 11,
-                        color: AppTheme.textMuted,
-                        height: 1.4),
-                  ),
+                  _tile('Dismiss', main: false, onTap: onDismiss),
                 ],
               ),
-            ),
-            const SizedBox(width: 8),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                GestureDetector(
-                  onTap: () {
-                    open(
-                      MaterialPageRoute(
-                        builder: (_) => const AnilistImportScreen(),
-                      ),
-                    );
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 10, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: AppTheme.primary,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Text(
-                      'Go →',
-                      style: AppTheme.sans(
-                          fontSize: 11,
-                          weight: FontWeight.w700,
-                          color: Colors.white),
-                    ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// hanko.html's sheet buttons: the main tile in washi with a sumi label,
+  /// the quiet one with no fill and a washi label. 48 dp tall, square
+  /// corners, the 8% washi press.
+  static Widget _tile(String label,
+      {required bool main, required VoidCallback onTap}) {
+    return Semantics(
+      button: true,
+      child: Material(
+        color: main ? AppTheme.hankoWashi : Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+        ),
+        child: InkWell(
+          onTap: onTap,
+          splashFactory: NoSplash.splashFactory,
+          highlightColor: main ? const Color(0x14121110) : AppTheme.hankoPressWash,
+          hoverColor: main ? const Color(0x14121110) : AppTheme.hankoPressWash,
+          borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(
+                minHeight: AppTheme.hankoTouch, minWidth: AppTheme.hankoTouch),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 18),
+              child: Center(
+                widthFactor: 1,
+                heightFactor: 1,
+                child: Text(
+                  label,
+                  style: AppTheme.hankoSans(
+                    fontSize: 15,
+                    weight: main ? FontWeight.w600 : FontWeight.w500,
+                    color: main ? AppTheme.hankoSumi : AppTheme.hankoWashi,
+                    height: 1,
                   ),
                 ),
-                const SizedBox(height: 6),
-                GestureDetector(
-                  onTap: onDismiss,
-                  child: Text(
-                    'Dismiss',
-                    style: AppTheme.sans(
-                        fontSize: 10, color: AppTheme.textMuted),
-                  ),
-                ),
-              ],
+              ),
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -2656,6 +2847,70 @@ class _HankoCover extends StatelessWidget {
   }
 }
 
+/// One show in a Hanko poster strip (hanko.html's .mlt), as This season's
+/// strip draws it (upcoming_anime.dart): a 72 x 102 cover with square 2 px
+/// corners on sumi 3 while it loads, the title under it in Jost 500 12 on up
+/// to two lines, and the 8% washi press. The column widens as the title's
+/// text grows, so a long word still fits on one line at large text; the
+/// strip's height follows (heightFor). Opens the show through Home's _open.
+class _StripItem extends StatelessWidget {
+  const _StripItem({required this.anime, required this.open});
+
+  final Anime anime;
+  final _Open open;
+
+  static double _widthFor(TextScaler scaler) {
+    final grow = scaler.scale(12) / 12;
+    return grow > 1 ? 72 * grow : 72.0;
+  }
+
+  /// The cover, the gap and two lines of title at the reader's text size.
+  static double heightFor(TextScaler scaler) =>
+      _widthFor(scaler) * 102 / 72 + 6 + scaler.scale(12) * 1.25 * 2 + 4;
+
+  @override
+  Widget build(BuildContext context) {
+    final width = _widthFor(MediaQuery.textScalerOf(context));
+    final title = anime.titleEnglish ?? anime.title;
+    void openShow() => open(
+        MaterialPageRoute(builder: (_) => AnimeDetailScreen(anime: anime)));
+    // excludeSemantics drops the InkWell's own tap action with the rest of
+    // the subtree, so the node carries onTap itself.
+    return Semantics(
+      button: true,
+      label: title,
+      onTap: openShow,
+      excludeSemantics: true,
+      child: InkWell(
+        onTap: openShow,
+        splashFactory: NoSplash.splashFactory,
+        highlightColor: AppTheme.hankoPressWash,
+        hoverColor: AppTheme.hankoPressWash,
+        child: SizedBox(
+          width: width,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _HankoCover(
+                  url: anime.imageUrl, width: width, height: width * 102 / 72),
+              const SizedBox(height: 6),
+              Text(
+                title,
+                style: AppTheme.hankoSans(
+                    fontSize: AppTheme.hankoLabelSize,
+                    weight: FontWeight.w500,
+                    height: 1.25),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// A Shippori title on up to [maxLines] lines whose last line fades out at
 /// its end when the title runs longer, instead of an ellipsis: Shippori
 /// draws "…" as the centred Japanese ⋯ (AppTheme.hankoSerif). Flutter's own
@@ -2890,219 +3145,195 @@ class _ComingUpSection extends StatefulWidget {
 }
 
 class _ComingUpSectionState extends State<_ComingUpSection> {
-  static const _days = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
-
   @override
   Widget build(BuildContext context) {
     final items = widget.items;
 
+    // Hanko (question 46): no card around the block and no coral. The rows
+    // are drawn like Continue's: the cover, the title on up to two lines,
+    // a line of facts in Jost, and a 48 dp tile on the right, here the
+    // reminder bell, drawn as Detail's is.
     if (widget.loading) {
-      return Container(
-        padding: const EdgeInsets.all(28),
-        decoration: BoxDecoration(
-          color: AppTheme.surfaceLight,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppTheme.border),
-        ),
-        child: const Center(
+      // About one row tall, so the page moves little when the rows land.
+      return const SizedBox(
+        height: 64,
+        child: Center(
           child: SizedBox(
-            width: 22,
-            height: 22,
-            child: CircularProgressIndicator(strokeWidth: 2),
+            width: 20,
+            height: 20,
+            child: CircularProgressIndicator(
+                color: AppTheme.hankoWashi, strokeWidth: 1.5),
           ),
         ),
       );
     }
 
     if (items.isEmpty) {
-      return Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: AppTheme.surfaceLight,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppTheme.border),
-        ),
-        child: Center(
-          child: Text(
-            'Add anime to your watching list\nto see upcoming episodes',
-            textAlign: TextAlign.center,
-            style: AppTheme.sans(
-                fontSize: 13, color: AppTheme.textMuted, height: 1.5),
-          ),
+      // Says what the block is for, which is true whatever the reason it is
+      // empty: nothing in Watching, nothing scheduled, a MyAnimeList import,
+      // or a batch that didn't arrive. The old line asked everyone to add a
+      // show to Watching, including people whose shows simply aren't airing.
+      return Padding(
+        padding: const EdgeInsets.only(top: 4, bottom: 4),
+        child: Text(
+          "The next episodes of the shows you're watching appear here.",
+          style: AppTheme.hankoSans(
+              fontSize: AppTheme.hankoMetaSize,
+              color: AppTheme.hankoStone,
+              height: 1.4),
         ),
       );
     }
 
-    return Container(
-      decoration: BoxDecoration(
-        color: AppTheme.surfaceLight,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.border),
-      ),
-      child: Column(
-        children: items.asMap().entries.map((e) {
-          final i = e.key;
-          final item = e.value;
-          final date = item['date'] as DateTime;
-          final animeId = (item['animeId'] ?? '').toString();
-          final isOn = animeId.isNotEmpty && widget.reminderIds.contains(animeId);
-          return Column(
-            children: [
-              InkWell(
-                onTap: () => _openDetail(context, animeId),
-                borderRadius: BorderRadius.circular(12),
-                child: Padding(
-                padding: const EdgeInsets.all(14),
-                child: Row(
-                  children: [
-                    // Anime cover
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: SizedBox(
-                        width: 40,
-                        height: 56,
-                        child: (item['imageUrl'] as String).isNotEmpty
-                            ? CachedNetworkImage(
-                                imageUrl: item['imageUrl'] as String,
-                                fit: BoxFit.cover,
-                                errorWidget: (_, _, _) =>
-                                    Container(color: AppTheme.surfaceMid),
-                              )
-                            : Container(color: AppTheme.surfaceMid),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    // Date badge: 40 x 40, and taller when large text
-                    // needs it. Fixed at 40 it overflowed 7 px at 1.3x
-                    // (H2 QA §1c, before H2 as well as after).
-                    Container(
-                      constraints: const BoxConstraints(
-                          minWidth: 40, minHeight: 40),
-                      decoration: BoxDecoration(
-                        color: AppTheme.surfaceMid,
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: AppTheme.border),
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(
-                            _days[date.weekday - 1],
-                            style: AppTheme.mono(
-                                fontSize: 8,
-                                color: AppTheme.primary,
-                                letterSpacing: 0.5,
-                                weight: FontWeight.w600),
-                          ),
-                          Text(
-                            '${date.day}',
-                            style: AppTheme.sans(
-                                fontSize: 15,
-                                weight: FontWeight.w700,
-                                color: AppTheme.textPrimary),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    // Title + episode
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Two lines, fading where a cut remains (H2 QA W1):
-                          // in Shippori one line held about 16 characters,
-                          // "STEEL BALL RUN J⋯". Two lines fit beside the
-                          // 56 px cover without making the row taller.
-                          _FadeTitle(
-                            item['title'] as String,
-                            maxLines: 2,
-                            style: AppTheme.serif(
-                                fontSize: 13, weight: FontWeight.w600,
-                                height: 1.25),
-                          ),
-                          const SizedBox(height: 3),
-                          Text(
-                            'Ep ${item['episode']} · ${_formatTime(date)}',
-                            style: AppTheme.mono(
-                                fontSize: 10, color: AppTheme.textMuted),
-                          ),
-                        ],
-                      ),
-                    ),
-                    // Room for the fade before the bell: a cut title fades
-                    // out to its column's edge, which met the bell, where
-                    // the old "…" stopped short of it. 12, the row's gap.
-                    const SizedBox(width: 12),
-                    // Bell toggle
-                    GestureDetector(
-                      onTap: () {
-                        final newVal = !isOn;
-                        if (animeId.isNotEmpty) {
-                          widget.onToggleReminder(animeId, newVal);
-                          _saveReminder(context, animeId, newVal);
-                        }
-                        final animeTitle = item['title'] as String;
-                        final episode = item['episode'] as int;
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(newVal
-                                ? 'Reminder set for $animeTitle Ep $episode'
-                                : 'Reminder removed for $animeTitle Ep $episode'),
-                            backgroundColor: AppTheme.surfaceLight,
-                            behavior: SnackBarBehavior.floating,
-                            margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            duration: const Duration(seconds: 2),
-                          ),
-                        );
-                      },
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 250),
-                        curve: Curves.easeOut,
-                        width: 32,
-                        height: 32,
-                        decoration: BoxDecoration(
-                          color: isOn
-                              ? AppTheme.primary
-                              : AppTheme.surfaceMid,
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: isOn
-                                ? AppTheme.primary
-                                : AppTheme.border,
-                          ),
-                          boxShadow: isOn
-                              ? [BoxShadow(
-                                  color: AppTheme.primary.withValues(alpha: 0.4),
-                                  blurRadius: 8,
-                                  spreadRadius: 1,
-                                )]
-                              : [],
-                        ),
-                        child: Icon(
-                          isOn
-                              ? Icons.notifications_rounded
-                              : Icons.notifications_none_rounded,
-                          color: isOn ? Colors.white : AppTheme.textMuted,
-                          size: 14,
-                        ),
-                      ),
-                    ),
-                  ],
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final (i, item) in items.indexed) ...[
+          if (i > 0) const SizedBox(height: 16),
+          _buildRow(context, item),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildRow(BuildContext context, Map<String, dynamic> item) {
+    final date = item['date'] as DateTime;
+    final animeId = (item['animeId'] ?? '').toString();
+    final isOn = animeId.isNotEmpty && widget.reminderIds.contains(animeId);
+    final title = item['title'] as String;
+    final episode = item['episode'] as int;
+
+    return InkWell(
+      onTap: () => _openDetail(context, animeId),
+      splashFactory: NoSplash.splashFactory,
+      highlightColor: AppTheme.hankoPressWash,
+      hoverColor: AppTheme.hankoPressWash,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: _HankoCover(
+                url: item['imageUrl'] as String?, width: 42, height: 60),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _FadeTitle(
+                  title,
+                  maxLines: 2,
+                  style: AppTheme.hankoSerif(
+                      fontSize: AppTheme.hankoListTitleSize, height: 1.25),
                 ),
-              ),
-              ),
-              if (i < items.length - 1)
-                const Divider(height: 1, color: AppTheme.border),
-            ],
-          );
-        }).toList(),
+                const SizedBox(height: 7),
+                Text(
+                  'Episode $episode, ${_when(date)}',
+                  style: AppTheme.hankoSans(
+                    fontSize: AppTheme.hankoLabelSize,
+                    weight: FontWeight.w500,
+                    color: AppTheme.hankoStone,
+                    height: 1.3,
+                    tabular: true,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // Room for a cut title's fade before the bell (3dbd8fd).
+          const SizedBox(width: 12),
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: _bell(context, animeId, title, episode, isOn),
+          ),
+        ],
       ),
     );
+  }
+
+  /// The reminder bell, drawn as Detail's (Hanko H3): a 36 dp square in a
+  /// 48 dp target, an edge outline when off, washi with a sumi bell when on.
+  /// It does what the round coral bell did: the same callback, the same
+  /// write, the same message.
+  Widget _bell(BuildContext context, String animeId, String title,
+      int episode, bool isOn) {
+    return Semantics(
+      button: true,
+      toggled: isOn,
+      label: 'Remind me when episode $episode of $title airs',
+      excludeSemantics: true,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () {
+          final newVal = !isOn;
+          if (animeId.isNotEmpty) {
+            widget.onToggleReminder(animeId, newVal);
+            _saveReminder(context, animeId, newVal);
+          }
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(newVal
+                  ? 'Reminder set for $title Ep $episode'
+                  : 'Reminder removed for $title Ep $episode'),
+              backgroundColor: AppTheme.surfaceLight,
+              behavior: SnackBarBehavior.floating,
+              margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+              ),
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        },
+        child: SizedBox.square(
+          dimension: AppTheme.hankoTouch,
+          child: Center(
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 250),
+              curve: Curves.easeOut,
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: isOn ? AppTheme.hankoWashi : Colors.transparent,
+                borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+                border: isOn ? null : Border.all(color: AppTheme.hankoEdge),
+              ),
+              child: Icon(
+                isOn
+                    ? Icons.notifications_sharp
+                    : Icons.notifications_none_outlined,
+                color: isOn ? AppTheme.hankoSumi : AppTheme.hankoWashi,
+                size: 18,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// When the episode airs, in the lede's journal voice: "today at 13:00",
+  /// "tomorrow at 13:00", "Friday at 13:00" (2 to 6 days on), "13 Nov at
+  /// 13:00" (a week or more). By the device's own calendar and clock. Its
+  /// words are joined by no-break spaces, so when large text needs a second
+  /// line it starts after the episode and never leaves the time alone.
+  String _when(DateTime t) {
+    final now = DateTime.now();
+    final days = DateTime.utc(t.year, t.month, t.day)
+        .difference(DateTime.utc(now.year, now.month, now.day))
+        .inDays;
+    final String day;
+    if (days <= 0) {
+      day = 'today';
+    } else if (days == 1) {
+      day = 'tomorrow';
+    } else if (days < 7) {
+      day = DateFormat('EEEE').format(t);
+    } else {
+      day = DateFormat('d MMM').format(t);
+    }
+    return '$day at ${_formatTime(t)}'.replaceAll(' ', '\u00A0');
   }
 
   String _formatTime(DateTime dt) {

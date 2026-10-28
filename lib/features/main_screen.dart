@@ -82,7 +82,26 @@ class _MainScreenState extends State<MainScreen> {
 
   void _select(int i) => setState(() => _selectedIndex = i);
 
+  // Where you are, in Hanko (hanko.html's tab bar): the selected tab in washi
+  // with its filled icon, the others in stone. Coral marks only your own
+  // verdicts now, so it no longer also says "you are here" (one meaning per
+  // colour). The selected label keeps its heavier weight, so List, whose two
+  // icons are the same, isn't told apart by colour alone. Everything else
+  // the app theme sets for the bar's labels is kept.
+  WidgetStateProperty<TextStyle?> _barLabelStyle() {
+    final theme = NavigationBarTheme.of(context).labelTextStyle;
+    return WidgetStateProperty.resolveWith((states) {
+      final style = theme?.resolve(states);
+      if (!states.contains(WidgetState.selected)) return style;
+      return (style ?? const TextStyle()).copyWith(color: AppTheme.hankoWashi);
+    });
+  }
+
   Widget _buildRail() {
+    // The rail says it the same way. Its labels were washi whether selected
+    // or not, so on a wide window only an icon's fill showed where you were,
+    // and on List nothing did.
+    final label = Theme.of(context).textTheme.labelMedium ?? const TextStyle();
     return Container(
       decoration: const BoxDecoration(
         color: AppTheme.surface,
@@ -93,6 +112,11 @@ class _MainScreenState extends State<MainScreen> {
         onDestinationSelected: _select,
         backgroundColor: Colors.transparent,
         indicatorColor: Colors.transparent,
+        selectedIconTheme: const IconThemeData(color: AppTheme.hankoWashi),
+        unselectedIconTheme: const IconThemeData(color: AppTheme.hankoStone),
+        selectedLabelTextStyle: label.copyWith(
+            color: AppTheme.hankoWashi, fontWeight: FontWeight.w600),
+        unselectedLabelTextStyle: label.copyWith(color: AppTheme.hankoStone),
         labelType: NavigationRailLabelType.all,
         destinations: [
           for (final d in _destinations)
@@ -117,13 +141,14 @@ class _MainScreenState extends State<MainScreen> {
         onDestinationSelected: _select,
         backgroundColor: Colors.transparent,
         indicatorColor: Colors.transparent,
+        labelTextStyle: _barLabelStyle(),
         labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
         height: 64,
         destinations: [
           for (final d in _destinations)
             NavigationDestination(
               icon: Icon(d.icon),
-              selectedIcon: Icon(d.selectedIcon),
+              selectedIcon: Icon(d.selectedIcon, color: AppTheme.hankoWashi),
               label: d.label,
             ),
         ],
