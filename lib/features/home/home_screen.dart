@@ -3312,17 +3312,25 @@ class _ComingUpSectionState extends State<_ComingUpSection> {
 
   /// When the episode airs, in the lede's journal voice: "today at 13:00",
   /// "tomorrow at 13:00", "Friday at 13:00" (2 to 6 days on), "13 Nov at
-  /// 13:00" (a week or more). By the device's own calendar and clock.
+  /// 13:00" (a week or more). By the device's own calendar and clock. Its
+  /// words are joined by no-break spaces, so when large text needs a second
+  /// line it starts after the episode and never leaves the time alone.
   String _when(DateTime t) {
     final now = DateTime.now();
     final days = DateTime.utc(t.year, t.month, t.day)
         .difference(DateTime.utc(now.year, now.month, now.day))
         .inDays;
-    final time = _formatTime(t);
-    if (days <= 0) return 'today at $time';
-    if (days == 1) return 'tomorrow at $time';
-    if (days < 7) return '${DateFormat('EEEE').format(t)} at $time';
-    return '${DateFormat('d MMM').format(t)} at $time';
+    final String day;
+    if (days <= 0) {
+      day = 'today';
+    } else if (days == 1) {
+      day = 'tomorrow';
+    } else if (days < 7) {
+      day = DateFormat('EEEE').format(t);
+    } else {
+      day = DateFormat('d MMM').format(t);
+    }
+    return '$day at ${_formatTime(t)}'.replaceAll(' ', '\u00A0');
   }
 
   String _formatTime(DateTime dt) {
