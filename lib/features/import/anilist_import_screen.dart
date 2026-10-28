@@ -28,6 +28,13 @@ class _AnilistImportScreenState extends State<AnilistImportScreen> {
   int _total = 0;
   String _currentAnime = '';
 
+  // MyAnimeList import only. While its shows are being looked up on AniList
+  // (_matching), _lookedUp counts the ones done. _unmatched holds the titles
+  // AniList had no match for, which are left out of the import.
+  bool _matching = false;
+  int _lookedUp = 0;
+  List<String> _unmatched = const [];
+
   @override
   void dispose() {
     _usernameController.dispose();
@@ -73,6 +80,10 @@ class _AnilistImportScreenState extends State<AnilistImportScreen> {
       _imported = 0;
       _total = 0;
       _isDone = false;
+      _matching = false;
+      _lookedUp = 0;
+      _unmatched = const [];
+      _currentAnime = '';
     });
 
     try {
@@ -85,6 +96,7 @@ class _AnilistImportScreenState extends State<AnilistImportScreen> {
       if (mounted) {
         setState(() {
           _isLoading = false;
+          _matching = false;
           _error = e.toString().replaceAll('Exception: ', '');
         });
       }
@@ -97,7 +109,7 @@ class _AnilistImportScreenState extends State<AnilistImportScreen> {
       MediaListCollection(userName: $username, type: ANIME) {
         lists {
           entries {
-            status score progress
+            status score(format: POINT_10_DECIMAL) progress
             media {
               id title { romaji english }
               coverImage { large }
@@ -157,15 +169,25 @@ class _AnilistImportScreenState extends State<AnilistImportScreen> {
                 ? List<String>.from(media['genres']) : [],
           ),
           status: _mapAniListStatus(entry['status'] as String),
-          rating: (entry['score'] as num?) != null &&
-                  (entry['score'] as num) > 0
-              ? (entry['score'] as num).toDouble() : null,
+          rating: _halfStepRating(entry['score'] as num?),
           currentEpisode: entry['progress'] as int?,
         );
         if (mounted) setState(() => _imported++);
       }
     }
     if (mounted) setState(() { _isLoading = false; _isDone = true; });
+  }
+
+  // Hanj rates 1–10 in half steps (Detail's slider: 1.0 to 10.0, 18
+  // divisions). The query above asks for POINT_10_DECIMAL, so every score
+  // arrives on AniList's 0–10 decimal scale whatever format the list's
+  // owner uses (100-point, 10-point, 5-star, 3-smiley). Round it to the
+  // half step and keep it inside 1–10, since a 100-point 3 arrives as 0.3.
+  // 0 or absent means unrated, as before.
+  static double? _halfStepRating(num? score) {
+    if (score == null || score <= 0) return null;
+    final halfStep = (score * 2).round() / 2;
+    return halfStep.clamp(1.0, 10.0).toDouble();
   }
 
   Future<void> _importFromMAL(String username) async {
@@ -184,37 +206,66 @@ class _AnilistImportScreenState extends State<AnilistImportScreen> {
 
     final data = jsonDecode(response.body);
     final entries = data['data'] as List;
-    if (mounted) setState(() => _total = entries.length);
+    if (mounted) {
+      setState(() {
+        _total = entries.length;
+        _matching = true;
+      });
+    }
 
+    // A MyAnimeList id is not an AniList id, and every lookup in the app
+    // (Detail and its staff, airing and gallery requests, Home's airing
+    // batch) reads a list entry's id as an AniList id. So each show is
+    // looked up on AniList by its MyAnimeList id first, then stored under
+    // AniList's id with AniList's title and cover, as the AniList import
+    // stores it.
+    final aniList = await _aniListByMalId(entries
+        .map((entry) => (entry['node'] as Map)['id'])
+        .whereType<int>()
+        .toList());
+
+    // A show with no AniList match is left out, never stored under its
+    // MyAnimeList id, which the rest of the app would take for an AniList
+    // id. The done screen says how many were left out, and which.
+    final matched = <(Map<String, dynamic>, Map<String, dynamic>)>[];
+    final unmatched = <String>[];
     for (final entry in entries) {
       final node = entry['node'] as Map<String, dynamic>;
-      final listStatus = entry['list_status'] as Map<String, dynamic>;
-      final title = node['title'] as String? ?? 'Unknown';
+      final media = aniList[node['id']];
+      if (media == null) {
+        unmatched.add(node['title'] as String? ?? 'Unknown');
+      } else {
+        matched.add((media, entry['list_status'] as Map<String, dynamic>));
+      }
+    }
+    if (mounted) {
+      setState(() {
+        _matching = false;
+        _total = matched.length;
+        _unmatched = unmatched;
+      });
+    }
 
-      if (mounted) setState(() => _currentAnime = title);
-
-      // Get cover image
-      final mainPicture = node['main_picture'] as Map<String, dynamic>?;
-      final imageUrl = mainPicture?['large'] as String? ??
-          mainPicture?['medium'] as String?;
-
-      // Map genres
-      final genreList = node['genres'] as List?;
-      final genres = genreList
-              ?.map((g) => (g as Map)['name'] as String)
-              .toList() ??
-          [];
+    for (final (media, listStatus) in matched) {
+      if (mounted) {
+        setState(() => _currentAnime =
+          media['title']['english'] ?? media['title']['romaji'] ?? '');
+      }
 
       await _firestoreService.addAnimeToList(
         anime: Anime(
-          id: node['id'].toString(),
-          title: title,
-          imageUrl: imageUrl,
-          episodes: node['num_episodes'] as int?,
-          averageScore: node['mean'] != null
-              ? (node['mean'] as num).toDouble() * 10 : null,
-          genres: genres,
-          format: node['media_type'] as String?,
+          id: media['id'].toString(),
+          title: media['title']['romaji'] ?? 'Unknown',
+          titleEnglish: media['title']['english'],
+          imageUrl: media['coverImage']['large'],
+          averageScore: (media['averageScore'] as num?)?.toDouble(),
+          episodes: media['episodes'] as int?,
+          status: media['status'],
+          seasonYear: media['seasonYear'] as int?,
+          season: media['season'],
+          format: media['format'],
+          genres: media['genres'] != null
+              ? List<String>.from(media['genres']) : [],
         ),
         status: _mapMALStatus(listStatus['status'] as String),
         rating: listStatus['score'] != null && listStatus['score'] != 0
@@ -225,6 +276,109 @@ class _AnilistImportScreenState extends State<AnilistImportScreen> {
     }
     if (mounted) setState(() { _isLoading = false; _isDone = true; });
   }
+
+  static const _malLookupQuery = r'''
+  query ($ids: [Int], $page: Int) {
+    Page(page: $page, perPage: 50) {
+      pageInfo { hasNextPage }
+      media(idMal_in: $ids, type: ANIME) {
+        id idMal title { romaji english }
+        coverImage { large }
+        episodes averageScore genres
+        format status seasonYear season
+      }
+    }
+  }
+  ''';
+
+  // AniList's entry for each MyAnimeList id, found through AniList's own
+  // idMal link. 50 ids go in each request (AniList's page size limit), so
+  // a list costs about one request per 50 shows. An id missing from the
+  // result has no match on AniList. Every lookup finishes before anything
+  // is written, so a failed one leaves the user's list as it was.
+  Future<Map<int, Map<String, dynamic>>> _aniListByMalId(
+      List<int> malIds) async {
+    final found = <int, Map<String, dynamic>>{};
+    for (var start = 0; start < malIds.length; start += 50) {
+      final end = start + 50 < malIds.length ? start + 50 : malIds.length;
+      final batch = malIds.sublist(start, end);
+      // AniList reports hasNextPage whenever a page comes back full, so a
+      // batch stops as soon as all its ids are found: a further page could
+      // only repeat one. It goes on only when a full page still leaves ids
+      // unfound, which takes two AniList entries sharing a MyAnimeList id.
+      // Capped, so a response that never stops saying hasNextPage can't
+      // loop forever.
+      for (var page = 1; page <= 3; page++) {
+        final result = await _malLookupPage(batch, page);
+        for (final m in result['media'] as List) {
+          final media = m as Map<String, dynamic>;
+          final malId = media['idMal'] as int?;
+          // For a shared id, keep the first entry: AniList returns them in
+          // id order, so that's the older one.
+          if (malId != null) found.putIfAbsent(malId, () => media);
+        }
+        if (result['pageInfo']?['hasNextPage'] != true ||
+            batch.every(found.containsKey)) {
+          break;
+        }
+      }
+      if (mounted) setState(() => _lookedUp = end);
+    }
+    return found;
+  }
+
+  // One lookup request, built on PulseService._query: the shared throttle,
+  // a 15 s timeout, noteStatus and noteLimits on every response, and
+  // backoff on a 429. A 429 is retried once its backoff has passed, up to
+  // three attempts in all, as AnilistService._post does. Any other failure
+  // ends the import.
+  Future<Map<String, dynamic>> _malLookupPage(List<int> malIds, int page) async {
+    for (var attempt = 1;; attempt++) {
+      await AnilistService.throttle();
+      final http.Response response;
+      try {
+        response = await http
+            .post(
+              Uri.parse('https://graphql.anilist.co'),
+              headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'User-Agent': 'Hanj/1.0',
+              },
+              body: jsonEncode({
+                'query': _malLookupQuery,
+                'variables': {'ids': malIds, 'page': page},
+              }),
+            )
+            .timeout(const Duration(seconds: 15));
+      } catch (_) {
+        AnilistService.noteStatus(0, 'import');
+        throw Exception(_lookupFailed(0));
+      }
+      AnilistService.noteStatus(response.statusCode, 'import');
+      AnilistService.noteLimits(response.headers);
+      if (response.statusCode == 429) {
+        AnilistService.backoff(
+            int.tryParse(response.headers['retry-after'] ?? '') ?? 10);
+        if (attempt < 3) continue;
+      }
+      if (response.statusCode == 200) {
+        try {
+          final result = (jsonDecode(response.body) as Map)['data']['Page'];
+          if (result is Map<String, dynamic> && result['media'] is List) {
+            return result;
+          }
+        } catch (_) {}
+      }
+      throw Exception(_lookupFailed(response.statusCode));
+    }
+  }
+
+  // Says what happened (nothing was written) and then the app's usual
+  // per-status line, which names no cause the app can't see.
+  static String _lookupFailed(int status) =>
+      'Nothing was imported: your shows couldn\'t be looked up on AniList. '
+      '${AnilistService.messageFor(status)}';
 
   String _mapAniListStatus(String s) {
     switch (s) {
@@ -388,10 +542,14 @@ class _AnilistImportScreenState extends State<AnilistImportScreen> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text('Importing...',
+                          Text(_matching
+                                  ? 'Matching with AniList...'
+                                  : 'Importing...',
                               style: AppTheme.sans(
                                   fontSize: 13, color: AppTheme.textSecondary)),
-                          Text('$_imported / $_total',
+                          Text(_matching
+                                  ? '$_lookedUp / $_total'
+                                  : '$_imported / $_total',
                               style: AppTheme.sans(
                                   fontSize: 13,
                                   weight: FontWeight.w600,
@@ -402,7 +560,9 @@ class _AnilistImportScreenState extends State<AnilistImportScreen> {
                       ClipRRect(
                         borderRadius: BorderRadius.circular(2),
                         child: LinearProgressIndicator(
-                          value: _total > 0 ? _imported / _total : null,
+                          value: _total > 0
+                              ? (_matching ? _lookedUp : _imported) / _total
+                              : null,
                           backgroundColor: AppTheme.border,
                           valueColor: const AlwaysStoppedAnimation<Color>(
                               AppTheme.primary),
@@ -471,6 +631,28 @@ class _AnilistImportScreenState extends State<AnilistImportScreen> {
                     Text('$_imported anime imported successfully',
                         style: AppTheme.sans(
                             fontSize: 15, color: AppTheme.textSecondary)),
+                    if (_unmatched.isNotEmpty) ...[
+                      const SizedBox(height: 16),
+                      Text(
+                          _unmatched.length == 1
+                              ? '1 show couldn\'t be matched on AniList, '
+                                  'so it wasn\'t imported:'
+                              : '${_unmatched.length} shows couldn\'t be '
+                                  'matched on AniList, so they weren\'t '
+                                  'imported:',
+                          textAlign: TextAlign.center,
+                          style: AppTheme.sans(
+                              fontSize: 13, color: AppTheme.textSecondary)),
+                      const SizedBox(height: 6),
+                      Text(
+                          _unmatched.length > 10
+                              ? '${_unmatched.take(10).join(' · ')} '
+                                  '· and ${_unmatched.length - 10} more'
+                              : _unmatched.join(' · '),
+                          textAlign: TextAlign.center,
+                          style: AppTheme.mono(
+                              fontSize: 11, color: AppTheme.textMuted)),
+                    ],
                     const SizedBox(height: 40),
                     SizedBox(
                       width: double.infinity,
