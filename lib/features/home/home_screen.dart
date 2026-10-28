@@ -1389,31 +1389,36 @@ class _HomeScreenState extends State<HomeScreen> {
         lastWatched != null &&
         ratedAt.difference(lastWatched).inMinutes.abs() <= 6 * 60;
 
-    // A short title stays on one line, as the mockup's no-break span does;
-    // a long one may wrap.
-    final title = rawTitle.length <= 18
-        ? rawTitle.replaceAll(' ', ' ')
-        : rawTitle;
     final when = _whenRated(ratedAt);
-    // "sealed it" and the seal stay together: a no-break space before the
-    // seal, as the mockup's &nbsp; does.
-    final String sentence;
-    if (finishedThen && episodes != null && episodes >= 2) {
-      sentence = '$when you finished $title, all ${_inWords(episodes)} '
-          'episodes, and sealed it ';
-    } else if (finishedThen) {
-      sentence = '$when you finished $title and sealed it ';
-    } else {
-      sentence = '$when you sealed $title ';
+    // The sentence, with three ways of keeping words together: a short
+    // title on one line ([wholeTitle], as the mockup's no-break span does),
+    // "you" with its verb ([bindVerb]), and always "sealed it" with the
+    // seal, a no-break space before it as the mockup's &nbsp; does.
+    String compose({required bool wholeTitle, bool bindVerb = false}) {
+      final title =
+          wholeTitle ? rawTitle.replaceAll(' ', ' ') : rawTitle;
+      final you = bindVerb ? 'you ' : 'you ';
+      if (finishedThen && episodes != null && episodes >= 2) {
+        return '$when ${you}finished $title, all ${_inWords(episodes)} '
+            'episodes, and sealed it ';
+      } else if (finishedThen) {
+        return '$when ${you}finished $title and sealed it ';
+      }
+      return '$when ${you}sealed $title ';
     }
 
     final scaler = MediaQuery.textScalerOf(context);
     final score = HankoSeal.formatScore(rating);
+    // The seal sits inline at the sentence's size: 32 x 28 with 14 px
+    // numerals at 22 px, as the mockup's .seal--in. Its box follows the
+    // text size setting; HankoSeal shrinks the numerals to fit.
+    final seal = Size(scaler.scale(32), scaler.scale(28));
     // excludeSemantics drops the InkWell's own tap action with the rest of
     // the subtree, so the node carries onTap itself.
     return Semantics(
       button: true,
-      label: '${sentence.replaceAll(' ', ' ').trim()} $score',
+      label: '${compose(wholeTitle: false).replaceAll(' ', ' ').trim()} '
+          '$score',
       onTap: () => _openEntry(entry),
       onTapHint: 'open ${rawTitle.trim()}',
       excludeSemantics: true,
@@ -1424,34 +1429,88 @@ class _HomeScreenState extends State<HomeScreen> {
         hoverColor: AppTheme.hankoPressWash,
         child: ConstrainedBox(
           constraints: const BoxConstraints(minHeight: AppTheme.hankoTouch),
-          child: Text.rich(
-            TextSpan(
-              style: style,
-              children: [
-                TextSpan(text: sentence),
-                // The seal sits inline at the sentence's size: 32 x 28 with
-                // 14 px numerals at 22 px, as the mockup's .seal--in. Its box
-                // follows the text size setting; HankoSeal shrinks the
-                // numerals to fit.
-                WidgetSpan(
-                  alignment: PlaceholderAlignment.middle,
-                  child: HankoSeal.score(
-                    rating,
-                    size: scaler.scale(28),
-                    width: scaler.scale(32),
-                    fontSize: 14,
+          child: LayoutBuilder(builder: (context, constraints) {
+            // Q54: a short title kept whole can leave the word before it
+            // alone on a line. At 1.3x "On Monday you / finished / Cowboy
+            // Bebop, all ..." left "finished" by itself. So the first of
+            // these that leaves no word alone wins: the title whole; the
+            // title whole with "you" kept by its verb; the title free to
+            // break. A long title may always break, as before.
+            final candidates = rawTitle.length <= 18
+                ? [
+                    compose(wholeTitle: true),
+                    compose(wholeTitle: true, bindVerb: true),
+                    compose(wholeTitle: false),
+                  ]
+                : [compose(wholeTitle: false)];
+            final sentence = candidates.firstWhere(
+                (s) => !_leavesAWordAlone(
+                    s, style, scaler, seal, constraints.maxWidth),
+                orElse: () => candidates.first);
+            return Text.rich(
+              TextSpan(
+                style: style,
+                children: [
+                  TextSpan(text: sentence),
+                  WidgetSpan(
+                    alignment: PlaceholderAlignment.middle,
+                    child: HankoSeal.score(
+                      rating,
+                      size: seal.height,
+                      width: seal.width,
+                      fontSize: 14,
+                    ),
                   ),
-                ),
-              ],
-            ),
-          ),
+                ],
+              ),
+            );
+          }),
         ),
       ),
     );
   }
+
+  /// Whether [sentence], followed by the seal and laid out at [maxWidth],
+  /// leaves one word alone on a line before the last. Words joined by a
+  /// no-break space count as more than one word, so a short title on a
+  /// line of its own is fine. Each line's first character comes from x = 0
+  /// on that line, as _FadeTitle finds it (getLineBoundary misreports a
+  /// line's start on the web).
+  bool _leavesAWordAlone(String sentence, TextStyle style, TextScaler scaler,
+      Size seal, double maxWidth) {
+    final painter = TextPainter(
+      text: TextSpan(style: style, children: [
+        TextSpan(text: sentence),
+        const WidgetSpan(
+            alignment: PlaceholderAlignment.middle, child: SizedBox.shrink()),
+      ]),
+      textDirection: Directionality.of(context),
+      textScaler: scaler,
+    )
+      ..setPlaceholderDimensions([
+        PlaceholderDimensions(
+            size: seal, alignment: PlaceholderAlignment.middle),
+      ])
+      ..layout(maxWidth: maxWidth);
+    final lines = painter.computeLineMetrics();
+    int startOf(LineMetrics line) => painter
+        .getPositionForOffset(Offset(0, line.baseline - line.ascent / 2))
+        .offset;
+    var alone = false;
+    for (var i = 0; i + 1 < lines.length && !alone; i++) {
+      final start = startOf(lines[i]).clamp(0, sentence.length);
+      final end = startOf(lines[i + 1]).clamp(start, sentence.length);
+      final words = sentence.substring(start, end).trim();
+      alone = words.isNotEmpty &&
+          !words.contains(' ') &&
+          !words.contains(' ');
+    }
+    painter.dispose();
+    return alone;
+  }
 }
 
-/// A Hanko secondary tile with a word on it ("Retry"): sumi 3 with a 1 px
+// A Hanko secondary tile with a word on it ("Retry"): sumi 3 with a 1 px
 /// edge outline, Jost 600 15 washi, 48 dp tall.
 class _TextTile extends StatelessWidget {
   const _TextTile({required this.label, required this.onTap});
