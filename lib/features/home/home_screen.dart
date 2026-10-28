@@ -953,13 +953,16 @@ class _HomeScreenState extends State<HomeScreen> {
             // fallback (OfflineCacheService.getSeasonal), inside the throttle.
             if (_seasonAnime.isNotEmpty) ...[
               // The one hairline the screen has: it sets the season's chart
-              // off from your own record above it.
+              // off from your own record above it. 28 above it, as hanko.html
+              // has: with Up next hidden it follows Tonight's watch, whose
+              // mood tile it otherwise met 8 px below (question 45). Up next's
+              // strip used to supply the rest of the gap.
               SliverToBoxAdapter(
                 key: const ValueKey('home-chart-rule'),
                 child: Container(
                   height: 1,
-                  margin: const EdgeInsets.fromLTRB(
-                      AppTheme.hankoGutter, 8, AppTheme.hankoGutter, 0),
+                  margin: EdgeInsets.fromLTRB(AppTheme.hankoGutter,
+                      _showUpNext ? 8 : 28, AppTheme.hankoGutter, 0),
                   color: AppTheme.hankoHairline,
                 ),
               ),
