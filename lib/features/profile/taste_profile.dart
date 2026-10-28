@@ -791,6 +791,24 @@ class _ViewingPill extends StatelessWidget {
 // Compact card for Profile Screen
 // ─────────────────────────────────────────────────────────────
 
+/// Your taste on Profile, in Hanko (question 57): one of the quiet rows
+/// below Profile's hairline, drawn as that screen's rows are. Your archetype
+/// is its title, in washi; "Your taste:" and your top three genres are its
+/// line, in stone; a chevron; and it opens the full taste profile, as the
+/// card did.
+///
+/// What changed from the card, and why:
+///  - no coral. In Hanko coral marks only your verdicts (your seal, your
+///    ratings), and an archetype is a reading of your list, not a verdict.
+///    The coral "YOUR TASTE" label measured 3.61:1 on the card's tinted box
+///    and the genre line 4.30:1, both under AA's 4.5:1 for small text. Washi
+///    on sumi measures 15.3:1 and stone 6.9:1.
+///  - no emoji. Hanko draws icons, never emoji (DESIGN.md §5.4), so the
+///    archetype's name carries it. The full profile still shows the emoji.
+///  - while your list is read, the row already stands, titled "Your taste",
+///    so nothing below it moves when it fills in. The card showed a coral
+///    spinner in an 80 px box that the result then replaced.
+/// The card as it was is kept behind [_TasteProfileCardState._preHankoCard].
 class TasteProfileCard extends StatefulWidget {
   const TasteProfileCard({super.key});
 
@@ -801,6 +819,10 @@ class TasteProfileCard extends StatefulWidget {
 class _TasteProfileCardState extends State<TasteProfileCard> {
   TasteProfile? _profile;
   bool _loading = true;
+
+  /// The card before Hanko: a coral-tinted box with the archetype's emoji
+  /// and a coral "YOUR TASTE" label. Kept, switched off, as design history.
+  static const bool _preHankoCard = false;
 
   @override
   void initState() {
@@ -823,6 +845,83 @@ class _TasteProfileCardState extends State<TasteProfileCard> {
 
   @override
   Widget build(BuildContext context) {
+    if (_preHankoCard) return _buildPreHanko(context);
+
+    final profile = _profile;
+    // Nothing to read (an empty list, or the read failed): no row, as the
+    // card showed nothing.
+    if (!_loading && profile == null) return const SizedBox.shrink();
+
+    final genres = profile == null
+        ? const <String>[]
+        : profile.topGenres.take(3).map((g) => g.name).toList();
+    final title = profile?.archetype ?? 'Your taste';
+    final String? line = profile == null
+        ? null
+        : genres.isEmpty
+            ? 'Your taste'
+            : 'Your taste: ${_inList(genres)}';
+
+    // Tappable while it loads too: the taste profile reads your list itself.
+    return Semantics(
+      button: true,
+      label: line == null ? title : '$title. $line',
+      excludeSemantics: true,
+      child: InkWell(
+        onTap: () => Navigator.push(context,
+            MaterialPageRoute(builder: (_) => const TasteProfileScreen())),
+        splashFactory: NoSplash.splashFactory,
+        highlightColor: AppTheme.hankoPressWash,
+        hoverColor: AppTheme.hankoPressWash,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 56),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Row(
+              children: [
+                const Icon(Icons.psychology_sharp,
+                    size: 22, color: AppTheme.hankoStone),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(title,
+                          style: AppTheme.hankoSans(
+                              fontSize: 15,
+                              weight: FontWeight.w500,
+                              height: 1.25)),
+                      if (line != null) ...[
+                        const SizedBox(height: 2),
+                        Text(line,
+                            style: AppTheme.hankoSans(
+                              fontSize: AppTheme.hankoMetaSize,
+                              color: AppTheme.hankoStone,
+                              height: 1.3,
+                            )),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                const Icon(Icons.chevron_right_sharp,
+                    size: 20, color: AppTheme.hankoStone),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// "A", "A and B", "A, B and C", as Profile writes its lists.
+  static String _inList(List<String> items) => items.length < 2
+      ? items.join()
+      : '${items.sublist(0, items.length - 1).join(', ')} and ${items.last}';
+
+  /// The card as it was before Hanko ([_preHankoCard]).
+  Widget _buildPreHanko(BuildContext context) {
     if (_loading) {
       return const SizedBox(height: 80,
         child: Center(child: CircularProgressIndicator(

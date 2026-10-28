@@ -402,6 +402,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
               // opened. Grouped by space alone, no headings: your record in
               // more depth; what you collect and play; then other people
               // and the season.
+              //
+              // Your taste leads them (question 57): the Taste card, now one
+              // of these rows (taste_profile.dart), since taste comes first
+              // on Profile (question 2). It reads your list itself, so it
+              // shows once the list has titles, as the card did.
               SliverToBoxAdapter(
                 key: const ValueKey('profile-section-c'),
                 child: _column(Padding(
@@ -415,6 +420,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         child: SizedBox(height: 1),
                       ),
                       const SizedBox(height: 10),
+                      if (totalAnime > 0) ...[
+                        const TasteProfileCard(
+                            key: ValueKey('profile-taste')),
+                        const SizedBox(height: _rowGap),
+                      ],
                       _EntryRow(
                         icon: Icons.bar_chart_sharp,
                         title: 'Advanced Stats',
@@ -475,22 +485,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 )),
               ),
 
-              // ── Anime Taste Profile ──────────────────────
-              if (totalAnime > 0)
-                SliverToBoxAdapter(
-                  key: const ValueKey('profile-stats-header'),
-                  child: _column(const Padding(
-                    padding: EdgeInsets.fromLTRB(20, 16, 20, 0),
-                    child: TasteProfileCard(),
-                  )),
-                ),
-
               // ── Founder Card (first 50 users only) ───────
               // Moved below the record (stage H5): the Founder pill stays
               // under the name, and the full card no longer pushes the
-              // record out of the first screen.
-              // Until status is known, hold the card's footprint so it fills
-              // in rather than appearing and pushing everything below it down.
+              // record out of the first screen. Collapsed to a short note,
+              // the page's last word (question 57, founder_card.dart).
+              // Until status is known the placeholder stands in; in Hanko it
+              // reserves nothing, since nothing sits below the note.
               if (!_founderResolved)
                 SliverToBoxAdapter(
                   key: const ValueKey('profile-founder'),
