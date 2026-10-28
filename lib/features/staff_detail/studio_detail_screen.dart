@@ -109,7 +109,9 @@ class _StudioDetailScreenState extends State<StudioDetailScreen> {
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 12, vertical: 6),
                             decoration: BoxDecoration(
-                              color: AppTheme.primary.withValues(alpha: 0.2),
+                              // 12% coral, so the coral count reads at 4.93:1
+                              // on sumi (AA). A 20% fill measured 4.38:1.
+                              color: AppTheme.primary.withValues(alpha: 0.12),
                               borderRadius: BorderRadius.circular(20),
                             ),
                             child: Text(
