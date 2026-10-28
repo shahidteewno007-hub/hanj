@@ -1128,11 +1128,17 @@ class _HomeScreenState extends State<HomeScreen> {
             // sliver's element gets handed a recommendation row instead,
             // unmounting UpcomingAnimeRow and remounting it further down. That
             // cost a second identical AniList request on every Home load.
-            const SliverToBoxAdapter(
-              key: ValueKey('upcoming-this-season'),
+            //
+            // It reads the same request as the season chart, so it starts
+            // after the chart's shows instead of repeating them (question
+            // 44). No request is added.
+            SliverToBoxAdapter(
+              key: const ValueKey('upcoming-this-season'),
               child: Padding(
-                padding: EdgeInsets.only(top: 24),
-                child: UpcomingAnimeRow(),
+                padding: const EdgeInsets.only(top: 24),
+                child: UpcomingAnimeRow(skip: {
+                  for (final anime in _seasonAnime.take(_chartLength)) anime.id,
+                }),
               ),
             ),
 
@@ -1143,8 +1149,12 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  /// The chart's rows: five, as Hanko draws them. This season's strip
+  /// starts after the same shows (question 44).
+  static const int _chartLength = 5;
+
   /// Shared by the chart's SliverList and SliverGrid so the two branches
-  /// cannot drift in what they build. Five rows, as Hanko draws them.
+  /// cannot drift in what they build.
   SliverChildBuilderDelegate _chartDelegate() {
     return SliverChildBuilderDelegate(
       (context, index) {
@@ -1163,7 +1173,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         );
       },
-      childCount: _seasonAnime.length.clamp(0, 5),
+      childCount: _seasonAnime.length.clamp(0, _chartLength),
     );
   }
 

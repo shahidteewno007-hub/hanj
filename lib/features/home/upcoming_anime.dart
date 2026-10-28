@@ -460,7 +460,15 @@ class _UpcomingCard extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────
 
 class UpcomingAnimeRow extends StatefulWidget {
-  const UpcomingAnimeRow({super.key});
+  const UpcomingAnimeRow({super.key, this.skip = const {}});
+
+  /// The shows Home's season chart already lists, by AniList id. The chart
+  /// and this strip read the same request, the season's most popular shows
+  /// (Hanko H4 f), so the strip leaves those out and starts after them
+  /// (question 44). Matched by id, not by position: the chart's copy can be
+  /// up to an hour older than this one and ranked a little differently, and
+  /// when the chart couldn't load at all, nothing is skipped.
+  final Set<String> skip;
 
   @override
   State<UpcomingAnimeRow> createState() => _UpcomingAnimeRowState();
@@ -502,7 +510,9 @@ class _UpcomingAnimeRowState extends State<UpcomingAnimeRow> {
       final results = await _anilist.getSeasonal(
           _currentSeason(), DateTime.now().year);
       if (results.isNotEmpty) {
-        _cache = results.take(10).toList(); // update cache only on success
+        // The whole page (up to 20): the strip shows ten once the chart's
+        // shows are left out (widget.skip), so ten alone could fall short.
+        _cache = List.of(results); // update cache only on success
         if (mounted) setState(() { _anime = _cache; _isLoading = false; });
       } else {
         // Empty response — keep existing data, just stop spinner
@@ -593,7 +603,12 @@ class _UpcomingAnimeRowState extends State<UpcomingAnimeRow> {
       );
     }
 
-    if (_anime.isEmpty) return const SizedBox.shrink();
+    // The season after the chart's shows (widget.skip), ten at most. A short
+    // season that the chart already shows in full leaves nothing, and the
+    // block is left out, as when the request failed with nothing saved.
+    final shown =
+        _anime.where((a) => !widget.skip.contains(a.id)).take(10).toList();
+    if (shown.isEmpty) return const SizedBox.shrink();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -630,10 +645,10 @@ class _UpcomingAnimeRowState extends State<UpcomingAnimeRow> {
             scrollDirection: Axis.horizontal,
             padding:
                 const EdgeInsets.symmetric(horizontal: AppTheme.hankoGutter),
-            itemCount: _anime.length,
+            itemCount: shown.length,
             separatorBuilder: (_, _) => const SizedBox(width: 10),
             itemBuilder: (_, i) {
-              final anime = _anime[i];
+              final anime = shown[i];
               final title = anime.titleEnglish ?? anime.title;
               void open() => Navigator.push(context,
                   MaterialPageRoute(
