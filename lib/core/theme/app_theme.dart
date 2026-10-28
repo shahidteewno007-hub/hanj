@@ -414,9 +414,14 @@ class AppTheme {
         elevation: 0,
         scrolledUnderElevation: 0,
         centerTitle: false,
+        // 20, the size the other screens' titles already set (Stats, Ranking
+        // Cards, Notifications, Import library). Shippori sets about 9% wider
+        // than Playfair, so at 22 "Anime Calendar" needed 227.9 px of its
+        // 224 at 1.3× text and was cut; at 20 it takes about what Playfair
+        // took at 22.
         titleTextStyle: shipporiMincho(
           color: textPrimary,
-          fontSize: 22,
+          fontSize: 20,
           fontWeight: FontWeight.w700,
         ),
         iconTheme: const IconThemeData(color: textPrimary),
@@ -594,7 +599,7 @@ class AppTheme {
         scrolledUnderElevation: 0,
         centerTitle: false,
         titleTextStyle: shipporiMincho(
-          color: lightText, fontSize: 22, fontWeight: FontWeight.w700),
+          color: lightText, fontSize: 20, fontWeight: FontWeight.w700), // as the dark theme's
         iconTheme: const IconThemeData(color: lightText),
       ),
       navigationBarTheme: NavigationBarThemeData(
