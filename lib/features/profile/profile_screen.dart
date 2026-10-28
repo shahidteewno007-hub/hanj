@@ -312,13 +312,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       }
                     },
                     itemBuilder: (_) => [
-                      _menuItem('cards', Icons.grid_view_rounded, 'Ranking Cards'),
-                      _menuItem('stats', Icons.bar_chart_rounded, 'Advanced Stats'),
-                      // 'Your Wrapped' is hidden during beta — a yearly recap
-                      // has no meaningful data to show mid-year.
-                      _menuItem('feed', Icons.dynamic_feed_rounded, 'Activity Feed'),
-                      _menuItem('calendar', Icons.calendar_month_rounded, 'Anime Calendar'),
-                      _menuItem('social', Icons.people_rounded, 'Social'),
+                      // The identity tools are rows on the page now (question
+                      // 55); see _identityToolsInMenu.
+                      if (_identityToolsInMenu) ...[
+                        _menuItem('cards', Icons.grid_view_rounded, 'Ranking Cards'),
+                        _menuItem('stats', Icons.bar_chart_rounded, 'Advanced Stats'),
+                        // 'Your Wrapped' is hidden during beta — a yearly recap
+                        // has no meaningful data to show mid-year.
+                        _menuItem('feed', Icons.dynamic_feed_rounded, 'Activity Feed'),
+                        _menuItem('calendar', Icons.calendar_month_rounded, 'Anime Calendar'),
+                        _menuItem('social', Icons.people_rounded, 'Social'),
+                      ],
                       _menuItem('notifications', Icons.notifications_outlined, 'Notifications'),
                       const PopupMenuDivider(),
                       _menuItem('more', Icons.more_horiz_rounded, 'More'),
@@ -390,9 +394,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   child: _column(_buildShelves(shelves)),
                 ),
 
-              // ── Hanj Cards ───────────────────────────────
-              // The ways on from Profile, as quiet Hanko rows below the
-              // screen's one hairline, which closes your record.
+              // ── The ways on from Profile ─────────────────
+              // Quiet Hanko rows below the screen's one hairline, which
+              // closes your record. Hanj Cards and Cadre came first (stage
+              // H5); the identity tools joined them from the ⋮ menu
+              // (question 55), each opening exactly what its menu entry
+              // opened. Grouped by space alone, no headings: your record in
+              // more depth; what you collect and play; then other people
+              // and the season.
               SliverToBoxAdapter(
                 key: const ValueKey('profile-section-c'),
                 child: _column(Padding(
@@ -407,29 +416,61 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                       const SizedBox(height: 10),
                       _EntryRow(
+                        icon: Icons.bar_chart_sharp,
+                        title: 'Advanced Stats',
+                        line: 'See your list in charts and numbers',
+                        onTap: () => Navigator.push(context, MaterialPageRoute(
+                            builder: (_) => const StatsScreen())),
+                      ),
+                      const SizedBox(height: _rowGap),
+                      _EntryRow(
+                        icon: Icons.dynamic_feed_sharp,
+                        title: 'Activity Feed',
+                        line: 'Look back at everything you\'ve logged',
+                        onTap: () => Navigator.push(context, MaterialPageRoute(
+                            builder: (_) => const ActivityFeedScreen())),
+                      ),
+                      const SizedBox(height: _groupGap),
+                      _EntryRow(
                         icon: Icons.style_sharp,
                         title: 'Hanj Cards',
                         line: 'Collect rare cards by watching anime',
                         onTap: () => Navigator.push(context, MaterialPageRoute(
                             builder: (_) => const CardCollectionScreen())),
                       ),
+                      const SizedBox(height: _rowGap),
+                      _EntryRow(
+                        icon: Icons.grid_view_sharp,
+                        title: 'Ranking Cards',
+                        line: 'Save your Top 9 and taste as images',
+                        onTap: () => Navigator.push(context, MaterialPageRoute(
+                            builder: (_) => const RankingCardsScreen())),
+                      ),
+                      const SizedBox(height: _rowGap),
+                      _EntryRow(
+                        icon: Icons.local_fire_department_sharp,
+                        title: 'Cadre',
+                        line: 'Draft a deck from any cast and clash',
+                        onTap: () => Navigator.push(context, MaterialPageRoute(
+                            builder: (_) => const CadreLobbyScreen())),
+                      ),
+                      const SizedBox(height: _groupGap),
+                      _EntryRow(
+                        icon: Icons.people_sharp,
+                        title: 'Social',
+                        line: 'Compare your taste with a friend\'s',
+                        onTap: () => Navigator.push(context, MaterialPageRoute(
+                            builder: (_) => const SocialScreen())),
+                      ),
+                      const SizedBox(height: _rowGap),
+                      _EntryRow(
+                        icon: Icons.calendar_month_sharp,
+                        title: 'Anime Calendar',
+                        line: 'See what airs next, day by day',
+                        onTap: () => Navigator.push(context, MaterialPageRoute(
+                            builder: (_) => const AnimeCalendarScreen())),
+                      ),
                     ],
-                  ),
-                )),
-              ),
-
-              // ── Cadre ────────────────────────────────────
-              SliverToBoxAdapter(
-                key: const ValueKey('profile-section-d'),
-                child: _column(Padding(
-                  padding: const EdgeInsets.fromLTRB(
-                      AppTheme.hankoGutter, 4, AppTheme.hankoGutter, 0),
-                  child: _EntryRow(
-                    icon: Icons.local_fire_department_sharp,
-                    title: 'Cadre',
-                    line: 'Draft a deck from any cast and clash',
-                    onTap: () => Navigator.push(context, MaterialPageRoute(
-                        builder: (_) => const CadreLobbyScreen())),
                   ),
                 )),
               ),
@@ -469,6 +510,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
     );
   }
+
+  /// Ranking Cards, Advanced Stats, Activity Feed, Anime Calendar and Social
+  /// sat behind the unlabelled ⋮ menu, where most people never find them.
+  /// Since question 55 they are rows on the page instead, and the menu keeps
+  /// Notifications, More and Sign Out. Their entries and routes are kept
+  /// here, switched off, so the menu's history stays readable; switching
+  /// this on would list each tool twice.
+  static const bool _identityToolsInMenu = false;
+
+  /// Space between the rows below the hairline: 4 between rows in a group,
+  /// as H5 set it, and 16 between groups, so the groups read without
+  /// headings.
+  static const double _rowGap = 4;
+  static const double _groupGap = 16;
 
   // Hanko's press: an 8% washi wash, no ripple, square corners.
   static const ButtonStyle _hankoIconButtonStyle = ButtonStyle(
@@ -1453,9 +1508,10 @@ class _Cover extends StatelessWidget {
   }
 }
 
-/// A way on from Profile (Hanj Cards, Cadre) as a quiet Hanko row: an
-/// icon in stone, the name in Jost 15 500 washi, a line in Jost 13 stone and
-/// a chevron. No box, no glow, no colour of its own: coral now means your
+/// A way on from Profile (Hanj Cards, Cadre and, since question 55, the
+/// identity tools from the ⋮ menu) as a quiet Hanko row: an icon in stone,
+/// the name in Jost 15 500 washi, a line in Jost 13 stone and a chevron.
+/// No box, no glow, no colour of its own: coral now means your
 /// seal, so neither the gold nor the coral banner it replaces survives. At
 /// least 56 px tall, pressed with the 8% wash.
 class _EntryRow extends StatelessWidget {
