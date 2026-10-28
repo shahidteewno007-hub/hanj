@@ -246,8 +246,16 @@ class _ShareCanvas extends StatelessWidget {
     this.collectorHandle,
   });
 
+  /// The image people post, drawn at one size like a printed card (question
+  /// 52): the reader's text size stays out of it, as it stays out of the
+  /// card's face. Its name box is a fixed 62 px, so at 1.3x a two-line name
+  /// ran 10 px past it, and the exported image would have changed with the
+  /// phone's settings. At 1.0 nothing changes.
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) =>
+      MediaQuery.withNoTextScaling(child: _canvas());
+
+  Widget _canvas() {
     final glow = accentColor;
 
     return Container(

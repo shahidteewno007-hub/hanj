@@ -96,8 +96,18 @@ class HanjCard extends StatelessWidget {
     this.height = kHeight,
   });
 
+  /// A Hanj Card is drawn like a printed card, at one size (question 52):
+  /// the reader's text size never reaches inside its face. Its type is
+  /// already sized to the face (w * 0.09 for the name, w * 0.045 for the
+  /// description, the 7.5 px serial), so at 1.3x the legendary issue row ran
+  /// up to 26 px past the face, and the seasonal and legendary panels up to
+  /// 25 px past their bottoms. At 1.0 nothing changes. The detail sheet says
+  /// the card's name again under the face, in text that does grow.
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) =>
+      MediaQuery.withNoTextScaling(child: _face());
+
+  Widget _face() {
     if (!isUnlocked) return _LockedCard(card: card, width: width, height: height);
 
     Widget card0;
@@ -416,7 +426,8 @@ class _LegendaryCard extends StatelessWidget {
     // 158 px card. One line at the face's size, scaled down when it must be,
     // but never below 80% of that size; a longer name ("Ghost of Seasons
     // Past") takes two lines at 80%, and the description gives up its third
-    // line for it. Larger reader text grows the name only where it has room.
+    // line for it. The reader's text size no longer reaches the face
+    // (HanjCard draws it at one size, question 52), so the scaler is 1.0.
     final nameStyle = AppTheme.shipporiMincho(fontSize: w * 0.10, color: gold, fontWeight: FontWeight.w700, height: 1.1);
     final nameRoom = w - 28 - w * 0.13; // the panel's padding and the kanji's column
     final scaler = MediaQuery.maybeTextScalerOf(context) ?? TextScaler.noScaling;
