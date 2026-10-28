@@ -58,6 +58,11 @@ class _HomeScreenState extends State<HomeScreen> {
   // in build(); don't set this to true while the pick shows the same list.
   static const bool _showUpNext = false;
 
+  // "Because you loved" draws Hanko's poster strip (question 46). The
+  // classic 140 px cards (_TrendingCard), with their rank and coral NEW
+  // badges, are kept intact and switched off here.
+  static const bool _classicRecs = false;
+
   // ── The airing batch, lifted out of Coming up (Stage 2 item a) ──
   // One AniList request for every show you're watching: its next episode
   // and when it airs. Coming up lists the soonest three, and each Continue
@@ -1092,32 +1097,37 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
 
             // ── Recommendations ──────────────────────────────
+            // "Because you loved" in Hanko (question 46): the eyebrow becomes
+            // a sentence heading in Mincho, as the other sections are, and
+            // its aside says what the row is: a genre search, highest AniList
+            // score first (_loadRecommendations), not AniList's own
+            // recommendations. The covers are a poster strip like This
+            // season's. Same request, same shows, same taps.
             for (final row in _recommendationRows) ...[
               SliverToBoxAdapter(
                 key: ValueKey('rec-header-${row['genre']}'),
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 44, 20, 16),
+                  padding: const EdgeInsets.fromLTRB(
+                      AppTheme.hankoGutter, 24, AppTheme.hankoGutter, 12),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        'BECAUSE YOU LOVED',
-                        style: AppTheme.mono(
-                            fontSize: 10,
-                            color: AppTheme.textMuted,
-                            letterSpacing: 1.5),
+                      // Two lines, fading where a cut remains (H2 QA N3).
+                      Semantics(
+                        header: true,
+                        child: _FadeTitle(
+                          'Because you loved ${row['sourceTitle']}',
+                          maxLines: 2,
+                          style: AppTheme.hankoSerif(height: 1.3),
+                        ),
                       ),
-                      const SizedBox(height: 4),
-                      // Two lines, fading where a cut remains (H2 QA N3):
-                      // Shippori is about 8% wider than Playfair was, so one
-                      // line cut "The Apothecary Diaries Season 3" with
-                      // Shippori's centred ⋯.
-                      _FadeTitle(
-                        row['sourceTitle'] as String,
-                        maxLines: 2,
-                        style: AppTheme.serif(
-                            fontSize: 20, weight: FontWeight.w600,
-                            height: 1.25),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${row['genre']}, by AniList score',
+                        style: AppTheme.hankoSans(
+                            fontSize: AppTheme.hankoLabelSize,
+                            color: AppTheme.hankoStone,
+                            height: 1.3),
                       ),
                     ],
                   ),
@@ -1126,19 +1136,32 @@ class _HomeScreenState extends State<HomeScreen> {
               SliverToBoxAdapter(
                 key: ValueKey('rec-row-${row['genre']}'),
                 child: SizedBox(
-                  height: 260,
+                  height: _classicRecs
+                      ? 260
+                      : _StripItem.heightFor(MediaQuery.textScalerOf(context)),
                   child: ListView.builder(
                     scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: AppTheme.hankoGutter),
                     physics: const BouncingScrollPhysics(),
                     itemCount: (row['anime'] as List<Anime>).length,
-                    itemBuilder: (context, index) => _TrendingCard(
-                      key: ValueKey(
-                          'rec-${row['genre']}-${(row['anime'] as List<Anime>)[index].id}'),
-                      anime: (row['anime'] as List<Anime>)[index],
-                      rank: index + 1,
-                      open: _open,
-                    ),
+                    itemBuilder: (context, index) {
+                      final anime = (row['anime'] as List<Anime>)[index];
+                      final key = ValueKey('rec-${row['genre']}-${anime.id}');
+                      // The classic card is kept, switched off.
+                      return _classicRecs
+                          ? _TrendingCard(
+                              key: key,
+                              anime: anime,
+                              rank: index + 1,
+                              open: _open,
+                            )
+                          : Padding(
+                              key: key,
+                              padding: const EdgeInsets.only(right: 10),
+                              child: _StripItem(anime: anime, open: _open),
+                            );
+                    },
                   ),
                 ),
               ),
@@ -2684,6 +2707,70 @@ class _HankoCover extends StatelessWidget {
                   fit: BoxFit.cover,
                   errorWidget: (_, _, _) => const SizedBox.expand(),
                 ),
+        ),
+      ),
+    );
+  }
+}
+
+/// One show in a Hanko poster strip (hanko.html's .mlt), as This season's
+/// strip draws it (upcoming_anime.dart): a 72 x 102 cover with square 2 px
+/// corners on sumi 3 while it loads, the title under it in Jost 500 12 on up
+/// to two lines, and the 8% washi press. The column widens as the title's
+/// text grows, so a long word still fits on one line at large text; the
+/// strip's height follows (heightFor). Opens the show through Home's _open.
+class _StripItem extends StatelessWidget {
+  const _StripItem({required this.anime, required this.open});
+
+  final Anime anime;
+  final _Open open;
+
+  static double _widthFor(TextScaler scaler) {
+    final grow = scaler.scale(12) / 12;
+    return grow > 1 ? 72 * grow : 72.0;
+  }
+
+  /// The cover, the gap and two lines of title at the reader's text size.
+  static double heightFor(TextScaler scaler) =>
+      _widthFor(scaler) * 102 / 72 + 6 + scaler.scale(12) * 1.25 * 2 + 4;
+
+  @override
+  Widget build(BuildContext context) {
+    final width = _widthFor(MediaQuery.textScalerOf(context));
+    final title = anime.titleEnglish ?? anime.title;
+    void openShow() => open(
+        MaterialPageRoute(builder: (_) => AnimeDetailScreen(anime: anime)));
+    // excludeSemantics drops the InkWell's own tap action with the rest of
+    // the subtree, so the node carries onTap itself.
+    return Semantics(
+      button: true,
+      label: title,
+      onTap: openShow,
+      excludeSemantics: true,
+      child: InkWell(
+        onTap: openShow,
+        splashFactory: NoSplash.splashFactory,
+        highlightColor: AppTheme.hankoPressWash,
+        hoverColor: AppTheme.hankoPressWash,
+        child: SizedBox(
+          width: width,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _HankoCover(
+                  url: anime.imageUrl, width: width, height: width * 102 / 72),
+              const SizedBox(height: 6),
+              Text(
+                title,
+                style: AppTheme.hankoSans(
+                    fontSize: AppTheme.hankoLabelSize,
+                    weight: FontWeight.w500,
+                    height: 1.25),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
         ),
       ),
     );
