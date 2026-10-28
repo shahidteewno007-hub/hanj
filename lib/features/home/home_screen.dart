@@ -3031,6 +3031,10 @@ class _ComingUpSectionState extends State<_ComingUpSection> {
                         ],
                       ),
                     ),
+                    // Room for the fade before the bell: a cut title fades
+                    // out to its column's edge, which met the bell, where
+                    // the old "…" stopped short of it. 12, the row's gap.
+                    const SizedBox(width: 12),
                     // Bell toggle
                     GestureDetector(
                       onTap: () {
