@@ -31,7 +31,7 @@ class FounderCard extends StatelessWidget {
     final joined = status.joinedAt;
     final who = number == null
         ? 'One of the first fifty members of Hanj'
-        : 'No. $number of the first fifty members of Hanj';
+        : 'No.\u00A0$number of the first fifty members of Hanj';
     final when = joined == null ? '' : ', joined ${_formatDay(joined)}';
 
     return Padding(
@@ -71,13 +71,16 @@ class FounderCard extends StatelessWidget {
     );
   }
 
-  /// "14 March 2025".
+  /// "14 March 2025", held together by no-break spaces so a date never
+  /// splits across lines ("joined 14 / March 2025" on the emulator run). A
+  /// date is short enough to fit the note's column on a 360 px phone even at
+  /// 2.0x text, so the no-break spaces never force a break inside a word.
   static String _formatDay(DateTime d) {
     const months = [
       'January', 'February', 'March', 'April', 'May', 'June', 'July',
       'August', 'September', 'October', 'November', 'December',
     ];
-    return '${d.day} ${months[d.month - 1]} ${d.year}';
+    return '${d.day}\u00A0${months[d.month - 1]}\u00A0${d.year}';
   }
 
   /// The full card as it was before Hanko ([_preHankoFounder]).
