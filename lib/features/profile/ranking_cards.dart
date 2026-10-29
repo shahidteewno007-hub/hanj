@@ -79,13 +79,25 @@ class _RankingCardsScreenState extends State<RankingCardsScreen>
     }
   }
 
+  /// Your nine highest ratings on Hanj's 1–10 scale (question 96), as
+  /// Profile's favourites and Advanced Stats count them. An imported rating
+  /// on another scale (D20: a 70 from a 100-point list) ranked first here,
+  /// above every 10; it's left out, and [_offScale] says how many were.
   List<_AnimeEntry> get _top9 {
     final rated = _allAnime
-        .where((a) => a.rating != null && a.imageUrl != null)
+        .where((a) =>
+            a.rating != null &&
+            _Top9Place._onScale(a.rating!) &&
+            a.imageUrl != null)
         .toList()
       ..sort((a, b) => b.rating!.compareTo(a.rating!));
     return rated.take(9).toList();
   }
+
+  /// How many of your ratings are on another scale (imported).
+  int get _offScale => _allAnime
+      .where((a) => a.rating != null && !_Top9Place._onScale(a.rating!))
+      .length;
 
   List<_AnimeEntry> get _monthlyAnime {
     final now = DateTime.now();
@@ -162,7 +174,8 @@ class _RankingCardsScreenState extends State<RankingCardsScreen>
           : TabBarView(
               controller: _tabController,
               children: [
-                _Top9Tab(anime: _top9, username: _username),
+                _Top9Tab(
+                    anime: _top9, username: _username, offScale: _offScale),
                 _TasteCardTab(
                     allAnime: _allAnime,
                     genreMap: _genreMap,
@@ -183,26 +196,44 @@ class _RankingCardsScreenState extends State<RankingCardsScreen>
 class _Top9Tab extends StatelessWidget {
   final List<_AnimeEntry> anime;
   final String username;
+
+  /// Imported ratings on another scale, which the Top 9 leaves out.
+  final int offScale;
   final _repaintKey = GlobalKey();
 
-  _Top9Tab({required this.anime, required this.username});
+  _Top9Tab({
+    required this.anime,
+    required this.username,
+    required this.offScale,
+  });
+
+  /// What the Top 9 leaves out, said under it (question 96) in Profile's
+  /// words for its seal register. Shown on the page, never in the image.
+  String? get _note => offScale == 0
+      ? null
+      : offScale == 1
+          ? '1 imported rating is on another scale, so it isn\'t ranked\u00A0here.'
+          : '$offScale imported ratings are on another scale, so they '
+              'aren\'t ranked\u00A0here.';
 
   @override
   Widget build(BuildContext context) {
     if (_RankingCardsScreenState._preHanko) return _buildPreHanko();
     if (anime.isEmpty) {
-      // What the card is for, true whether the list is empty or couldn't be
-      // read: the screen can't tell those apart.
-      return const _HankoEmpty(
+      // What the card is for. With only imported ratings, the note says why
+      // none of them is here.
+      return _HankoEmpty(
         title: 'Your Top 9',
         line: 'Your nine highest-rated shows, as one image to save and '
             'share. It\'s made from the ratings on your list.',
+        note: _note,
       );
     }
     return _PrintPage(
       repaintKey: _repaintKey,
       filename: 'hanj_top9',
       card: _Top9Print(anime: anime, username: username),
+      note: _note,
     );
   }
 
@@ -421,11 +452,20 @@ class _TasteCardTab extends StatelessWidget {
     return sorted.take(5).map((e) => e.key).toList();
   }
 
-  double get _avgRating {
-    final rated =
-        allAnime.where((a) => a.rating != null).map((a) => a.rating!).toList();
-    if (rated.isEmpty) return 0;
-    return rated.reduce((a, b) => a + b) / rated.length;
+  /// Your average rating as the Taste page gives it (question 96): only
+  /// ratings on Hanj's 1–10 scale, so an imported 70 no longer makes it
+  /// 28.2. 0 with none, which the card prints as a dash.
+  double get _avgRating => taste?.avgRating ?? 0;
+
+  /// What the average leaves out, said under the card, never in its image.
+  String? get _note {
+    final n = taste?.offScaleRatings ?? 0;
+    return n == 0
+        ? null
+        : n == 1
+            ? '1 imported rating is on another scale, so it isn\'t in the\u00A0average.'
+            : '$n imported ratings are on another scale, so they aren\'t in '
+                'the\u00A0average.';
   }
 
   int get _completed =>
@@ -463,6 +503,7 @@ class _TasteCardTab extends StatelessWidget {
         completed: _completed,
         total: allAnime.length,
       ),
+      note: _note,
     );
   }
 
@@ -1147,14 +1188,17 @@ class _EmptyState extends StatelessWidget {
 /// A tab with nothing to print yet: what its card is for, in a few words,
 /// at the top of the column where the card would stand. It names no reason,
 /// since the screen can't tell an empty list from one it couldn't read.
+/// [note], if given, says what the card leaves out (question 96).
 class _HankoEmpty extends StatelessWidget {
-  const _HankoEmpty({required this.title, required this.line});
+  const _HankoEmpty({required this.title, required this.line, this.note});
 
   final String title;
   final String line;
+  final String? note;
 
   @override
   Widget build(BuildContext context) {
+    final note = this.note;
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(
           AppTheme.hankoGutter, 28, AppTheme.hankoGutter, 32),
@@ -1172,12 +1216,32 @@ class _HankoEmpty extends StatelessWidget {
               Text(line,
                   style: AppTheme.hankoSans(
                       color: AppTheme.hankoStone, height: 1.5)),
+              if (note != null) ...[
+                const SizedBox(height: 12),
+                _PrintNote(note),
+              ],
             ],
           ),
         ),
       ),
     );
   }
+}
+
+/// A line under a print, in Jost 13 stone, as Profile writes the line under
+/// its seal register. It's part of the page, not the print, so it answers
+/// the reader's text size and never reaches the saved image.
+class _PrintNote extends StatelessWidget {
+  const _PrintNote(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Text(text,
+      style: AppTheme.hankoSans(
+          fontSize: AppTheme.hankoMetaSize,
+          color: AppTheme.hankoStone,
+          height: 1.4));
 }
 
 /// A tab's page: the card as a print, then Save card under it, in a column
@@ -1188,20 +1252,24 @@ class _HankoEmpty extends StatelessWidget {
 ///
 /// A hairline trims the print on screen, so you can see where the image
 /// ends. It sits outside the RepaintBoundary that Save card renders, so the
-/// saved image has none.
+/// saved image has none. [note], if given, sits under the print, outside it
+/// too (question 96).
 class _PrintPage extends StatelessWidget {
   const _PrintPage({
     required this.repaintKey,
     required this.filename,
     required this.card,
+    this.note,
   });
 
   final GlobalKey repaintKey;
   final String filename;
   final Widget card;
+  final String? note;
 
   @override
   Widget build(BuildContext context) {
+    final note = this.note;
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(
           AppTheme.hankoGutter, 24, AppTheme.hankoGutter, 32),
@@ -1222,6 +1290,10 @@ class _PrintPage extends StatelessWidget {
                   child: RepaintBoundary(key: repaintKey, child: card),
                 ),
               ),
+              if (note != null) ...[
+                const SizedBox(height: 12),
+                _PrintNote(note),
+              ],
               const SizedBox(height: 20),
               _SaveButton(repaintKey: repaintKey, filename: filename),
             ],
@@ -1410,9 +1482,10 @@ class _PrintCover extends StatelessWidget {
 /// verdict is the seal.
 ///
 /// A rating imported on another scale (D20, such as a 70 from a 100-point
-/// list) keeps its place, as before, but gets no seal: "70.0" in a seal
-/// would say what Hanj's 1-10 scale can't. With fewer than nine, the rest
-/// are Hanko's dashed "not yet" places.
+/// list) isn't ranked at all (question 96; the screen's _top9): it took
+/// first place above every 10, without a seal, since "70.0" in a seal would
+/// say what Hanj's 1-10 scale can't. With fewer than nine, the rest are
+/// Hanko's dashed "not yet" places.
 class _Top9Print extends StatelessWidget {
   const _Top9Print({required this.anime, required this.username});
 

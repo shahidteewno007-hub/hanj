@@ -203,15 +203,34 @@ class _TasteProfileScreenState extends State<TasteProfileScreen>
               children: [
                 Expanded(
                     child: _HankoFigure('${p.totalWatched}', 'completed')),
+                // With no rating on the 1–10 scale there is nothing to
+                // average: a dash, as the Taste Card prints it, not "0.0".
                 Expanded(
                     child: _HankoFigure(
-                        p.avgRating.toStringAsFixed(1), 'average rating')),
+                        p.avgRating > 0 ? p.avgRating.toStringAsFixed(1) : '—',
+                        'average rating')),
                 Expanded(
                     child: _HankoFigure(
                         '${(p.completionRate * 100).round()}%',
                         'completion rate')),
               ],
             ),
+            // Under the average, what it leaves out (question 96), in
+            // Profile's words for its seal register.
+            if (p.offScaleRatings > 0) ...[
+              const SizedBox(height: 12),
+              Text(
+                p.offScaleRatings == 1
+                    ? '1 imported rating is on another scale, so it isn\'t '
+                        'in the\u00A0average.'
+                    : '${p.offScaleRatings} imported ratings are on another '
+                        'scale, so they aren\'t in the\u00A0average.',
+                style: AppTheme.hankoSans(
+                    fontSize: AppTheme.hankoMetaSize,
+                    color: AppTheme.hankoStone,
+                    height: 1.4),
+              ),
+            ],
             const SizedBox(height: 36),
             const _HankoHead('Your traits'),
             for (final t in p.traits) _HankoTrait(trait: t),
@@ -280,10 +299,18 @@ class _TasteProfileScreenState extends State<TasteProfileScreen>
 // Taste Analyzer — pure logic
 // ─────────────────────────────────────────────────────────────
 
+/// Whether a stored rating lands on Hanj's 1–10 scale at its nearest half
+/// step, as the seal register places it (Profile's rule, stage H5).
+bool _onScale(double rating) {
+  final step = (rating * 2).round() / 2;
+  return step >= 1 && step <= 10;
+}
+
 class TasteAnalyzer {
   static TasteProfile analyze(List<QueryDocumentSnapshot> docs) {
     final Map<String, int> genreCounts   = {};
     final List<double>      ratings      = [];
+    int offScale     = 0;
     int completed    = 0;
     int dropped      = 0;
     int watching     = 0;
@@ -301,7 +328,18 @@ class TasteAnalyzer {
         genreCounts[g] = (genreCounts[g] ?? 0) + 1;
       }
 
-      if (rating != null) ratings.add(rating);
+      // Only ratings on Hanj's 1–10 scale are averaged (question 96), as
+      // Profile and Advanced Stats count them. An imported rating on another
+      // scale (D20: a 70 from a 100-point list) would pull the average far
+      // off: one 70 beside an 8 and a 6.5 made it 28.2, and gave "High
+      // standards". Those are counted instead, so the page can say so.
+      if (rating != null) {
+        if (_onScale(rating)) {
+          ratings.add(rating);
+        } else {
+          offScale++;
+        }
+      }
       if (status == 'COMPLETED') { completed++; totalEps += eps; }
       if (status == 'DROPPED')   dropped++;
       if (status == 'WATCHING')  watching++;
@@ -345,6 +383,7 @@ class TasteAnalyzer {
       traits:         traits,
       topGenres:      sortedGenres,
       avgRating:      avgRating,
+      offScaleRatings: offScale,
       completionRate: completionRate,
       dropRate:       dropRate,
       totalWatched:   completed,
@@ -516,7 +555,12 @@ class TasteProfile {
   final String archetypeDesc;
   final List<Trait> traits;
   final List<GenreData> topGenres;
+
+  /// The average of your ratings on Hanj's 1–10 scale; 0 with none.
   final double avgRating;
+
+  /// Imported ratings on another scale, left out of [avgRating].
+  final int offScaleRatings;
   final double completionRate;
   final double dropRate;
   final int totalWatched;
@@ -531,6 +575,7 @@ class TasteProfile {
     required this.traits,
     required this.topGenres,
     required this.avgRating,
+    required this.offScaleRatings,
     required this.completionRate,
     required this.dropRate,
     required this.totalWatched,
