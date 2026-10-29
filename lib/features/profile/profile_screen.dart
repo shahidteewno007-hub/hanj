@@ -1172,11 +1172,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ? 'You\'ve logged ${count(titles, 'title', 'titles')}.'
             : 'You\'ve logged ${count(titles, 'title', 'titles')} and '
                 'watched ${count(episodes, 'episode', 'episodes')}.';
+    // Each number keeps its word (question 89): a no-break space joins
+    // them, so a line never ends on a number whose word went on to the
+    // next line ("1 / dropped.").
     final statuses = [
-      if (watching > 0) '${n.format(watching)} watching',
-      if (completed > 0) '${n.format(completed)} completed',
-      if (planned > 0) '${n.format(planned)} on your watchlist',
-      if (dropped > 0) '${n.format(dropped)} dropped',
+      if (watching > 0) '${n.format(watching)}\u00A0watching',
+      if (completed > 0) '${n.format(completed)}\u00A0completed',
+      if (planned > 0) '${n.format(planned)}\u00A0on your watchlist',
+      if (dropped > 0) '${n.format(dropped)}\u00A0dropped',
     ];
     final quiet = AppTheme.hankoSans(
       fontSize: AppTheme.hankoMetaSize,
