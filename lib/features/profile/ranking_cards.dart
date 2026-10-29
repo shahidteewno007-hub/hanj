@@ -10,6 +10,7 @@ import 'package:intl/intl.dart';
 import '../../widgets/gal_mobile.dart' if (dart.library.html) '../../widgets/gal_stub.dart' as galSaver;
 
 import '../../core/theme/app_theme.dart';
+import '../../widgets/hanko_seal.dart';
 
 // ─────────────────────────────────────────────────────────────
 // Ranking Cards Screen
@@ -101,30 +102,57 @@ class _RankingCardsScreenState extends State<RankingCardsScreen>
     return map;
   }
 
+  /// The three cards as they were before Hanko (coral, gold, silver and
+  /// bronze, gradients, a glow and rounded corners), kept switched off as
+  /// design history. Each tab's old body is its _buildPreHanko().
+  static const bool _preHanko = false;
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppTheme.background,
       appBar: AppBar(
-        title: Text('Ranking Cards',
-            style: AppTheme.serif(fontSize: 20, weight: FontWeight.w700)),
+        leading: IconButton(
+          tooltip: 'Back',
+          icon: const Icon(Icons.arrow_back_sharp),
+          color: AppTheme.hankoWashi,
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: Text('Ranking Cards', style: AppTheme.hankoSerif(fontSize: 20)),
+        // Detail's tabs in Hanko: Jost 13, washi and w600 for the card you're
+        // on, stone for the others, a washi rule under it and the screen's
+        // one hairline below. Coral is only your seal now, so it marks no
+        // tab. Each label stays on one line and shrinks to its tab when large
+        // text would cut it ("Monthly Aura" at 1.3x), as Detail's do.
         bottom: TabBar(
           controller: _tabController,
-          indicatorColor: AppTheme.primary,
-          labelStyle: AppTheme.mono(
-              fontSize: 10, color: AppTheme.primary, letterSpacing: 1),
-          unselectedLabelStyle: AppTheme.mono(
-              fontSize: 10, color: AppTheme.textMuted, letterSpacing: 1),
-          tabs: const [
-            Tab(text: 'TOP 9'),
-            Tab(text: 'TASTE CARD'),
-            Tab(text: 'MONTHLY AURA'),
+          labelColor: AppTheme.hankoWashi,
+          unselectedLabelColor: AppTheme.hankoStone,
+          labelStyle: AppTheme.hankoSans(
+              fontSize: 13, weight: FontWeight.w600),
+          unselectedLabelStyle: AppTheme.hankoSans(fontSize: 13),
+          indicator: const UnderlineTabIndicator(
+            borderSide: BorderSide(color: AppTheme.hankoWashi, width: 2),
+          ),
+          indicatorSize: TabBarIndicatorSize.tab,
+          dividerColor: AppTheme.hankoHairline,
+          splashFactory: NoSplash.splashFactory,
+          overlayColor: const WidgetStatePropertyAll(AppTheme.hankoPressWash),
+          labelPadding: const EdgeInsets.symmetric(horizontal: 8),
+          tabs: [
+            for (final label in const ['Top 9', 'Taste Card', 'Monthly Aura'])
+              Tab(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(label, maxLines: 1, softWrap: false),
+                ),
+              ),
           ],
         ),
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator(
-              color: AppTheme.primary, strokeWidth: 2))
+              color: AppTheme.hankoWashi, strokeWidth: 2))
           : TabBarView(
               controller: _tabController,
               children: [
@@ -154,6 +182,25 @@ class _Top9Tab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (_RankingCardsScreenState._preHanko) return _buildPreHanko();
+    if (anime.isEmpty) {
+      // What the card is for, true whether the list is empty or couldn't be
+      // read: the screen can't tell those apart.
+      return const _HankoEmpty(
+        title: 'Your Top 9',
+        line: 'Your nine highest-rated shows, as one image to save and '
+            'share. It\'s made from the ratings on your list.',
+      );
+    }
+    return _PrintPage(
+      repaintKey: _repaintKey,
+      filename: 'hanj_top9',
+      card: _Top9Print(anime: anime, username: username),
+    );
+  }
+
+  /// The tab before Hanko (_RankingCardsScreenState._preHanko).
+  Widget _buildPreHanko() {
     if (anime.isEmpty) {
       return _EmptyState(
         message: 'Rate at least 9 anime to generate your Top 9 grid',
@@ -385,6 +432,30 @@ class _TasteCardTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (_RankingCardsScreenState._preHanko) return _buildPreHanko();
+    if (allAnime.isEmpty) {
+      return const _HankoEmpty(
+        title: 'Your taste card',
+        line: 'Your archetype, your numbers and your top genres, as one '
+            'image to save and share. It\'s made from the shows on your list.',
+      );
+    }
+    return _PrintPage(
+      repaintKey: _repaintKey,
+      filename: 'hanj_taste_card',
+      card: _TastePrint(
+        username: username,
+        archetype: _archetype,
+        topGenres: _topGenres,
+        avgRating: _avgRating,
+        completed: _completed,
+        total: allAnime.length,
+      ),
+    );
+  }
+
+  /// The tab before Hanko (_RankingCardsScreenState._preHanko).
+  Widget _buildPreHanko() {
     if (allAnime.isEmpty) {
       return _EmptyState(
         message: 'Add anime to your list to generate your taste card',
@@ -665,7 +736,22 @@ class _MonthlyAuraTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final month = DateFormat('MMMM yyyy').format(DateTime.now());
+    if (_RankingCardsScreenState._preHanko) return _buildPreHanko(month);
+    return _PrintPage(
+      repaintKey: _repaintKey,
+      filename: 'hanj_monthly_aura',
+      card: _AuraPrint(
+        username: username,
+        month: month,
+        anime: anime,
+        auraColor: _auraColor,
+        auraName: _auraName,
+      ),
+    );
+  }
 
+  /// The tab before Hanko (_RankingCardsScreenState._preHanko).
+  Widget _buildPreHanko(String month) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
       child: Column(
@@ -908,43 +994,89 @@ class _SaveButtonState extends State<_SaveButton> {
       final bytes = byteData.buffer.asUint8List();
 
       if (kIsWeb) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('✅ Right-click the card to save on web'),
-              backgroundColor: Color(0xFF4CAF50),
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
-        }
+        if (mounted) _say('On the web, right-click the card to save it.');
       } else {
         await galSaver.saveImageToGallery(bytes, 'hanj_card_${DateTime.now().millisecondsSinceEpoch}');
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('✅ Card saved to gallery!'),
-              backgroundColor: Color(0xFF4CAF50),
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
-        }
+        if (mounted) _say('Saved to your gallery.');
       }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('❌ Failed to save card'),
-            backgroundColor: Color(0xFFE8624A),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
+      if (mounted) _say('Couldn\'t save the card.');
     }
     if (mounted) setState(() => _saving = false);
   }
 
+  /// A note in the theme's own snack bar, washi words on a sumi step. The
+  /// notes were green for done and coral for failed, with ✅ and ❌: in
+  /// Hanko coral means only your seal, and the words already say which.
+  void _say(String text) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(text), behavior: SnackBarBehavior.floating),
+    );
+  }
+
+  /// The screen's one main action, as Hanko draws it (Detail's
+  /// _HankoMainAction): a washi tile with sumi words, 15.34:1, 2 px corners,
+  /// pressed with a sumi wash and no ripple. While the card is saved, a sumi
+  /// spinner takes the icon's place and taps are ignored.
   @override
   Widget build(BuildContext context) {
+    if (_RankingCardsScreenState._preHanko) return _buildPreHanko();
+    final label = _saving ? 'Saving…' : 'Save card';
+    return Semantics(
+      button: true,
+      enabled: !_saving,
+      label: label,
+      excludeSemantics: true,
+      child: Material(
+        color: AppTheme.hankoWashi,
+        borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+        child: InkWell(
+          onTap: _saving ? null : _save,
+          borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+          splashFactory: NoSplash.splashFactory,
+          highlightColor: AppTheme.hankoSumi.withValues(alpha: 0.08),
+          hoverColor: AppTheme.hankoSumi.withValues(alpha: 0.05),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: AppTheme.hankoTouch),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  SizedBox.square(
+                    dimension: 20,
+                    child: _saving
+                        ? const Padding(
+                            padding: EdgeInsets.all(2),
+                            child: CircularProgressIndicator(
+                                color: AppTheme.hankoSumi, strokeWidth: 2),
+                          )
+                        : const Icon(Icons.download_sharp,
+                            size: 20, color: AppTheme.hankoSumi),
+                  ),
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Text(
+                      label,
+                      style: AppTheme.hankoSans(
+                        fontSize: 15,
+                        weight: FontWeight.w600,
+                        color: AppTheme.hankoSumi,
+                        height: 1.2,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// The button before Hanko (_RankingCardsScreenState._preHanko).
+  Widget _buildPreHanko() {
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton.icon(
@@ -992,6 +1124,557 @@ class _EmptyState extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// Hanko (question 73): the cards as prints
+// ─────────────────────────────────────────────────────────────
+
+/// A tab with nothing to print yet: what its card is for, in a few words,
+/// at the top of the column where the card would stand. It names no reason,
+/// since the screen can't tell an empty list from one it couldn't read.
+class _HankoEmpty extends StatelessWidget {
+  const _HankoEmpty({required this.title, required this.line});
+
+  final String title;
+  final String line;
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(
+          AppTheme.hankoGutter, 28, AppTheme.hankoGutter, 32),
+      child: Align(
+        alignment: Alignment.topLeft,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: _Print.width),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title,
+                  style: AppTheme.hankoSerif(
+                      fontSize: AppTheme.hankoFeaturedSize, height: 1.25)),
+              const SizedBox(height: 8),
+              Text(line,
+                  style: AppTheme.hankoSans(
+                      color: AppTheme.hankoStone, height: 1.5)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A tab's page: the card as a print, then Save card under it, in a column
+/// the print's width. On a 360 px phone that is the screen less its gutters;
+/// on a wide window the column keeps that width and hangs on the left, as
+/// Profile's does; on a phone narrower than 360 the print is scaled down
+/// whole, never reflowed, so the saved image is the same on every phone.
+///
+/// A hairline trims the print on screen, so you can see where the image
+/// ends. It sits outside the RepaintBoundary that Save card renders, so the
+/// saved image has none.
+class _PrintPage extends StatelessWidget {
+  const _PrintPage({
+    required this.repaintKey,
+    required this.filename,
+    required this.card,
+  });
+
+  final GlobalKey repaintKey;
+  final String filename;
+  final Widget card;
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(
+          AppTheme.hankoGutter, 24, AppTheme.hankoGutter, 32),
+      child: Align(
+        alignment: Alignment.topLeft,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: _Print.width),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.topLeft,
+                child: DecoratedBox(
+                  position: DecorationPosition.foreground,
+                  decoration: BoxDecoration(
+                      border: Border.all(color: AppTheme.hankoHairline)),
+                  child: RepaintBoundary(key: repaintKey, child: card),
+                ),
+              ),
+              const SizedBox(height: 20),
+              _SaveButton(repaintKey: repaintKey, filename: filename),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A Ranking Card as Hanko prints it (question 73): a printed object with
+/// one size, 320 px wide and as tall as its content, whatever the reader's
+/// text size or window, as question 52 made the Hanj Card's share image.
+/// The text-size setting doesn't reach inside (MediaQuery.withNoTextScaling):
+/// the old cards grew with it, so one card saved differently on different
+/// phones. At Save card's pixel ratio of 3 the image is 960 px wide.
+///
+/// Its parts: the masthead (the coral wing and "Hanj" in Shippori, the
+/// card's name at the right in Jost), the print's one rule, the card's own
+/// content, and "hanj.app" at the foot. Sumi ground, washi and stone words,
+/// square corners like the Hanj Card's; no gradient, glow or pill. [tint]
+/// lays a colour over the sumi at Hanko's cover-tint strength (Monthly
+/// Aura); secondary words on it are stone hi, as on Detail's tinted field.
+class _Print extends StatelessWidget {
+  const _Print({required this.kind, required this.children, this.tint});
+
+  /// The card's name, at the masthead's right.
+  final String kind;
+  final List<Widget> children;
+  final Color? tint;
+
+  static const double width = 320;
+  static const double pad = 16;
+  static const double inner = width - 2 * pad;
+
+  /// Secondary words: stone on sumi (6.93:1), stone hi on a tint.
+  static Color secondaryOn(Color? tint) =>
+      tint == null ? AppTheme.hankoStone : AppTheme.hankoStoneHi;
+
+  @override
+  Widget build(BuildContext context) {
+    final tint = this.tint;
+    final ground = tint == null
+        ? AppTheme.hankoSumi
+        : Color.alphaBlend(
+            tint.withValues(alpha: AppTheme.hankoTintOpacity),
+            AppTheme.hankoSumi);
+    final secondary = secondaryOn(tint);
+    return MediaQuery.withNoTextScaling(
+      child: SizedBox(
+        width: width,
+        child: ColoredBox(
+          color: ground,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(pad, 14, pad, 14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    Image.asset(
+                      'assets/images/hanj_wing_transparent.png',
+                      width: 18,
+                      height: 18,
+                      fit: BoxFit.contain,
+                    ),
+                    const SizedBox(width: 7),
+                    Text('Hanj',
+                        style: AppTheme.hankoSerif(
+                            fontSize: 16, height: 1, letterSpacing: 0.2)),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        kind,
+                        textAlign: TextAlign.right,
+                        maxLines: 1,
+                        softWrap: false,
+                        overflow: TextOverflow.fade,
+                        style: AppTheme.hankoSans(
+                            fontSize: AppTheme.hankoLabelSize,
+                            color: secondary,
+                            height: 1),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                // The print's one rule: the hairline on sumi; on a tint, washi
+                // at 12%, which is the hairline's own step over sumi.
+                ColoredBox(
+                  color: tint == null
+                      ? AppTheme.hankoHairline
+                      : AppTheme.hankoWashi.withValues(alpha: 0.12),
+                  child: const SizedBox(height: 1, width: double.infinity),
+                ),
+                const SizedBox(height: 14),
+                ...children,
+                const SizedBox(height: 18),
+                Text('hanj.app',
+                    style: AppTheme.hankoSans(
+                        fontSize: AppTheme.hankoDataSmallSize,
+                        color: secondary,
+                        height: 1.2)),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Whose card it is: the name in Shippori 19, washi, as Profile heads with
+/// it. A long name wraps rather than being cut.
+class _PrintByline extends StatelessWidget {
+  const _PrintByline(this.name);
+
+  final String name;
+
+  @override
+  Widget build(BuildContext context) => Text(name,
+      style: AppTheme.hankoSerif(
+          fontSize: AppTheme.hankoFeaturedSize, height: 1.25));
+}
+
+/// A cover in a print: the list entry's stored URL with Hanko's 2 px corners
+/// on sumi 3, which also shows while it loads. When it can't load (offline
+/// and never cached), [title], if given, stands in at its foot, so a saved
+/// card still says what was there. Never a thrown image error: unhandled,
+/// those reached Crashlytics as fatal (this screen's Top 9 gave 8 fatal
+/// records offline before its errorWidget).
+class _PrintCover extends StatelessWidget {
+  const _PrintCover({required this.url, this.title});
+
+  final String? url;
+  final String? title;
+
+  @override
+  Widget build(BuildContext context) {
+    final u = url;
+    final title = this.title;
+    final Widget standIn = title == null
+        ? const SizedBox.expand()
+        : Align(
+            alignment: Alignment.bottomLeft,
+            child: Padding(
+              padding: const EdgeInsets.all(6),
+              child: Text(
+                title,
+                maxLines: 4,
+                overflow: TextOverflow.ellipsis,
+                style: AppTheme.hankoSans(
+                    fontSize: AppTheme.hankoDataSmallSize,
+                    weight: FontWeight.w500,
+                    color: AppTheme.hankoStone,
+                    height: 1.25),
+              ),
+            ),
+          );
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+      child: ColoredBox(
+        color: AppTheme.hankoSumi3,
+        child: u == null || u.isEmpty
+            ? standIn
+            : CachedNetworkImage(
+                imageUrl: u,
+                fit: BoxFit.cover,
+                width: double.infinity,
+                height: double.infinity,
+                errorWidget: (_, _, _) => standIn,
+              ),
+      ),
+    );
+  }
+}
+
+/// Top 9 as a print: your nine highest-rated shows, three by three in
+/// rating order, each cover with your seal pressed over its corner (the
+/// mockup's "press", a wariin: half on the art, half on the page). The
+/// covers carry no words, like Profile's favourites, and the seals carry the
+/// order; each cover gives its place, title and rating to a screen reader.
+/// The old card's gold, silver and bronze badges and its titles on a black
+/// gradient over the art are gone: Hanko sets no words on art, and your
+/// verdict is the seal.
+///
+/// A rating imported on another scale (D20, such as a 70 from a 100-point
+/// list) keeps its place, as before, but gets no seal: "70.0" in a seal
+/// would say what Hanj's 1-10 scale can't. With fewer than nine, the rest
+/// are Hanko's dashed "not yet" places.
+class _Top9Print extends StatelessWidget {
+  const _Top9Print({required this.anime, required this.username});
+
+  final List<_AnimeEntry> anime;
+  final String username;
+
+  /// Room for a seal's 6 px overhang and its 2 px keyline, 2 px clear of
+  /// the next cover.
+  static const double gap = 10;
+  static const double coverWidth = (_Print.inner - 2 * gap) / 3;
+
+  /// AniList covers' own 230 : 325, so nothing is cropped.
+  static const double coverHeight = coverWidth * 325 / 230;
+
+  @override
+  Widget build(BuildContext context) {
+    final items = anime.take(9).toList();
+    return _Print(
+      kind: 'Top 9',
+      children: [
+        _PrintByline(username),
+        const SizedBox(height: 14),
+        for (var row = 0; row < 3; row++) ...[
+          if (row > 0) const SizedBox(height: gap + 2),
+          Row(
+            children: [
+              for (var col = 0; col < 3; col++) ...[
+                if (col > 0) const SizedBox(width: gap),
+                _Top9Place(
+                  rank: row * 3 + col + 1,
+                  entry: row * 3 + col < items.length
+                      ? items[row * 3 + col]
+                      : null,
+                ),
+              ],
+            ],
+          ),
+        ],
+        // The last row's seals hang below it.
+        const SizedBox(
+            height: _Top9Place.overhang + AppTheme.hankoKeyline),
+      ],
+    );
+  }
+}
+
+/// One place in the Top 9: the cover, and your seal over its bottom-right
+/// corner; or a dashed empty place.
+class _Top9Place extends StatelessWidget {
+  const _Top9Place({required this.rank, required this.entry});
+
+  final int rank;
+  final _AnimeEntry? entry;
+
+  /// The spec's 24 px list seal, its numerals at 11.5.
+  static const double sealSize = 24;
+
+  /// How far the seal hangs past the cover's edges, as the mockup presses it.
+  static const double overhang = 6;
+
+  /// Hanj's scale, 1 to 10 in half steps (Profile's rule for favourites).
+  static bool _onScale(double rating) {
+    final step = (rating * 2).round() / 2;
+    return step >= 1 && step <= 10;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const w = _Top9Print.coverWidth, h = _Top9Print.coverHeight;
+    final entry = this.entry;
+    if (entry == null) {
+      return HankoSeal.unrated(
+        size: h,
+        width: w,
+        showAdd: false,
+        semanticLabel: 'Place $rank, empty',
+      );
+    }
+    final rating = entry.rating;
+    final double? seal = rating != null && _onScale(rating) ? rating : null;
+    return Semantics(
+      image: true,
+      label: '$rank. ${entry.title}'
+          '${seal == null ? '' : ', your rating ${HankoSeal.formatScore(seal)}'}',
+      excludeSemantics: true,
+      child: SizedBox(
+        width: w,
+        height: h,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Positioned.fill(
+                child: _PrintCover(url: entry.imageUrl, title: entry.title)),
+            if (seal != null)
+              Positioned(
+                right: -overhang,
+                bottom: -overhang,
+                child: HankoSeal.score(seal, size: sealSize),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Your taste as a print: your name; your archetype as its headline, in
+/// Shippori 28 and washi, where the old card set it in a coral pill (an
+/// archetype is a reading of your list, not a verdict, so it is never
+/// coral); three figures; and your top genres as one line.
+class _TastePrint extends StatelessWidget {
+  const _TastePrint({
+    required this.username,
+    required this.archetype,
+    required this.topGenres,
+    required this.avgRating,
+    required this.completed,
+    required this.total,
+  });
+
+  final String username;
+  final String archetype;
+  final List<String> topGenres;
+  final double avgRating;
+  final int completed;
+  final int total;
+
+  @override
+  Widget build(BuildContext context) {
+    return _Print(
+      kind: 'Taste Card',
+      children: [
+        _PrintByline(username),
+        const SizedBox(height: 10),
+        Text(archetype, style: AppTheme.hankoSerif(fontSize: 28, height: 1.2)),
+        const SizedBox(height: 22),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: _PrintFigure('$total', 'titles')),
+            Expanded(child: _PrintFigure('$completed', 'completed')),
+            Expanded(
+              child: _PrintFigure(
+                  avgRating > 0 ? avgRating.toStringAsFixed(1) : '—',
+                  'average rating'),
+            ),
+          ],
+        ),
+        if (topGenres.isNotEmpty) ...[
+          const SizedBox(height: 22),
+          Text('Genre DNA',
+              style: AppTheme.hankoSans(
+                  fontSize: AppTheme.hankoDataSmallSize,
+                  color: AppTheme.hankoStone,
+                  height: 1.2)),
+          const SizedBox(height: 6),
+          Text(topGenres.join(' · '),
+              style: AppTheme.hankoSans(height: 1.5)),
+        ],
+      ],
+    );
+  }
+}
+
+/// A figure on a print: the number in Shippori 22, washi, over its word in
+/// Jost 11, stone.
+class _PrintFigure extends StatelessWidget {
+  const _PrintFigure(this.value, this.label);
+
+  final String value;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(value, style: AppTheme.hankoSerif(fontSize: 22, height: 1.1)),
+        const SizedBox(height: 4),
+        Text(label,
+            style: AppTheme.hankoSans(
+                fontSize: AppTheme.hankoDataSmallSize,
+                color: AppTheme.hankoStone,
+                height: 1.2)),
+      ],
+    );
+  }
+}
+
+/// Monthly Aura as a print: the month's colour laid over the whole card at
+/// Hanko's cover-tint strength (20%, flat), where the old card had a radial
+/// glow, a glowing dot and a coloured border. Here the colour is the card's
+/// content, as a cover's colour is on Detail: it is named in words and shown
+/// once at full strength, as a flat dot beside its name. Up to six of the
+/// month's covers fit the width; the old row scrolled, so the saved image
+/// cut off whatever didn't fit.
+class _AuraPrint extends StatelessWidget {
+  const _AuraPrint({
+    required this.username,
+    required this.month,
+    required this.anime,
+    required this.auraColor,
+    required this.auraName,
+  });
+
+  final String username;
+  final String month;
+  final List<_AnimeEntry> anime;
+  final Color auraColor;
+  final String auraName;
+
+  static const int _covers = 6;
+  static const double _coverGap = 5;
+  static const double _coverWidth =
+      (_Print.inner - (_covers - 1) * _coverGap) / _covers;
+  static const double _coverHeight = _coverWidth * 325 / 230;
+
+  @override
+  Widget build(BuildContext context) {
+    final secondary = _Print.secondaryOn(auraColor);
+    final n = anime.length;
+    final shown = n < _covers ? n : _covers;
+    return _Print(
+      kind: 'Monthly Aura',
+      tint: auraColor,
+      children: [
+        Text(month,
+            style: AppTheme.hankoSans(
+                fontSize: AppTheme.hankoLabelSize,
+                color: secondary,
+                height: 1.2)),
+        const SizedBox(height: 4),
+        _PrintByline(username),
+        const SizedBox(height: 18),
+        Row(
+          children: [
+            DecoratedBox(
+              decoration:
+                  BoxDecoration(color: auraColor, shape: BoxShape.circle),
+              child: const SizedBox.square(dimension: 14),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(auraName,
+                  style: AppTheme.hankoSerif(fontSize: 24, height: 1.2)),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Text(
+          n == 0
+              ? 'No titles added this month'
+              : n == 1
+                  ? '1 title this month'
+                  : '$n titles this month',
+          style: AppTheme.hankoSans(
+              fontSize: AppTheme.hankoMetaSize, color: secondary, height: 1.3),
+        ),
+        if (shown > 0) ...[
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              for (var i = 0; i < shown; i++) ...[
+                if (i > 0) const SizedBox(width: _coverGap),
+                SizedBox(
+                  width: _coverWidth,
+                  height: _coverHeight,
+                  child: _PrintCover(url: anime[i].imageUrl),
+                ),
+              ],
+            ],
+          ),
+        ],
+      ],
     );
   }
 }
