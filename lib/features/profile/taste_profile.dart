@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+import '../../core/responsive.dart';
 import '../../core/theme/app_theme.dart';
 
 // ─────────────────────────────────────────────────────────────
@@ -23,11 +24,21 @@ class _TasteProfileScreenState extends State<TasteProfileScreen>
   late AnimationController _revealCtrl;
   late Animation<double> _revealAnim;
 
+  /// The screen before Hanko (question 73): a coral-tinted archetype card
+  /// with emoji, boxed traits, eight coloured genre bars and coloured pills.
+  /// Kept switched off as design history; _buildPreHankoProfile() holds it.
+  static const bool _preHanko = false;
+
   @override
   void initState() {
     super.initState();
+    // Hanko's motion is feedback, quick and once: the page fades in over
+    // the sheets' 240 ms (it took 800), and not at all with Reduce Motion.
     _revealCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 800));
+        vsync: this,
+        duration: _preHanko
+            ? const Duration(milliseconds: 800)
+            : AppTheme.hankoSheetRise);
     _revealAnim =
         CurvedAnimation(parent: _revealCtrl, curve: Curves.easeOut);
     _analyze();
@@ -72,18 +83,21 @@ class _TasteProfileScreenState extends State<TasteProfileScreen>
         backgroundColor: AppTheme.background,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded,
+          tooltip: 'Back',
+          icon: Icon(
+              _preHanko ? Icons.arrow_back_rounded : Icons.arrow_back_sharp,
               color: AppTheme.textPrimary),
           onPressed: () => Navigator.pop(context),
         ),
-        title: Text('Anime Taste',
-            style: AppTheme.serif(fontSize: 20, weight: FontWeight.w700)),
+        title: Text('Anime Taste', style: AppTheme.hankoSerif(fontSize: 20)),
       ),
       body: _isLoading
           ? _buildLoading()
           : _profile == null
               ? _buildEmpty()
-              : _buildProfile(),
+              : _preHanko
+                  ? _buildPreHankoProfile()
+                  : _buildProfile(),
     );
   }
 
@@ -92,43 +106,130 @@ class _TasteProfileScreenState extends State<TasteProfileScreen>
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const CircularProgressIndicator(
-              color: AppTheme.primary, strokeWidth: 2),
+          const SizedBox.square(
+            dimension: 28,
+            child: CircularProgressIndicator(
+                color: AppTheme.hankoWashi, strokeWidth: 2),
+          ),
           const SizedBox(height: 20),
           Text('Analyzing your taste...',
-              style: AppTheme.sans(color: AppTheme.textSecondary)),
-          const SizedBox(height: 8),
+              textAlign: TextAlign.center,
+              style: AppTheme.hankoSans(fontSize: 15)),
+          const SizedBox(height: 6),
           Text('This might take a moment',
-              style: AppTheme.sans(
-                  color: AppTheme.textMuted, fontSize: 12)),
+              textAlign: TextAlign.center,
+              style: AppTheme.hankoSans(
+                  fontSize: AppTheme.hankoMetaSize,
+                  color: AppTheme.hankoStone)),
         ],
       ),
     );
   }
 
+  /// Nothing to read: what the page is for, at the top of its column. It
+  /// names no reason, since an empty list and one that couldn't be read
+  /// both arrive here; the old "Add some anime to your list" was wrong for
+  /// the second.
   Widget _buildEmpty() {
-    return Center(
+    return _column(SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(
+          AppTheme.hankoGutter, 28, AppTheme.hankoGutter, 40),
       child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.psychology_outlined,
-              color: AppTheme.textMuted, size: 64),
-          const SizedBox(height: 20),
-          Text('No data yet',
-              style: AppTheme.serif(fontSize: 22, weight: FontWeight.w700)),
+          Text('Your taste profile',
+              style: AppTheme.hankoSerif(
+                  fontSize: AppTheme.hankoFeaturedSize, height: 1.25)),
           const SizedBox(height: 8),
           Text(
-            'Add some anime to your list\nto generate your taste profile',
-            textAlign: TextAlign.center,
-            style: AppTheme.sans(
-                color: AppTheme.textSecondary, height: 1.6),
+            'It\'s drawn from the shows on your list: your archetype, '
+            'your traits, your genres and how you watch.',
+            style: AppTheme.hankoSans(color: AppTheme.hankoStone, height: 1.5),
           ),
         ],
       ),
+    ));
+  }
+
+  /// On a wide window the page keeps Profile's reading column (440 px plus
+  /// gutters), hung on the left; on a phone it does nothing.
+  Widget _column(Widget child) => Align(
+        alignment: Alignment.topLeft,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(
+              maxWidth: Responsive.proseMaxWidth + 2 * AppTheme.hankoGutter),
+          child: child,
+        ),
+      );
+
+  /// Your taste in Hanko (question 73), as one page in Profile's grammar:
+  /// your archetype as its headline, in Shippori and washi, as Profile's
+  /// Taste row names it; the archetype's sentence; three figures; then your
+  /// traits, your genres and how you watch, each under a Shippori head, with
+  /// space between them and no boxes. Gone: the coral-tinted card, the emoji
+  /// (the archetype's, the traits' and the viewing style's), the eight
+  /// colours of the genre bars and the coloured pills. One meaning per
+  /// colour: coral is only your seal, so nothing here is coral.
+  Widget _buildProfile() {
+    final p = _profile!;
+    final noMotion = MediaQuery.disableAnimationsOf(context);
+    return FadeTransition(
+      opacity: noMotion ? const AlwaysStoppedAnimation(1) : _revealAnim,
+      child: _column(SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(
+            AppTheme.hankoGutter, 12, AppTheme.hankoGutter, 48),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Your archetype',
+                style: AppTheme.hankoSans(
+                    fontSize: AppTheme.hankoLabelSize,
+                    color: AppTheme.hankoStone,
+                    height: 1.3)),
+            const SizedBox(height: 4),
+            Semantics(
+              header: true,
+              child: Text(p.archetype,
+                  style: AppTheme.hankoSerif(fontSize: 28, height: 1.15)),
+            ),
+            const SizedBox(height: 12),
+            Text(p.archetypeDesc,
+                style: AppTheme.hankoSerif(fontSize: 17, height: 1.5)),
+            const SizedBox(height: 24),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                    child: _HankoFigure('${p.totalWatched}', 'completed')),
+                Expanded(
+                    child: _HankoFigure(
+                        p.avgRating.toStringAsFixed(1), 'average rating')),
+                Expanded(
+                    child: _HankoFigure(
+                        '${(p.completionRate * 100).round()}%',
+                        'completion rate')),
+              ],
+            ),
+            const SizedBox(height: 36),
+            const _HankoHead('Your traits'),
+            for (final t in p.traits) _HankoTrait(trait: t),
+            const SizedBox(height: 22),
+            _HankoHead('Genre DNA',
+                aside: p.topGenres.isEmpty
+                    ? null
+                    : 'Share of your ${p.topGenres.first.total} titles'),
+            _HankoGenres(genres: p.topGenres),
+            const SizedBox(height: 22),
+            const _HankoHead('Viewing style'),
+            _HankoViewingStyle(profile: p),
+          ],
+        ),
+      )),
     );
   }
 
-  Widget _buildProfile() {
+  /// The page before Hanko (_preHanko).
+  Widget _buildPreHankoProfile() {
     final p = _profile!;
     return FadeTransition(
       opacity: _revealAnim,
@@ -783,6 +884,233 @@ class _ViewingPill extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// The full taste profile in Hanko (question 73)
+// ─────────────────────────────────────────────────────────────
+
+/// A section head as Profile's (_SectionHead there, private to that file):
+/// Shippori 16 in washi, an optional aside in Jost 12 stone that wraps under
+/// the head when the line is too short, so large text never pushes it off.
+class _HankoHead extends StatelessWidget {
+  const _HankoHead(this.title, {this.aside});
+
+  final String title;
+  final String? aside;
+
+  @override
+  Widget build(BuildContext context) {
+    final aside = this.aside;
+    final head = Semantics(
+      header: true,
+      child: Text(title,
+          style: AppTheme.hankoSerif(
+              fontSize: AppTheme.hankoSectionSize, height: 1.3)),
+    );
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: aside == null
+          ? head
+          : SizedBox(
+              width: double.infinity,
+              child: Wrap(
+                alignment: WrapAlignment.spaceBetween,
+                crossAxisAlignment: WrapCrossAlignment.end,
+                spacing: 12,
+                runSpacing: 2,
+                children: [
+                  head,
+                  Text(aside,
+                      style: AppTheme.hankoSans(
+                        fontSize: AppTheme.hankoLabelSize,
+                        color: AppTheme.hankoStone,
+                        height: 1.3,
+                      )),
+                ],
+              ),
+            ),
+    );
+  }
+}
+
+/// A figure: the number in Shippori 22, washi, over its word in Jost 12,
+/// stone. No pill, no colour of its own: the word says what it is.
+class _HankoFigure extends StatelessWidget {
+  const _HankoFigure(this.value, this.label);
+
+  final String value;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(value, style: AppTheme.hankoSerif(fontSize: 22, height: 1.15)),
+          const SizedBox(height: 4),
+          Text(label,
+              style: AppTheme.hankoSans(
+                  fontSize: AppTheme.hankoLabelSize,
+                  color: AppTheme.hankoStone,
+                  height: 1.3)),
+        ],
+      ),
+    );
+  }
+}
+
+/// One trait: its name in Jost 15 500, washi, and its line in Jost 13,
+/// stone. Grouped by space alone, without the box and the emoji it had.
+class _HankoTrait extends StatelessWidget {
+  const _HankoTrait({required this.trait});
+
+  final Trait trait;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(trait.label,
+              style: AppTheme.hankoSans(
+                  fontSize: 15, weight: FontWeight.w500, height: 1.3)),
+          const SizedBox(height: 2),
+          Text(trait.desc,
+              style: AppTheme.hankoSans(
+                  fontSize: AppTheme.hankoMetaSize,
+                  color: AppTheme.hankoStone,
+                  height: 1.4)),
+        ],
+      ),
+    );
+  }
+}
+
+/// Your genres: each name in washi with its count in stone at the line's
+/// end, over a 4 px bar whose washi length is the genre's share of your
+/// list, on a hairline track. One colour for all of them, as the reel draws
+/// what you watched: the eight colours the bars had meant nothing, and
+/// colour is kept for meaning. The bars stand at their length at once.
+class _HankoGenres extends StatelessWidget {
+  const _HankoGenres({required this.genres});
+
+  final List<GenreData> genres;
+
+  @override
+  Widget build(BuildContext context) {
+    if (genres.isEmpty) {
+      return Text('No genres on your list yet.',
+          style: AppTheme.hankoSans(
+              fontSize: AppTheme.hankoMetaSize,
+              color: AppTheme.hankoStone,
+              height: 1.4));
+    }
+    return Column(
+      children: [
+        for (final g in genres)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 14),
+            child: Semantics(
+              label: '${g.name}: ${g.count} of ${g.total} titles',
+              excludeSemantics: true,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Expanded(
+                        child: Text(g.name,
+                            style: AppTheme.hankoSans(height: 1.3)),
+                      ),
+                      const SizedBox(width: 12),
+                      Text('${g.count}',
+                          style: AppTheme.hankoSans(
+                              fontSize: AppTheme.hankoMetaSize,
+                              weight: FontWeight.w500,
+                              color: AppTheme.hankoStone,
+                              height: 1.3,
+                              tabular: true)),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  SizedBox(
+                    height: 4,
+                    child: ColoredBox(
+                      color: AppTheme.hankoHairline,
+                      child: FractionallySizedBox(
+                        alignment: Alignment.centerLeft,
+                        widthFactor: g.percentage.clamp(0.0, 1.0),
+                        child: const ColoredBox(color: AppTheme.hankoWashi),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// How you watch: the style's name in Shippori 19, its sentence in Jost 14
+/// stone, and three figures. The style is read from the same thresholds as
+/// before (_ViewingStyleCard); its emoji and the green, pink and coral
+/// pills are gone, since the words already say what each number is.
+class _HankoViewingStyle extends StatelessWidget {
+  const _HankoViewingStyle({required this.profile});
+
+  final TasteProfile profile;
+
+  @override
+  Widget build(BuildContext context) {
+    final completionPct = (profile.completionRate * 100).round();
+    final dropPct = (profile.dropRate * 100).round();
+
+    final String style;
+    final String styleDesc;
+    if (completionPct >= 80) {
+      style = 'Dedicated Finisher';
+      styleDesc = 'You commit. Once you start something, you see it through to the end.';
+    } else if (dropPct >= 30) {
+      style = 'Selective Sampler';
+      styleDesc = 'You\'re not afraid to move on. You know your taste and respect your time.';
+    } else if (profile.watching > 3) {
+      style = 'Serial Multitasker';
+      styleDesc = 'You juggle multiple series at once. Variety keeps things interesting.';
+    } else {
+      style = 'Measured Viewer';
+      styleDesc = 'You\'re thoughtful about what you pick up and deliberate about how you watch.';
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(style,
+            style: AppTheme.hankoSerif(
+                fontSize: AppTheme.hankoFeaturedSize, height: 1.25)),
+        const SizedBox(height: 6),
+        Text(styleDesc,
+            style: AppTheme.hankoSans(color: AppTheme.hankoStone, height: 1.5)),
+        const SizedBox(height: 18),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: _HankoFigure('$completionPct%', 'completion')),
+            Expanded(child: _HankoFigure('$dropPct%', 'drop rate')),
+            Expanded(
+                child: _HankoFigure('${profile.watching}', 'watching now')),
+          ],
+        ),
+      ],
     );
   }
 }
