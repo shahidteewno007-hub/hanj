@@ -334,7 +334,7 @@ class _AnimeCalendarScreenState extends State<AnimeCalendarScreen> {
                     failed
                         ? 'The schedule can\'t load right now'
                         : unseen
-                            ? 'Nothing to show for $dayName yet'
+                            ? 'Nothing to show for $dayName\u00A0yet'
                             : isToday
                                 ? 'No episodes today'
                                 : 'No episodes on $dayName',
@@ -433,7 +433,7 @@ class _AnimeCalendarScreenState extends State<AnimeCalendarScreen> {
                         // "at" and the time are joined by a no-break space,
                         // so large text never leaves the time alone.
                         Text(
-                          'Episode $episode at ${_formatTime(airingAt)}',
+                          'Episode $episode at\u00A0${_formatTime(airingAt)}',
                           style: AppTheme.hankoSans(
                             fontSize: AppTheme.hankoLabelSize,
                             weight: FontWeight.w500,

@@ -136,7 +136,7 @@ class _ActivityFeedScreenState extends State<ActivityFeedScreen>
     if (_friendsActivity.isEmpty) {
       return _note(
         'No activity from friends yet.',
-        'When people you follow add or finish a show, it appears here.',
+        'When people you follow add or finish a show, it appears\u00A0here.',
         action: _TextTile(label: 'Refresh', onTap: _loadFriendsActivity),
       );
     }

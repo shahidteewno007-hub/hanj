@@ -998,7 +998,7 @@ class _HankoStats extends StatelessWidget {
           Text('Nothing logged yet.',
               style: AppTheme.hankoSerif(fontSize: 17, height: 1.5)),
           const SizedBox(height: 6),
-          Text('Add a show from Discover or Search, and your stats start '
+          Text('Add a show from Discover or Search, and your stats start\u00A0'
               'here.', style: quiet),
         ],
       );
@@ -1157,9 +1157,9 @@ class _HankoStats extends StatelessWidget {
           Text(
             offScale == 1
                 ? '1 imported rating is on another scale, so it isn\'t '
-                    'drawn here.'
+                    'drawn\u00A0here.'
                 : '$offScale imported ratings are on another scale, so '
-                    'they aren\'t drawn here.',
+                    'they aren\'t drawn\u00A0here.',
             style: quiet,
           ),
         ],
