@@ -3211,10 +3211,15 @@ class _ComingUpSectionState extends State<_ComingUpSection> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Left out of the semantics tree (question 85, as the Calendar's
+          // rows since dd45bd1): the title beside it names the show, and the
+          // cover's image role made the row read as an image.
           Padding(
             padding: const EdgeInsets.only(top: 2),
-            child: _HankoCover(
-                url: item['imageUrl'] as String?, width: 42, height: 60),
+            child: ExcludeSemantics(
+              child: _HankoCover(
+                  url: item['imageUrl'] as String?, width: 42, height: 60),
+            ),
           ),
           const SizedBox(width: 14),
           Expanded(
@@ -3255,69 +3260,76 @@ class _ComingUpSectionState extends State<_ComingUpSection> {
   /// The reminder bell, drawn as Detail's (Hanko H3): a 36 dp square in a
   /// 48 dp target, an edge outline when off, washi with a sumi bell when on.
   /// It does what the round coral bell did: the same callback, the same
-  /// write, the same message.
+  /// write, the same message. It is its own semantics node with the same
+  /// tap as the gesture (question 85; the Calendar's bell since dd45bd1), so
+  /// a screen reader reaches it apart from the row it sits in. Folded into
+  /// the row, the bell's name and state joined the row's node, whose tap
+  /// opens the show, so a screen reader couldn't set the reminder.
   Widget _bell(BuildContext context, String animeId, String title,
       int episode, bool isOn) {
-    return Semantics(
-      button: true,
-      toggled: isOn,
-      label: 'Remind me when episode $episode of $title airs',
-      excludeSemantics: true,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () async {
-          final newVal = !isOn;
-          Future<void>? saving;
-          if (animeId.isNotEmpty) {
-            widget.onToggleReminder(animeId, newVal);
-            saving = _saveReminder(context, animeId, newVal);
-          }
-          ScaffoldMessenger.of(context).showSnackBar(
+    Future<void> toggle() async {
+      final newVal = !isOn;
+      Future<void>? saving;
+      if (animeId.isNotEmpty) {
+        widget.onToggleReminder(animeId, newVal);
+        saving = _saveReminder(context, animeId, newVal);
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(newVal
+              ? 'Reminder set for $title Ep $episode'
+              : 'Reminder removed for $title Ep $episode'),
+          backgroundColor: AppTheme.surfaceLight,
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+          ),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+      // Question 83: the write is awaited and caught. Unawaited, a
+      // refused write (by the rules, say) went to
+      // PlatformDispatcher.onError, which main.dart reports to
+      // Crashlytics as fatal, and the bell went on showing a reminder
+      // that wasn't saved. Now the bell goes back and the message says
+      // so, naming no cause. Offline, the write waits for the
+      // connection and the bell stays as tapped.
+      if (saving == null) return;
+      try {
+        await saving;
+      } catch (_) {
+        if (!context.mounted) return;
+        widget.onToggleReminder(animeId, isOn);
+        // In place of "Reminder set" if it's still showing.
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
             SnackBar(
               content: Text(newVal
-                  ? 'Reminder set for $title Ep $episode'
-                  : 'Reminder removed for $title Ep $episode'),
+                  ? "Couldn't set the reminder. Try again."
+                  : "Couldn't remove the reminder. Try again."),
               backgroundColor: AppTheme.surfaceLight,
               behavior: SnackBarBehavior.floating,
               margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
               ),
-              duration: const Duration(seconds: 2),
             ),
           );
-          // Question 83: the write is awaited and caught. Unawaited, a
-          // refused write (by the rules, say) went to
-          // PlatformDispatcher.onError, which main.dart reports to
-          // Crashlytics as fatal, and the bell went on showing a reminder
-          // that wasn't saved. Now the bell goes back and the message says
-          // so, naming no cause. Offline, the write waits for the
-          // connection and the bell stays as tapped.
-          if (saving == null) return;
-          try {
-            await saving;
-          } catch (_) {
-            if (!context.mounted) return;
-            widget.onToggleReminder(animeId, isOn);
-            // In place of "Reminder set" if it's still showing.
-            ScaffoldMessenger.of(context)
-              ..hideCurrentSnackBar()
-              ..showSnackBar(
-                SnackBar(
-                  content: Text(newVal
-                      ? "Couldn't set the reminder. Try again."
-                      : "Couldn't remove the reminder. Try again."),
-                  backgroundColor: AppTheme.surfaceLight,
-                  behavior: SnackBarBehavior.floating,
-                  margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                  shape: RoundedRectangleBorder(
-                    borderRadius:
-                        BorderRadius.circular(AppTheme.hankoRadius),
-                  ),
-                ),
-              );
-          }
-        },
+      }
+    }
+
+    return Semantics(
+      container: true,
+      button: true,
+      toggled: isOn,
+      label: 'Remind me when episode $episode of $title airs',
+      onTap: toggle,
+      excludeSemantics: true,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: toggle,
         child: SizedBox.square(
           dimension: AppTheme.hankoTouch,
           child: Center(
