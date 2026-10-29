@@ -193,7 +193,9 @@ class _FilterChip extends StatelessWidget {
           label,
           style: AppTheme.sans(
             fontSize: 13,
-            color: selected ? Colors.white : AppTheme.textSecondary,
+            // A chosen chip is sumi on coral, 5.64:1: Hanko's rule for
+            // anything on coral, as on Apply Filters (white was 3.35:1).
+            color: selected ? AppTheme.textInverse : AppTheme.textSecondary,
             weight: selected ? FontWeight.w600 : FontWeight.normal,
           ),
         ),
