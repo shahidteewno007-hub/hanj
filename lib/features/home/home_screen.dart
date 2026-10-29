@@ -1517,8 +1517,10 @@ class _HomeScreenState extends State<HomeScreen> {
 /// edge outline, Jost 600 15 washi, 48 dp tall. Its own semantics node
 /// (container; question 102, as the Calendar's and Activity's tiles since
 /// dd45bd1), so a screen reader finds one button named for its word, with
-/// its own tap. Without it, the tile merged into the node around it, and
-/// the sentence above read as part of one button.
+/// its own tap, wherever the tile is placed. Here the page already gave it
+/// a node of its own (checked on 2026-10-30); in the Calendar's and
+/// Activity's notes, a tile without it folded into the note, which then
+/// read as one long button.
 class _TextTile extends StatelessWidget {
   const _TextTile({required this.label, required this.onTap});
 
@@ -1855,7 +1857,9 @@ class _ImportPendingBanner extends StatelessWidget {
   /// the quiet one with no fill and a washi label. 48 dp tall, square
   /// corners, the 8% washi press. Each is its own semantics node
   /// (container; question 102), so a screen reader finds "Import" and
-  /// "Dismiss" as two buttons, each with its own tap, apart from the note.
+  /// "Dismiss" as two buttons, each with its own tap, apart from the note,
+  /// wherever the note is placed. Here they already had nodes of their own
+  /// (checked on 2026-10-30); the container keeps it so.
   static Widget _tile(String label,
       {required bool main, required VoidCallback onTap}) {
     return Semantics(

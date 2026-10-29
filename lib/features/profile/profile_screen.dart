@@ -1708,8 +1708,10 @@ class _FadeTitle extends StatelessWidget {
 /// with a 1 px edge outline, Jost 600 15 washi, 48 dp tall. Its own
 /// semantics node (container; question 102, as the Calendar's and
 /// Activity's tiles since dd45bd1), so a screen reader finds one button
-/// named for its word, with its own tap. Without it, the tile merged into
-/// the node around it, and the sentence above read as part of one button.
+/// named for its word, with its own tap, wherever the tile is placed. Here
+/// the page already gave it a node of its own (checked on 2026-10-30); in
+/// the Calendar's and Activity's notes, a tile without it folded into the
+/// note, which then read as one long button.
 class _TextTile extends StatelessWidget {
   const _TextTile({required this.label, required this.onTap});
 
