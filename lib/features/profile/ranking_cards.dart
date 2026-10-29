@@ -11,6 +11,7 @@ import '../../widgets/gal_mobile.dart' if (dart.library.html) '../../widgets/gal
 
 import '../../core/theme/app_theme.dart';
 import '../../widgets/hanko_seal.dart';
+import 'taste_profile.dart';
 
 // ─────────────────────────────────────────────────────────────
 // Ranking Cards Screen
@@ -29,6 +30,10 @@ class _RankingCardsScreenState extends State<RankingCardsScreen>
   List<_AnimeEntry> _allAnime = [];
   bool _isLoading = true;
   String _username = '';
+
+  /// Your list as the Taste page reads it (TasteAnalyzer), for the Taste
+  /// Card's archetype; null until the list is read, and for an empty one.
+  TasteProfile? _taste;
 
   @override
   void initState() {
@@ -66,6 +71,7 @@ class _RankingCardsScreenState extends State<RankingCardsScreen>
           addedAt:    (data['addedAt'] as Timestamp?)?.toDate(),
         );
       }).toList();
+      _taste = snap.docs.isEmpty ? null : TasteAnalyzer.analyze(snap.docs);
 
       if (mounted) setState(() => _isLoading = false);
     } catch (_) {
@@ -160,7 +166,8 @@ class _RankingCardsScreenState extends State<RankingCardsScreen>
                 _TasteCardTab(
                     allAnime: _allAnime,
                     genreMap: _genreMap,
-                    username: _username),
+                    username: _username,
+                    taste: _taste),
                 _MonthlyAuraTab(
                     anime: _monthlyAnime, username: _username),
               ],
@@ -396,12 +403,16 @@ class _TasteCardTab extends StatelessWidget {
   final List<_AnimeEntry> allAnime;
   final Map<String, int> genreMap;
   final String username;
+
+  /// The same list read by the Taste page's rules (TasteAnalyzer).
+  final TasteProfile? taste;
   final _repaintKey = GlobalKey();
 
   _TasteCardTab({
     required this.allAnime,
     required this.genreMap,
     required this.username,
+    required this.taste,
   });
 
   List<String> get _topGenres {
@@ -420,15 +431,16 @@ class _TasteCardTab extends StatelessWidget {
   int get _completed =>
       allAnime.where((a) => a.status == 'COMPLETED').length;
 
-  String get _archetype {
-    final g = _topGenres.join(' ');
-    if (g.contains('Action') && g.contains('Thriller')) return 'Thrill Seeker';
-    if (g.contains('Drama') || g.contains('Romance')) return 'Emotional Soul';
-    if (g.contains('Mystery') || g.contains('Psychological')) return 'Deep Thinker';
-    if (g.contains('Slice of Life') || g.contains('Comedy')) return 'Comfort Watcher';
-    if (g.contains('Fantasy') || g.contains('Adventure')) return 'World Builder';
-    return 'All-Rounder';
-  }
+  /// Your archetype by the Taste page's rules (question 95), so this card,
+  /// Profile's Taste row and the Taste page name the same one for the same
+  /// list. One reading of your list, one place it's worked out.
+  ///
+  /// The card had rules of its own: it read your top five genres where the
+  /// Taste page reads three, Drama or Romance alone made you an "Emotional
+  /// Soul" where the Taste page asks for both, and it never looked at your
+  /// ratings or drops. So one list was "Emotional Soul" here and "The
+  /// All-Rounder" on the Taste page.
+  String get _archetype => taste?.archetype ?? '';
 
   @override
   Widget build(BuildContext context) {
