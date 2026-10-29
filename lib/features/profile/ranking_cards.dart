@@ -11,6 +11,7 @@ import '../../widgets/gal_mobile.dart' if (dart.library.html) '../../widgets/gal
 
 import '../../core/theme/app_theme.dart';
 import '../../widgets/hanko_seal.dart';
+import 'taste_profile.dart';
 
 // ─────────────────────────────────────────────────────────────
 // Ranking Cards Screen
@@ -29,6 +30,13 @@ class _RankingCardsScreenState extends State<RankingCardsScreen>
   List<_AnimeEntry> _allAnime = [];
   bool _isLoading = true;
   String _username = '';
+
+  /// The list couldn't be read (question 97).
+  bool _failed = false;
+
+  /// Your list as the Taste page reads it (TasteAnalyzer), for the Taste
+  /// Card's archetype; null until the list is read, and for an empty one.
+  TasteProfile? _taste;
 
   @override
   void initState() {
@@ -66,20 +74,54 @@ class _RankingCardsScreenState extends State<RankingCardsScreen>
           addedAt:    (data['addedAt'] as Timestamp?)?.toDate(),
         );
       }).toList();
+      _taste = snap.docs.isEmpty ? null : TasteAnalyzer.analyze(snap.docs);
 
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _failed = false;
+        });
+      }
     } catch (_) {
-      if (mounted) setState(() => _isLoading = false);
+      // Said as a failure (question 97). It showed each card's empty state,
+      // as if the list were empty.
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _failed = true;
+        });
+      }
     }
   }
 
+  /// Reads the list again, from the spinner.
+  void _retry() {
+    setState(() {
+      _isLoading = true;
+      _failed = false;
+    });
+    _load();
+  }
+
+  /// Your nine highest ratings on Hanj's 1–10 scale (question 96), as
+  /// Profile's favourites and Advanced Stats count them. An imported rating
+  /// on another scale (D20: a 70 from a 100-point list) ranked first here,
+  /// above every 10; it's left out, and [_offScale] says how many were.
   List<_AnimeEntry> get _top9 {
     final rated = _allAnime
-        .where((a) => a.rating != null && a.imageUrl != null)
+        .where((a) =>
+            a.rating != null &&
+            _Top9Place._onScale(a.rating!) &&
+            a.imageUrl != null)
         .toList()
       ..sort((a, b) => b.rating!.compareTo(a.rating!));
     return rated.take(9).toList();
   }
+
+  /// How many of your ratings are on another scale (imported).
+  int get _offScale => _allAnime
+      .where((a) => a.rating != null && !_Top9Place._onScale(a.rating!))
+      .length;
 
   List<_AnimeEntry> get _monthlyAnime {
     final now = DateTime.now();
@@ -153,18 +195,30 @@ class _RankingCardsScreenState extends State<RankingCardsScreen>
       body: _isLoading
           ? const Center(child: CircularProgressIndicator(
               color: AppTheme.hankoWashi, strokeWidth: 2))
-          : TabBarView(
-              controller: _tabController,
-              children: [
-                _Top9Tab(anime: _top9, username: _username),
-                _TasteCardTab(
-                    allAnime: _allAnime,
-                    genreMap: _genreMap,
-                    username: _username),
-                _MonthlyAuraTab(
-                    anime: _monthlyAnime, username: _username),
-              ],
-            ),
+          : _failed
+              // One read fills all three cards, so each card's page says it
+              // failed, with Retry, and the tabs still swipe.
+              ? TabBarView(
+                  controller: _tabController,
+                  children: List.generate(
+                      3, (_) => _HankoListFailed(onRetry: _retry)),
+                )
+              : TabBarView(
+                  controller: _tabController,
+                  children: [
+                    _Top9Tab(
+                        anime: _top9,
+                        username: _username,
+                        offScale: _offScale),
+                    _TasteCardTab(
+                        allAnime: _allAnime,
+                        genreMap: _genreMap,
+                        username: _username,
+                        taste: _taste),
+                    _MonthlyAuraTab(
+                        anime: _monthlyAnime, username: _username),
+                  ],
+                ),
     );
   }
 }
@@ -176,26 +230,44 @@ class _RankingCardsScreenState extends State<RankingCardsScreen>
 class _Top9Tab extends StatelessWidget {
   final List<_AnimeEntry> anime;
   final String username;
+
+  /// Imported ratings on another scale, which the Top 9 leaves out.
+  final int offScale;
   final _repaintKey = GlobalKey();
 
-  _Top9Tab({required this.anime, required this.username});
+  _Top9Tab({
+    required this.anime,
+    required this.username,
+    required this.offScale,
+  });
+
+  /// What the Top 9 leaves out, said under it (question 96) in Profile's
+  /// words for its seal register. Shown on the page, never in the image.
+  String? get _note => offScale == 0
+      ? null
+      : offScale == 1
+          ? '1 imported rating is on another scale, so it isn\'t ranked\u00A0here.'
+          : '$offScale imported ratings are on another scale, so they '
+              'aren\'t ranked\u00A0here.';
 
   @override
   Widget build(BuildContext context) {
     if (_RankingCardsScreenState._preHanko) return _buildPreHanko();
     if (anime.isEmpty) {
-      // What the card is for, true whether the list is empty or couldn't be
-      // read: the screen can't tell those apart.
-      return const _HankoEmpty(
+      // What the card is for. With only imported ratings, the note says why
+      // none of them is here.
+      return _HankoEmpty(
         title: 'Your Top 9',
         line: 'Your nine highest-rated shows, as one image to save and '
             'share. It\'s made from the ratings on your list.',
+        note: _note,
       );
     }
     return _PrintPage(
       repaintKey: _repaintKey,
       filename: 'hanj_top9',
       card: _Top9Print(anime: anime, username: username),
+      note: _note,
     );
   }
 
@@ -396,12 +468,16 @@ class _TasteCardTab extends StatelessWidget {
   final List<_AnimeEntry> allAnime;
   final Map<String, int> genreMap;
   final String username;
+
+  /// The same list read by the Taste page's rules (TasteAnalyzer).
+  final TasteProfile? taste;
   final _repaintKey = GlobalKey();
 
   _TasteCardTab({
     required this.allAnime,
     required this.genreMap,
     required this.username,
+    required this.taste,
   });
 
   List<String> get _topGenres {
@@ -410,25 +486,35 @@ class _TasteCardTab extends StatelessWidget {
     return sorted.take(5).map((e) => e.key).toList();
   }
 
-  double get _avgRating {
-    final rated =
-        allAnime.where((a) => a.rating != null).map((a) => a.rating!).toList();
-    if (rated.isEmpty) return 0;
-    return rated.reduce((a, b) => a + b) / rated.length;
+  /// Your average rating as the Taste page gives it (question 96): only
+  /// ratings on Hanj's 1–10 scale, so an imported 70 no longer makes it
+  /// 28.2. 0 with none, which the card prints as a dash.
+  double get _avgRating => taste?.avgRating ?? 0;
+
+  /// What the average leaves out, said under the card, never in its image.
+  String? get _note {
+    final n = taste?.offScaleRatings ?? 0;
+    return n == 0
+        ? null
+        : n == 1
+            ? '1 imported rating is on another scale, so it isn\'t in the\u00A0average.'
+            : '$n imported ratings are on another scale, so they aren\'t in '
+                'the\u00A0average.';
   }
 
   int get _completed =>
       allAnime.where((a) => a.status == 'COMPLETED').length;
 
-  String get _archetype {
-    final g = _topGenres.join(' ');
-    if (g.contains('Action') && g.contains('Thriller')) return 'Thrill Seeker';
-    if (g.contains('Drama') || g.contains('Romance')) return 'Emotional Soul';
-    if (g.contains('Mystery') || g.contains('Psychological')) return 'Deep Thinker';
-    if (g.contains('Slice of Life') || g.contains('Comedy')) return 'Comfort Watcher';
-    if (g.contains('Fantasy') || g.contains('Adventure')) return 'World Builder';
-    return 'All-Rounder';
-  }
+  /// Your archetype by the Taste page's rules (question 95), so this card,
+  /// Profile's Taste row and the Taste page name the same one for the same
+  /// list. One reading of your list, one place it's worked out.
+  ///
+  /// The card had rules of its own: it read your top five genres where the
+  /// Taste page reads three, Drama or Romance alone made you an "Emotional
+  /// Soul" where the Taste page asks for both, and it never looked at your
+  /// ratings or drops. So one list was "Emotional Soul" here and "The
+  /// All-Rounder" on the Taste page.
+  String get _archetype => taste?.archetype ?? '';
 
   @override
   Widget build(BuildContext context) {
@@ -451,6 +537,7 @@ class _TasteCardTab extends StatelessWidget {
         completed: _completed,
         total: allAnime.length,
       ),
+      note: _note,
     );
   }
 
@@ -1132,17 +1219,105 @@ class _EmptyState extends StatelessWidget {
 // Hanko (question 73): the cards as prints
 // ─────────────────────────────────────────────────────────────
 
-/// A tab with nothing to print yet: what its card is for, in a few words,
-/// at the top of the column where the card would stand. It names no reason,
-/// since the screen can't tell an empty list from one it couldn't read.
-class _HankoEmpty extends StatelessWidget {
-  const _HankoEmpty({required this.title, required this.line});
+/// The list couldn't be read (question 97): Profile's line and its Retry, at
+/// the top of the column where the card would stand. Before, a failed read
+/// showed the cards' empty states, as if your list were empty. The line names
+/// no cause the app can't verify (ANILIST-OFFLINE-0908-REPORT.md's rule).
+/// Retry reads the list again.
+class _HankoListFailed extends StatelessWidget {
+  const _HankoListFailed({required this.onRetry});
 
-  final String title;
-  final String line;
+  final VoidCallback onRetry;
 
   @override
   Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(
+          AppTheme.hankoGutter, 28, AppTheme.hankoGutter, 32),
+      child: Align(
+        alignment: Alignment.topLeft,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: _Print.width),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Shippori draws the typewriter apostrophe as a straight
+              // tick, so the line is set with the typographic one.
+              Text('Couldn’t load your list just now.',
+                  style: AppTheme.hankoSerif(fontSize: 17, height: 1.5)),
+              const SizedBox(height: 12),
+              _TextTile(label: 'Retry', onTap: onRetry),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A Hanko secondary tile with a word on it ("Retry"), as Profile's and the
+/// Calendar's: sumi 3 with a 1 px edge outline, Jost 600 15 washi, 48 dp
+/// tall, pressed with the 8% wash. Its own semantics node (container), as
+/// the Calendar's since dd45bd1, so a screen reader finds one button named
+/// "Retry" with its own tap, apart from the line above it.
+class _TextTile extends StatelessWidget {
+  const _TextTile({required this.label, required this.onTap});
+
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      container: true,
+      button: true,
+      child: Material(
+        color: AppTheme.hankoSumi3,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+          side: const BorderSide(color: AppTheme.hankoEdge),
+        ),
+        child: InkWell(
+          onTap: onTap,
+          splashFactory: NoSplash.splashFactory,
+          highlightColor: AppTheme.hankoPressWash,
+          hoverColor: AppTheme.hankoPressWash,
+          borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: AppTheme.hankoTouch),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 18),
+              child: Center(
+                widthFactor: 1,
+                heightFactor: 1,
+                child: Text(
+                  label,
+                  style: AppTheme.hankoSans(
+                      fontSize: 15, weight: FontWeight.w600, height: 1),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A tab with nothing to print yet: what its card is for, in a few words,
+/// at the top of the column where the card would stand. A failed read has
+/// its own state now (_HankoListFailed), so this means an empty list.
+/// [note], if given, says what the card leaves out (question 96).
+class _HankoEmpty extends StatelessWidget {
+  const _HankoEmpty({required this.title, required this.line, this.note});
+
+  final String title;
+  final String line;
+  final String? note;
+
+  @override
+  Widget build(BuildContext context) {
+    final note = this.note;
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(
           AppTheme.hankoGutter, 28, AppTheme.hankoGutter, 32),
@@ -1160,12 +1335,32 @@ class _HankoEmpty extends StatelessWidget {
               Text(line,
                   style: AppTheme.hankoSans(
                       color: AppTheme.hankoStone, height: 1.5)),
+              if (note != null) ...[
+                const SizedBox(height: 12),
+                _PrintNote(note),
+              ],
             ],
           ),
         ),
       ),
     );
   }
+}
+
+/// A line under a print, in Jost 13 stone, as Profile writes the line under
+/// its seal register. It's part of the page, not the print, so it answers
+/// the reader's text size and never reaches the saved image.
+class _PrintNote extends StatelessWidget {
+  const _PrintNote(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Text(text,
+      style: AppTheme.hankoSans(
+          fontSize: AppTheme.hankoMetaSize,
+          color: AppTheme.hankoStone,
+          height: 1.4));
 }
 
 /// A tab's page: the card as a print, then Save card under it, in a column
@@ -1176,20 +1371,24 @@ class _HankoEmpty extends StatelessWidget {
 ///
 /// A hairline trims the print on screen, so you can see where the image
 /// ends. It sits outside the RepaintBoundary that Save card renders, so the
-/// saved image has none.
+/// saved image has none. [note], if given, sits under the print, outside it
+/// too (question 96).
 class _PrintPage extends StatelessWidget {
   const _PrintPage({
     required this.repaintKey,
     required this.filename,
     required this.card,
+    this.note,
   });
 
   final GlobalKey repaintKey;
   final String filename;
   final Widget card;
+  final String? note;
 
   @override
   Widget build(BuildContext context) {
+    final note = this.note;
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(
           AppTheme.hankoGutter, 24, AppTheme.hankoGutter, 32),
@@ -1210,6 +1409,10 @@ class _PrintPage extends StatelessWidget {
                   child: RepaintBoundary(key: repaintKey, child: card),
                 ),
               ),
+              if (note != null) ...[
+                const SizedBox(height: 12),
+                _PrintNote(note),
+              ],
               const SizedBox(height: 20),
               _SaveButton(repaintKey: repaintKey, filename: filename),
             ],
@@ -1398,9 +1601,10 @@ class _PrintCover extends StatelessWidget {
 /// verdict is the seal.
 ///
 /// A rating imported on another scale (D20, such as a 70 from a 100-point
-/// list) keeps its place, as before, but gets no seal: "70.0" in a seal
-/// would say what Hanj's 1-10 scale can't. With fewer than nine, the rest
-/// are Hanko's dashed "not yet" places.
+/// list) isn't ranked at all (question 96; the screen's _top9): it took
+/// first place above every 10, without a seal, since "70.0" in a seal would
+/// say what Hanj's 1-10 scale can't. With fewer than nine, the rest are
+/// Hanko's dashed "not yet" places.
 class _Top9Print extends StatelessWidget {
   const _Top9Print({required this.anime, required this.username});
 

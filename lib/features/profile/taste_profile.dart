@@ -21,6 +21,9 @@ class _TasteProfileScreenState extends State<TasteProfileScreen>
   bool _isLoading = true;
   TasteProfile? _profile;
 
+  /// The list couldn't be read (question 97).
+  bool _failed = false;
+
   late AnimationController _revealCtrl;
   late Animation<double> _revealAnim;
 
@@ -51,7 +54,10 @@ class _TasteProfileScreenState extends State<TasteProfileScreen>
   }
 
   Future<void> _analyze() async {
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _failed = false;
+    });
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) { setState(() => _isLoading = false); return; }
 
@@ -71,7 +77,12 @@ class _TasteProfileScreenState extends State<TasteProfileScreen>
       _revealCtrl.forward();
     } catch (e) {
       if (!mounted) return;
-      setState(() => _isLoading = false);
+      // Said as a failure (question 97); it showed the empty page, as if
+      // the list were empty.
+      setState(() {
+        _isLoading = false;
+        _failed = true;
+      });
     }
   }
 
@@ -93,12 +104,36 @@ class _TasteProfileScreenState extends State<TasteProfileScreen>
       ),
       body: _isLoading
           ? _buildLoading()
-          : _profile == null
-              ? _buildEmpty()
-              : _preHanko
-                  ? _buildPreHankoProfile()
-                  : _buildProfile(),
+          : _failed
+              ? _buildFailed()
+              : _profile == null
+                  ? _buildEmpty()
+                  : _preHanko
+                      ? _buildPreHankoProfile()
+                      : _buildProfile(),
     );
+  }
+
+  /// The list couldn't be read (question 97): Profile's line and its Retry,
+  /// at the top of the column, where the page showed its empty state as if
+  /// your list were empty. The line names no cause the app can't verify
+  /// (ANILIST-OFFLINE-0908-REPORT.md's rule). Retry reads the list again.
+  Widget _buildFailed() {
+    return _column(SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(
+          AppTheme.hankoGutter, 28, AppTheme.hankoGutter, 40),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Shippori draws the typewriter apostrophe as a straight tick, so
+          // the line is set with the typographic one.
+          Text('Couldn’t load your list just now.',
+              style: AppTheme.hankoSerif(fontSize: 17, height: 1.5)),
+          const SizedBox(height: 12),
+          _TextTile(label: 'Retry', onTap: _analyze),
+        ],
+      ),
+    ));
   }
 
   Widget _buildLoading() {
@@ -126,10 +161,9 @@ class _TasteProfileScreenState extends State<TasteProfileScreen>
     );
   }
 
-  /// Nothing to read: what the page is for, at the top of its column. It
-  /// names no reason, since an empty list and one that couldn't be read
-  /// both arrive here; the old "Add some anime to your list" was wrong for
-  /// the second.
+  /// Nothing to read: what the page is for, at the top of its column. A
+  /// failed read has its own state now (_buildFailed), so this means an
+  /// empty list.
   Widget _buildEmpty() {
     return _column(SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(
@@ -203,15 +237,34 @@ class _TasteProfileScreenState extends State<TasteProfileScreen>
               children: [
                 Expanded(
                     child: _HankoFigure('${p.totalWatched}', 'completed')),
+                // With no rating on the 1–10 scale there is nothing to
+                // average: a dash, as the Taste Card prints it, not "0.0".
                 Expanded(
                     child: _HankoFigure(
-                        p.avgRating.toStringAsFixed(1), 'average rating')),
+                        p.avgRating > 0 ? p.avgRating.toStringAsFixed(1) : '—',
+                        'average rating')),
                 Expanded(
                     child: _HankoFigure(
                         '${(p.completionRate * 100).round()}%',
                         'completion rate')),
               ],
             ),
+            // Under the average, what it leaves out (question 96), in
+            // Profile's words for its seal register.
+            if (p.offScaleRatings > 0) ...[
+              const SizedBox(height: 12),
+              Text(
+                p.offScaleRatings == 1
+                    ? '1 imported rating is on another scale, so it isn\'t '
+                        'in the\u00A0average.'
+                    : '${p.offScaleRatings} imported ratings are on another '
+                        'scale, so they aren\'t in the\u00A0average.',
+                style: AppTheme.hankoSans(
+                    fontSize: AppTheme.hankoMetaSize,
+                    color: AppTheme.hankoStone,
+                    height: 1.4),
+              ),
+            ],
             const SizedBox(height: 36),
             const _HankoHead('Your traits'),
             for (final t in p.traits) _HankoTrait(trait: t),
@@ -280,10 +333,18 @@ class _TasteProfileScreenState extends State<TasteProfileScreen>
 // Taste Analyzer — pure logic
 // ─────────────────────────────────────────────────────────────
 
+/// Whether a stored rating lands on Hanj's 1–10 scale at its nearest half
+/// step, as the seal register places it (Profile's rule, stage H5).
+bool _onScale(double rating) {
+  final step = (rating * 2).round() / 2;
+  return step >= 1 && step <= 10;
+}
+
 class TasteAnalyzer {
   static TasteProfile analyze(List<QueryDocumentSnapshot> docs) {
     final Map<String, int> genreCounts   = {};
     final List<double>      ratings      = [];
+    int offScale     = 0;
     int completed    = 0;
     int dropped      = 0;
     int watching     = 0;
@@ -301,7 +362,18 @@ class TasteAnalyzer {
         genreCounts[g] = (genreCounts[g] ?? 0) + 1;
       }
 
-      if (rating != null) ratings.add(rating);
+      // Only ratings on Hanj's 1–10 scale are averaged (question 96), as
+      // Profile and Advanced Stats count them. An imported rating on another
+      // scale (D20: a 70 from a 100-point list) would pull the average far
+      // off: one 70 beside an 8 and a 6.5 made it 28.2, and gave "High
+      // standards". Those are counted instead, so the page can say so.
+      if (rating != null) {
+        if (_onScale(rating)) {
+          ratings.add(rating);
+        } else {
+          offScale++;
+        }
+      }
       if (status == 'COMPLETED') { completed++; totalEps += eps; }
       if (status == 'DROPPED')   dropped++;
       if (status == 'WATCHING')  watching++;
@@ -345,6 +417,7 @@ class TasteAnalyzer {
       traits:         traits,
       topGenres:      sortedGenres,
       avgRating:      avgRating,
+      offScaleRatings: offScale,
       completionRate: completionRate,
       dropRate:       dropRate,
       totalWatched:   completed,
@@ -516,7 +589,12 @@ class TasteProfile {
   final String archetypeDesc;
   final List<Trait> traits;
   final List<GenreData> topGenres;
+
+  /// The average of your ratings on Hanj's 1–10 scale; 0 with none.
   final double avgRating;
+
+  /// Imported ratings on another scale, left out of [avgRating].
+  final int offScaleRatings;
   final double completionRate;
   final double dropRate;
   final int totalWatched;
@@ -531,6 +609,7 @@ class TasteProfile {
     required this.traits,
     required this.topGenres,
     required this.avgRating,
+    required this.offScaleRatings,
     required this.completionRate,
     required this.dropRate,
     required this.totalWatched,
@@ -1113,6 +1192,55 @@ class _HankoViewingStyle extends StatelessWidget {
           ],
         ),
       ],
+    );
+  }
+}
+
+/// A Hanko secondary tile with a word on it ("Retry"), as Profile's and the
+/// Calendar's: sumi 3 with a 1 px edge outline, Jost 600 15 washi, 48 dp
+/// tall, pressed with the 8% wash. Its own semantics node (container), as
+/// the Calendar's since dd45bd1, so a screen reader finds one button named
+/// "Retry" with its own tap, apart from the line above it.
+class _TextTile extends StatelessWidget {
+  const _TextTile({required this.label, required this.onTap});
+
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      container: true,
+      button: true,
+      child: Material(
+        color: AppTheme.hankoSumi3,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+          side: const BorderSide(color: AppTheme.hankoEdge),
+        ),
+        child: InkWell(
+          onTap: onTap,
+          splashFactory: NoSplash.splashFactory,
+          highlightColor: AppTheme.hankoPressWash,
+          hoverColor: AppTheme.hankoPressWash,
+          borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: AppTheme.hankoTouch),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 18),
+              child: Center(
+                widthFactor: 1,
+                heightFactor: 1,
+                child: Text(
+                  label,
+                  style: AppTheme.hankoSans(
+                      fontSize: 15, weight: FontWeight.w600, height: 1),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
