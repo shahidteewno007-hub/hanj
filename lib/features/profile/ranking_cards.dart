@@ -1557,7 +1557,13 @@ class _TastePrint extends StatelessWidget {
                   color: AppTheme.hankoStone,
                   height: 1.2)),
           const SizedBox(height: 6),
-          Text(topGenres.join(' · '),
+          // A genre's own words never part ("Slice of Life" broke after
+          // "of"), and each dot stays with the genre before it, so a line
+          // breaks only after a dot.
+          Text(
+              topGenres
+                  .map((g) => g.replaceAll(' ', '\u00A0'))
+                  .join('\u00A0· '),
               style: AppTheme.hankoSans(height: 1.5)),
         ],
       ],
