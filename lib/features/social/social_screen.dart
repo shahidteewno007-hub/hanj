@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../../core/responsive.dart';
 import '../../core/theme/app_theme.dart';
 import '../../services/auth_service.dart';
 import '../../services/firestore_service.dart';
@@ -109,13 +110,18 @@ class _SocialScreenState extends State<SocialScreen> {
     };
   }
 
+  /// In Hanko the note takes the theme's own snack bar, washi words on a
+  /// sumi step: the green and the error pink it was given measured about
+  /// 2.7 and 2.3:1 under washi, and colour isn't what says it worked.
   void _showSnackBar(String message, Color color) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
-        backgroundColor: color,
+        backgroundColor: _preHanko ? color : null,
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        shape: _preHanko
+            ? RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))
+            : null,
       ),
     );
   }
@@ -123,9 +129,16 @@ class _SocialScreenState extends State<SocialScreen> {
   void _copyShareCode() {
     if (_myShareCode != null) {
       Clipboard.setData(ClipboardData(text: _myShareCode!));
-      _showSnackBar('Share code copied!', AppTheme.success);
+      _showSnackBar(_preHanko ? 'Share code copied!' : 'Share code copied.',
+          AppTheme.success);
     }
   }
+
+  /// The screen before Hanko (question 73): a coral and a purple gradient
+  /// banner with emoji for Arcs and Soulmatch, and the share code in a
+  /// rounded card in alternating coral and ivory pairs. Kept switched off as
+  /// design history; _buildPreHanko() holds it.
+  static const bool _preHanko = false;
 
   @override
   Widget build(BuildContext context) {
@@ -133,162 +146,30 @@ class _SocialScreenState extends State<SocialScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Social'),
+        leading: IconButton(
+          tooltip: 'Back',
+          icon: const Icon(Icons.arrow_back_sharp),
+          color: AppTheme.hankoWashi,
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: Text('Social', style: AppTheme.hankoSerif(fontSize: 20)),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: Column(
+        padding: _preHanko
+            ? const EdgeInsets.all(24)
+            : const EdgeInsets.fromLTRB(
+                AppTheme.hankoGutter, 16, AppTheme.hankoGutter, 40),
+        // On a wide window the page keeps Profile's reading column, hung on
+        // the left, instead of stretching rows and the code across it.
+        child: Align(
+          alignment: Alignment.topLeft,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+                maxWidth: _preHanko ? double.infinity : Responsive.proseMaxWidth),
+            child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ── Arcs banner ───────────────────────────────────
-            GestureDetector(
-              onTap: () => Navigator.push(context,
-                  MaterialPageRoute(builder: (_) => const ArcsScreen())),
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(20),
-                margin: const EdgeInsets.only(bottom: 20),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      AppTheme.primary.withValues(alpha: 0.2),
-                      const Color(0xFF1A0A06),
-                    ],
-                  ),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                      color: AppTheme.primary.withValues(alpha: 0.4)),
-                ),
-                child: Row(
-                  children: [
-                    const Text('🏛️', style: TextStyle(fontSize: 36)),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('Arcs',
-                              style: AppTheme.serif(
-                                  fontSize: 18, weight: FontWeight.w700)),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Join communities, start discussions,\nfind your people.',
-                            style: AppTheme.sans(
-                                fontSize: 12,
-                                color: AppTheme.textSecondary,
-                                height: 1.4),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const Icon(Icons.chevron_right_rounded,
-                        color: AppTheme.primary),
-                  ],
-                ),
-              ),
-            ),
-
-            // ── Soulmatch banner ──────────────────────────────
-            GestureDetector(
-              onTap: () => Navigator.push(context,
-                  MaterialPageRoute(builder: (_) => const SoulmatchScreen())),
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(20),
-                margin: const EdgeInsets.only(bottom: 20),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      const Color(0xFF9B59B6).withValues(alpha: 0.2),
-                      const Color(0xFF1A0820),
-                    ],
-                  ),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                      color: const Color(0xFF9B59B6).withValues(alpha: 0.4)),
-                ),
-                child: Row(
-                  children: [
-                    const Text('🪞', style: TextStyle(fontSize: 36)),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('Soulmatch',
-                              style: AppTheme.serif(
-                                  fontSize: 18, weight: FontWeight.w700)),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Find your anime soulmate.\nCompare taste with friends.',
-                            style: AppTheme.sans(
-                                fontSize: 12,
-                                color: AppTheme.textSecondary,
-                                height: 1.4),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const Icon(Icons.chevron_right_rounded,
-                        color: Color(0xFF9B59B6)),
-                  ],
-                ),
-              ),
-            ),
-            // My Share Code Card
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: const Color(0xFF121110),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: AppTheme.border),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Text('H', style: AppTheme.serif(fontSize: 16, weight: FontWeight.w700).copyWith(color: AppTheme.primary)),
-                      const SizedBox(width: 6),
-                      Text('· YOUR SHARE CODE', style: AppTheme.mono(fontSize: 10, color: AppTheme.primary, letterSpacing: 1.2)),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-                  _myShareCode == null
-                      ? const CircularProgressIndicator(strokeWidth: 1.5, color: AppTheme.primary)
-                      : _buildCodeDisplay(_myShareCode!),
-                  const SizedBox(height: 14),
-                  Text(
-                    "Friends with this code can see what you're watching and how your lists compare.",
-                    style: AppTheme.sans(fontSize: 13, color: AppTheme.textMuted, height: 1.5),
-                  ),
-                  const SizedBox(height: 20),
-                  MouseRegion(
-                    cursor: SystemMouseCursors.click,
-                    child: GestureDetector(
-                      onTap: _copyShareCode,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        decoration: BoxDecoration(color: AppTheme.textPrimary, borderRadius: BorderRadius.circular(30)),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Icon(Icons.copy_rounded, color: AppTheme.textInverse, size: 16),
-                            const SizedBox(width: 8),
-                            Text('Copy code', style: AppTheme.sans(fontSize: 14, weight: FontWeight.w600, color: AppTheme.textInverse)),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+            if (_preHanko) ..._buildPreHanko() else ..._buildHanko(),
 
             // Compare Lists Section (hidden, see _compareEnabled)
             if (_compareEnabled) ...[
@@ -472,9 +353,226 @@ class _SocialScreenState extends State<SocialScreen> {
               ),
             ],
           ],
+            ),
+          ),
         ),
       ),
     );
+  }
+
+  /// Social in Hanko (question 73). Your share code first, since it is what
+  /// this screen holds: the code in washi Jost, the privacy line that says
+  /// what it shows, and Copy code as the screen's one washi action. Then,
+  /// below the screen's one hairline, the ways on as Profile's quiet rows:
+  /// Soulmatch, where you type a friend's code, and Arcs, whose page says
+  /// "Arcs are coming" while Arcs is gated (arcs_screen.dart), so its line
+  /// says so too. Gone: the coral and purple gradient banners and their
+  /// emoji, and the coral pairs in the code; coral is only your seal now.
+  List<Widget> _buildHanko() {
+    final code = _myShareCode;
+    return [
+      Semantics(
+        header: true,
+        child: Text('Your share code',
+            style: AppTheme.hankoSerif(
+                fontSize: AppTheme.hankoSectionSize, height: 1.3)),
+      ),
+      const SizedBox(height: 14),
+      code == null
+          ? const SizedBox.square(
+              dimension: 24,
+              child: CircularProgressIndicator(
+                  strokeWidth: 2, color: AppTheme.hankoStone),
+            )
+          : _HankoShareCode(code),
+      const SizedBox(height: 12),
+      Text(
+        "Friends with this code can see what you're watching and how your lists compare.",
+        style: AppTheme.hankoSans(
+            fontSize: AppTheme.hankoMetaSize,
+            color: AppTheme.hankoStone,
+            height: 1.5),
+      ),
+      const SizedBox(height: 20),
+      _HankoCopyButton(onTap: code == null ? null : _copyShareCode),
+      const SizedBox(height: 32),
+      const ColoredBox(
+        color: AppTheme.hankoHairline,
+        child: SizedBox(height: 1, width: double.infinity),
+      ),
+      const SizedBox(height: 10),
+      _SocialRow(
+        icon: Icons.join_inner_sharp,
+        title: 'Soulmatch',
+        line: 'Enter a friend\'s code to compare your taste',
+        onTap: () => Navigator.push(context,
+            MaterialPageRoute(builder: (_) => const SoulmatchScreen())),
+      ),
+      const SizedBox(height: 4),
+      _SocialRow(
+        icon: Icons.groups_2_sharp,
+        title: 'Arcs',
+        line: 'Coming soon: communities around the shows you love',
+        onTap: () => Navigator.push(context,
+            MaterialPageRoute(builder: (_) => const ArcsScreen())),
+      ),
+    ];
+  }
+
+  /// The top of the screen before Hanko (_preHanko): the Arcs and Soulmatch
+  /// banners and the share-code card.
+  List<Widget> _buildPreHanko() {
+    return [
+      // ── Arcs banner ───────────────────────────────────
+      GestureDetector(
+        onTap: () => Navigator.push(context,
+            MaterialPageRoute(builder: (_) => const ArcsScreen())),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(20),
+          margin: const EdgeInsets.only(bottom: 20),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                AppTheme.primary.withValues(alpha: 0.2),
+                const Color(0xFF1A0A06),
+              ],
+            ),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+                color: AppTheme.primary.withValues(alpha: 0.4)),
+          ),
+          child: Row(
+            children: [
+              const Text('🏛️', style: TextStyle(fontSize: 36)),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Arcs',
+                        style: AppTheme.serif(
+                            fontSize: 18, weight: FontWeight.w700)),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Join communities, start discussions,\nfind your people.',
+                      style: AppTheme.sans(
+                          fontSize: 12,
+                          color: AppTheme.textSecondary,
+                          height: 1.4),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right_rounded,
+                  color: AppTheme.primary),
+            ],
+          ),
+        ),
+      ),
+
+      // ── Soulmatch banner ──────────────────────────────
+      GestureDetector(
+        onTap: () => Navigator.push(context,
+            MaterialPageRoute(builder: (_) => const SoulmatchScreen())),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(20),
+          margin: const EdgeInsets.only(bottom: 20),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                const Color(0xFF9B59B6).withValues(alpha: 0.2),
+                const Color(0xFF1A0820),
+              ],
+            ),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+                color: const Color(0xFF9B59B6).withValues(alpha: 0.4)),
+          ),
+          child: Row(
+            children: [
+              const Text('🪞', style: TextStyle(fontSize: 36)),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Soulmatch',
+                        style: AppTheme.serif(
+                            fontSize: 18, weight: FontWeight.w700)),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Find your anime soulmate.\nCompare taste with friends.',
+                      style: AppTheme.sans(
+                          fontSize: 12,
+                          color: AppTheme.textSecondary,
+                          height: 1.4),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right_rounded,
+                  color: Color(0xFF9B59B6)),
+            ],
+          ),
+        ),
+      ),
+      // My Share Code Card
+      Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: const Color(0xFF121110),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: AppTheme.border),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Text('H', style: AppTheme.serif(fontSize: 16, weight: FontWeight.w700).copyWith(color: AppTheme.primary)),
+                const SizedBox(width: 6),
+                Text('· YOUR SHARE CODE', style: AppTheme.mono(fontSize: 10, color: AppTheme.primary, letterSpacing: 1.2)),
+              ],
+            ),
+            const SizedBox(height: 20),
+            _myShareCode == null
+                ? const CircularProgressIndicator(strokeWidth: 1.5, color: AppTheme.primary)
+                : _buildCodeDisplay(_myShareCode!),
+            const SizedBox(height: 14),
+            Text(
+              "Friends with this code can see what you're watching and how your lists compare.",
+              style: AppTheme.sans(fontSize: 13, color: AppTheme.textMuted, height: 1.5),
+            ),
+            const SizedBox(height: 20),
+            MouseRegion(
+              cursor: SystemMouseCursors.click,
+              child: GestureDetector(
+                onTap: _copyShareCode,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  decoration: BoxDecoration(color: AppTheme.textPrimary, borderRadius: BorderRadius.circular(30)),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.copy_rounded, color: AppTheme.textInverse, size: 16),
+                      const SizedBox(width: 8),
+                      Text('Copy code', style: AppTheme.sans(fontSize: 14, weight: FontWeight.w600, color: AppTheme.textInverse)),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    ];
   }
 
   Widget _buildCodeDisplay(String code) {
@@ -527,6 +625,161 @@ class _ComparisonStat extends StatelessWidget {
         const SizedBox(height: 4),
         Text(label, style: Theme.of(context).textTheme.bodySmall),
       ],
+    );
+  }
+}
+
+/// Your share code as Hanko sets it: washi Jost 500 at 34, tabular, two
+/// groups of four, in one colour (the coral and ivory pairs were decoration,
+/// and coral is your seal now). It wraps between the groups at large text
+/// rather than overflowing. A screen reader hears it a character at a time.
+class _HankoShareCode extends StatelessWidget {
+  const _HankoShareCode(this.code);
+
+  final String code;
+
+  @override
+  Widget build(BuildContext context) {
+    final safe = code.padRight(8, '0');
+    final shown = '${safe.substring(0, 4)} ${safe.substring(4, 8)}';
+    return Semantics(
+      label: 'Your share code: ${safe.split('').join(' ')}',
+      excludeSemantics: true,
+      child: Text(
+        shown,
+        style: AppTheme.hankoSans(
+          fontSize: 34,
+          weight: FontWeight.w500,
+          letterSpacing: 3,
+          height: 1.2,
+          tabular: true,
+        ),
+      ),
+    );
+  }
+}
+
+/// Copy code, the screen's one main action as Hanko draws it (Detail's
+/// _HankoMainAction): a washi tile with sumi words, 15.34:1, 2 px corners,
+/// at least 48 px, pressed with a sumi wash and no ripple.
+class _HankoCopyButton extends StatelessWidget {
+  const _HankoCopyButton({required this.onTap});
+
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      enabled: onTap != null,
+      label: 'Copy code',
+      excludeSemantics: true,
+      child: Material(
+        color: AppTheme.hankoWashi,
+        borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+          splashFactory: NoSplash.splashFactory,
+          highlightColor: AppTheme.hankoSumi.withValues(alpha: 0.08),
+          hoverColor: AppTheme.hankoSumi.withValues(alpha: 0.05),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(
+                minWidth: AppTheme.hankoTouch,
+                minHeight: AppTheme.hankoTouch),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.copy_sharp,
+                      size: 20, color: AppTheme.hankoSumi),
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Text(
+                      'Copy code',
+                      style: AppTheme.hankoSans(
+                        fontSize: 15,
+                        weight: FontWeight.w600,
+                        color: AppTheme.hankoSumi,
+                        height: 1.2,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A way on from Social, drawn as Profile's quiet rows are (its _EntryRow,
+/// private to that file): an icon in stone, the name in Jost 15 500 washi,
+/// a line in Jost 13 stone and a chevron, no box and no colour of its own,
+/// at least 56 px tall, pressed with the 8% washi wash.
+class _SocialRow extends StatelessWidget {
+  const _SocialRow({
+    required this.icon,
+    required this.title,
+    required this.line,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String line;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: '$title. $line',
+      excludeSemantics: true,
+      child: InkWell(
+        onTap: onTap,
+        splashFactory: NoSplash.splashFactory,
+        highlightColor: AppTheme.hankoPressWash,
+        hoverColor: AppTheme.hankoPressWash,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 56),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Row(
+              children: [
+                Icon(icon, size: 22, color: AppTheme.hankoStone),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(title,
+                          style: AppTheme.hankoSans(
+                              fontSize: 15,
+                              weight: FontWeight.w500,
+                              height: 1.25)),
+                      const SizedBox(height: 2),
+                      Text(line,
+                          style: AppTheme.hankoSans(
+                            fontSize: AppTheme.hankoMetaSize,
+                            color: AppTheme.hankoStone,
+                            height: 1.3,
+                          )),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                const Icon(Icons.chevron_right_sharp,
+                    size: 20, color: AppTheme.hankoStone),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
