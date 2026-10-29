@@ -412,7 +412,7 @@ class _SocialScreenState extends State<SocialScreen> {
       _SocialRow(
         icon: Icons.groups_2_sharp,
         title: 'Arcs',
-        line: 'Communities around the shows you love. Coming soon',
+        line: 'Coming soon: communities around the shows you love',
         onTap: () => Navigator.push(context,
             MaterialPageRoute(builder: (_) => const ArcsScreen())),
       ),
