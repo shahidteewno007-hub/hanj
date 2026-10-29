@@ -566,7 +566,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   ///
   /// The name sits beside the monogram when it has 200 px there, and under
   /// it when the column is narrower, so a long name never squeezes into a
-  /// sliver beside the seal.
+  /// sliver beside the seal. A word too long for even the whole column sets
+  /// the name a little smaller (_nameScaler), so it is never broken.
   Widget _buildHeader(User? user, String initial) {
     final name = user?.displayName ?? 'Anime Fan';
     final since = user?.metadata.creationTime?.year;
@@ -579,7 +580,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
         children: [
           Semantics(
             header: true,
-            child: Text(name, style: _nameStyle),
+            child: Text(name,
+                style: _nameStyle,
+                textScaler: _nameScaler(context, name, constraints.maxWidth)),
           ),
           if (founder) ...[
             const SizedBox(height: 8),
@@ -675,13 +678,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  /// How wide the name's longest word sets, at the text size in use, so the
-  /// header can keep every word whole. A line may break after a hyphen, so
-  /// "Kristoffersen-Okonkwo" counts as two words.
-  static double _longestWord(BuildContext context, String name) {
+  /// How wide the name's longest word sets, at the text size in use (or at
+  /// [scaler]), so the header can keep every word whole. A line may break
+  /// after a hyphen, so "Kristoffersen-Okonkwo" counts as two words.
+  static double _longestWord(BuildContext context, String name,
+      {TextScaler? scaler}) {
     final painter = TextPainter(
       textDirection: Directionality.of(context),
-      textScaler: MediaQuery.textScalerOf(context),
+      textScaler: scaler ?? MediaQuery.textScalerOf(context),
       maxLines: 1,
     );
     var longest = 0.0;
@@ -693,6 +697,32 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
     painter.dispose();
     return longest;
+  }
+
+  /// The text size for the name in a column [width] wide: the reader's own,
+  /// unless the name's longest word is wider than the whole column even on
+  /// a line of its own, as a long surname can be at 2.0x. Then the whole
+  /// name is set just small enough for that word to fit, so no word is ever
+  /// broken in the middle (question 76). Every name that fits keeps the
+  /// reader's size exactly.
+  static TextScaler _nameScaler(
+      BuildContext context, String name, double width) {
+    final reader = MediaQuery.textScalerOf(context);
+    if (width <= 0) return reader;
+    final longest = _longestWord(context, name);
+    if (longest <= width) return reader;
+    // A word's width grows in step with its size. Start from the size that
+    // should just fit, rounded down to a half pixel, and step down until
+    // the word measures inside the column.
+    final size = _nameStyle.fontSize!;
+    var fitted = (reader.scale(size) * width / longest * 2).floorToDouble() / 2;
+    while (fitted > 1 &&
+        _longestWord(context, name,
+                scaler: TextScaler.linear(fitted / size)) >
+            width) {
+      fitted -= 0.5;
+    }
+    return TextScaler.linear((fitted < 1 ? 1 : fitted) / size);
   }
 
   /// The name's style: Shippori 28, as hanko.html sets it.
