@@ -150,7 +150,12 @@ class _UpcomingAnimeScreenState extends State<UpcomingAnimeScreen>
         .collection('alerts').doc(anime.id);
 
     if (_alertedIds.contains(anime.id)) {
-      await ref.delete();
+      try {
+        await ref.delete();
+      } catch (_) {
+        _alertNotSaved(removing: true);
+        return;
+      }
       if (!mounted) return;
       setState(() => _alertedIds.remove(anime.id));
       if (mounted) {
@@ -163,14 +168,19 @@ class _UpcomingAnimeScreenState extends State<UpcomingAnimeScreen>
         );
       }
     } else {
-      await ref.set({
-        'animeId':    anime.id,
-        'title':      anime.titleEnglish ?? anime.title,
-        'imageUrl':   anime.imageUrl,
-        'season':     anime.season,
-        'seasonYear': anime.seasonYear,
-        'addedAt':    FieldValue.serverTimestamp(),
-      });
+      try {
+        await ref.set({
+          'animeId':    anime.id,
+          'title':      anime.titleEnglish ?? anime.title,
+          'imageUrl':   anime.imageUrl,
+          'season':     anime.season,
+          'seasonYear': anime.seasonYear,
+          'addedAt':    FieldValue.serverTimestamp(),
+        });
+      } catch (_) {
+        _alertNotSaved(removing: false);
+        return;
+      }
       if (!mounted) return;
       setState(() => _alertedIds.add(anime.id));
       if (mounted) {
@@ -191,6 +201,29 @@ class _UpcomingAnimeScreenState extends State<UpcomingAnimeScreen>
         );
       }
     }
+  }
+
+  /// Question 84, with question 83's pattern: a refused alert write (by the
+  /// rules, say) is caught in _toggleAlert. Uncaught, it went to
+  /// PlatformDispatcher.onError, which main.dart reports to Crashlytics as
+  /// fatal. This bell only moves once its write has landed, so there is no
+  /// bell to put back: it still shows what is saved, and no confirmation
+  /// was shown. The message says so, naming no cause, in place of any
+  /// message still showing, in this screen's own message style. Offline,
+  /// the write waits for the connection, as before.
+  void _alertNotSaved({required bool removing}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(removing
+              ? "Couldn't remove the reminder. Try again."
+              : "Couldn't set the reminder. Try again."),
+          backgroundColor: AppTheme.surfaceMid,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
   }
 
   @override
