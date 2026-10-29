@@ -214,8 +214,17 @@ class _ShareCard extends StatelessWidget {
     }
   }
 
+  /// The card people save and post, drawn at one size like a printed card
+  /// (question 75, as question 52 did for the Hanj Card faces): the
+  /// reader's text size stays out of it, while the sheet's own words and
+  /// buttons around it still follow the setting. The card is a fixed 160 px
+  /// tall, so its text has no room to grow inside it, and the saved image
+  /// would change with the phone's settings. At 1.0 nothing changes.
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) =>
+      MediaQuery.withNoTextScaling(child: _card());
+
+  Widget _card() {
     return Container(
       width: double.infinity,
       height: 160,
