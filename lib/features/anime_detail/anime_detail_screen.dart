@@ -3745,10 +3745,10 @@ class _NextEpisodeCountdownState extends State<_NextEpisodeCountdown> {
                 excludeSemantics: true,
                 child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
-                onTap: () {
+                onTap: () async {
                   final newVal = !_reminderOn;
                   setState(() => _reminderOn = newVal);
-                  _saveReminder(newVal);
+                  final saving = _saveReminder(newVal);
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       content: Text(newVal
@@ -3761,6 +3761,34 @@ class _NextEpisodeCountdownState extends State<_NextEpisodeCountdown> {
                       duration: const Duration(seconds: 2),
                     ),
                   );
+                  // Question 84, with question 83's pattern: the write is
+                  // awaited and caught. Unawaited, a refused write (by the
+                  // rules, say) went to PlatformDispatcher.onError, which
+                  // main.dart reports to Crashlytics as fatal, and the bell
+                  // went on showing a reminder that wasn't saved. Now the
+                  // bell goes back and the message says so, naming no cause.
+                  // Offline, the write waits for the connection and the bell
+                  // stays as tapped.
+                  try {
+                    await saving;
+                  } catch (_) {
+                    if (!context.mounted) return;
+                    setState(() => _reminderOn = !newVal);
+                    // In place of "Reminder set" if it's still showing.
+                    ScaffoldMessenger.of(context)
+                      ..hideCurrentSnackBar()
+                      ..showSnackBar(
+                        SnackBar(
+                          content: Text(newVal
+                              ? "Couldn't set the reminder. Try again."
+                              : "Couldn't remove the reminder. Try again."),
+                          backgroundColor: AppTheme.surfaceLight,
+                          behavior: SnackBarBehavior.floating,
+                          margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppTheme.hankoRadius)),
+                        ),
+                      );
+                  }
                 },
                 child: SizedBox.square(
                   dimension: AppTheme.hankoTouch,

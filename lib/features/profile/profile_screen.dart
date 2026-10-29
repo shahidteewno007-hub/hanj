@@ -441,10 +441,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             builder: (_) => const ActivityFeedScreen())),
                       ),
                       const SizedBox(height: _groupGap),
+                      // With the card out of the header (see
+                      // _pinnedCardInHeader), the row names your pinned
+                      // card in words, with no card art.
                       _EntryRow(
                         icon: Icons.style_sharp,
                         title: 'Hanj Cards',
-                        line: 'Collect rare cards by watching anime',
+                        line: _pinnedName.isEmpty
+                            ? 'Collect rare cards by watching anime'
+                            : 'Pinned: $_pinnedName',
                         onTap: () => Navigator.push(context, MaterialPageRoute(
                             builder: (_) => const CardCollectionScreen())),
                       ),
@@ -525,6 +530,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
   /// from Profile, so the line is kept here, switched off, rather than
   /// said twice on one page.
   static const bool _genresInCounts = false;
+
+  /// Your pinned Hanj Card stood beside your name in the header (stage H5,
+  /// item b) until Shahid's call of 2026-10-29. It was the loudest thing on
+  /// a calm page, its frame and glow competing with your name and your
+  /// seal; it pushed the name onto two lines; it was Profile's costliest
+  /// frame to paint (PERF.md S2-3); and the Hanj Cards row below already
+  /// leads to the collection. So the header gives your name the whole
+  /// width, and that row names your pinned card in words. The card's code
+  /// is kept below (_pinnedCard), switched off here.
+  static const bool _pinnedCardInHeader = false;
 
   /// Space between the rows below the hairline: 4 between rows in a group,
   /// as H5 set it, and 16 between groups, so the groups read without
@@ -642,15 +657,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
     );
 
-    final card = _featuredCard;
+    final card = _pinnedCardInHeader ? _featuredCard : null;
     return Padding(
       padding: const EdgeInsets.fromLTRB(
           AppTheme.hankoGutter, 4, AppTheme.hankoGutter, 0),
-      // Your pinned Hanj Card stands beside your name (item b), as
-      // hanko.html places it, at the right of the header. When the column
-      // left beside it can't hold the name's longest word (large text, a
-      // long name), the card moves under the name instead, so no word is
-      // ever broken in the middle.
+      // Switched off (_pinnedCardInHeader): your pinned Hanj Card stood
+      // beside your name (item b), as hanko.html places it, at the right of
+      // the header. When the column left beside it couldn't hold the name's
+      // longest word (large text, a long name), the card moved under the
+      // name instead, so no word was ever broken in the middle.
       child: card == null
           ? editable
           : LayoutBuilder(builder: (context, constraints) {
@@ -739,6 +754,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
   /// Profile's worst raster frame (40.1 ms) on this card at 0.52; at 0.7
   /// and in the header it needs measuring again on the phone.
   static const double _pinnedScale = 0.7;
+
+  /// Your pinned card's name, as the Hanj Cards row says it ("Pinned: The
+  /// Critic"), or '' when no card is pinned.
+  String get _pinnedName {
+    final card = _featuredCard;
+    if (card == null) return '';
+    return ((card['name'] ?? card['cardName']) as String?) ?? '';
+  }
 
   Widget _pinnedCard(Map<String, dynamic> card) {
     final name = ((card['name'] ?? card['cardName']) as String?) ?? '';
@@ -1172,11 +1195,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ? 'You\'ve logged ${count(titles, 'title', 'titles')}.'
             : 'You\'ve logged ${count(titles, 'title', 'titles')} and '
                 'watched ${count(episodes, 'episode', 'episodes')}.';
+    // Each number keeps its word (question 89): a no-break space joins
+    // them, so a line never ends on a number whose word went on to the
+    // next line ("1 / dropped.").
     final statuses = [
-      if (watching > 0) '${n.format(watching)} watching',
-      if (completed > 0) '${n.format(completed)} completed',
-      if (planned > 0) '${n.format(planned)} on your watchlist',
-      if (dropped > 0) '${n.format(dropped)} dropped',
+      if (watching > 0) '${n.format(watching)}\u00A0watching',
+      if (completed > 0) '${n.format(completed)}\u00A0completed',
+      if (planned > 0) '${n.format(planned)}\u00A0on your watchlist',
+      if (dropped > 0) '${n.format(dropped)}\u00A0dropped',
     ];
     final quiet = AppTheme.hankoSans(
       fontSize: AppTheme.hankoMetaSize,
@@ -1679,7 +1705,13 @@ class _FadeTitle extends StatelessWidget {
 }
 
 /// A Hanko secondary tile with a word on it ("Retry"), as Home's: sumi 3
-/// with a 1 px edge outline, Jost 600 15 washi, 48 dp tall.
+/// with a 1 px edge outline, Jost 600 15 washi, 48 dp tall. Its own
+/// semantics node (container; question 102, as the Calendar's and
+/// Activity's tiles since dd45bd1), so a screen reader finds one button
+/// named for its word, with its own tap, wherever the tile is placed. Here
+/// the page already gave it a node of its own (checked on 2026-10-30); in
+/// the Calendar's and Activity's notes, a tile without it folded into the
+/// note, which then read as one long button.
 class _TextTile extends StatelessWidget {
   const _TextTile({required this.label, required this.onTap});
 
@@ -1689,6 +1721,7 @@ class _TextTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Semantics(
+      container: true,
       button: true,
       child: Material(
         color: AppTheme.hankoSumi3,
