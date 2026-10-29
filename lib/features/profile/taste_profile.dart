@@ -193,7 +193,9 @@ class _TasteProfileScreenState extends State<TasteProfileScreen>
                   style: AppTheme.hankoSerif(fontSize: 28, height: 1.15)),
             ),
             const SizedBox(height: 12),
-            Text(p.archetypeDesc,
+            // Shippori draws the typewriter apostrophe as a straight tick
+            // ("doesn't"), so the sentence is set with the typographic one.
+            Text(p.archetypeDesc.replaceAll("'", '’'),
                 style: AppTheme.hankoSerif(fontSize: 17, height: 1.5)),
             const SizedBox(height: 24),
             Row(
