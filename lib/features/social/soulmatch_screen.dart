@@ -822,9 +822,13 @@ class _HankoYourCode extends StatelessWidget {
 /// a washi tile with sumi words, 15.34:1, 2 px corners, at least 48 px,
 /// pressed with a sumi wash and no ripple. It was the theme's coral pill.
 /// While a match is worked out, a sumi spinner takes its icon's place and
-/// taps are ignored, as before. The tap is given to the button's own
-/// semantics too, so a screen reader can press it (excludeSemantics would
-/// otherwise drop the InkWell's).
+/// taps are ignored, as before.
+///
+/// Its own semantics node (container), named by its word, with the InkWell's
+/// tap and focus inside it, as Profile's Retry tile (dd45bd1). Not a label
+/// over excluded semantics: that node could be tapped but not focused, so on
+/// the web a Match that showed an error left the code field focused for the
+/// app but not for the browser, and what you typed next never arrived.
 class _HankoMatchButton extends StatelessWidget {
   const _HankoMatchButton({required this.loading, required this.onTap});
 
@@ -834,11 +838,9 @@ class _HankoMatchButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Semantics(
+      container: true,
       button: true,
       enabled: onTap != null,
-      label: 'Match',
-      onTap: onTap,
-      excludeSemantics: true,
       child: Material(
         color: AppTheme.hankoWashi,
         borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
