@@ -1,4 +1,7 @@
+import 'dart:convert';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Handles claiming a Founder number for the first 50 users.
@@ -72,7 +75,7 @@ class FounderService {
       final data = snap.data();
       if (data == null || data['isFounder'] != true) {
         const status = FounderStatus(isFounder: false);
-        await _cacheStatus(status);
+        await _cacheStatus(uid, status);
         return status;
       }
       final status = FounderStatus(
@@ -80,7 +83,7 @@ class FounderService {
         number: data['founderNumber'] as int?,
         joinedAt: (data['founderJoinedAt'] as Timestamp?)?.toDate(),
       );
-      await _cacheStatus(status);
+      await _cacheStatus(uid, status);
       return status;
     } catch (_) {
       return const FounderStatus(isFounder: false);
@@ -88,28 +91,45 @@ class FounderService {
   }
 
   // ── Local persistence ──────────────────────────────────────────────────
+  // One entry per account, keyed by its uid (D22). Builds before this kept a
+  // single unkeyed entry, so a second account signed in on the same device
+  // was shown the first account's Founder pill and card.
+  //
   // Founder status is immutable once granted: a user who holds a number keeps
-  // it forever, and the rules are meant to prevent it being rewritten. That
-  // makes a GRANTED status safe to trust from disk indefinitely, so the card
-  // can paint on the first frame without a Firestore round trip.
+  // it forever, and the rules freeze founderNumber once it is set. That makes
+  // a GRANTED status safe to trust from disk for the account that earned it,
+  // so the card can paint on the first frame, offline too, without a
+  // Firestore round trip. The uid key is what keeps that safe: an entry is
+  // only ever written from a server read of that same account's document.
   //
   // A NEGATIVE result is deliberately not final — someone who isn't a founder
   // yet may still claim one of the remaining slots — so it is cached only to
   // avoid a first-paint flicker, and callers must still run the claim.
 
-  static const _kIsFounder = 'founder_is_founder';
-  static const _kNumber    = 'founder_number';
-  static const _kJoinedAt  = 'founder_joined_at';
+  static String _statusKey(String uid) => 'founder_status_$uid';
 
-  /// The last known status from disk, or null if we have never resolved one.
+  // The unkeyed entry older builds wrote. Nothing says which account it
+  // belongs to, so it is never read; the first keyed write removes it.
+  static const _legacyKeys = [
+    'founder_is_founder',
+    'founder_number',
+    'founder_joined_at',
+  ];
+
+  /// The signed-in account's last known status from disk, or null if this
+  /// device has never resolved one for that account (or nobody is signed in).
   Future<FounderStatus?> getCachedStatus() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return null;
     try {
       final prefs = await SharedPreferences.getInstance();
-      if (!prefs.containsKey(_kIsFounder)) return null;
-      final millis = prefs.getInt(_kJoinedAt);
+      final raw = prefs.getString(_statusKey(uid));
+      if (raw == null) return null;
+      final cached = jsonDecode(raw) as Map<String, dynamic>;
+      final millis = cached['joinedAt'] as int?;
       return FounderStatus(
-        isFounder: prefs.getBool(_kIsFounder) ?? false,
-        number: prefs.getInt(_kNumber),
+        isFounder: cached['isFounder'] == true,
+        number: cached['number'] as int?,
         joinedAt:
             millis == null ? null : DateTime.fromMillisecondsSinceEpoch(millis),
       );
@@ -118,15 +138,19 @@ class FounderService {
     }
   }
 
-  Future<void> _cacheStatus(FounderStatus status) async {
+  Future<void> _cacheStatus(String uid, FounderStatus status) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool(_kIsFounder, status.isFounder);
-      if (status.number != null) {
-        await prefs.setInt(_kNumber, status.number!);
-      }
-      if (status.joinedAt != null) {
-        await prefs.setInt(_kJoinedAt, status.joinedAt!.millisecondsSinceEpoch);
+      // One string per account, so an entry is always one whole answer.
+      await prefs.setString(_statusKey(uid), jsonEncode({
+        'isFounder': status.isFounder,
+        'number': ?status.number,
+        'joinedAt': ?status.joinedAt?.millisecondsSinceEpoch,
+      }));
+      for (final key in _legacyKeys) {
+        if (prefs.containsKey(key)) {
+          await prefs.remove(key);
+        }
       }
     } catch (_) {
       // Cache is an optimisation only — a failure here must not break display.
