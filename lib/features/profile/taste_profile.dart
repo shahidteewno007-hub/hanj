@@ -21,6 +21,9 @@ class _TasteProfileScreenState extends State<TasteProfileScreen>
   bool _isLoading = true;
   TasteProfile? _profile;
 
+  /// The list couldn't be read (question 97).
+  bool _failed = false;
+
   late AnimationController _revealCtrl;
   late Animation<double> _revealAnim;
 
@@ -51,7 +54,10 @@ class _TasteProfileScreenState extends State<TasteProfileScreen>
   }
 
   Future<void> _analyze() async {
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _failed = false;
+    });
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) { setState(() => _isLoading = false); return; }
 
@@ -71,7 +77,12 @@ class _TasteProfileScreenState extends State<TasteProfileScreen>
       _revealCtrl.forward();
     } catch (e) {
       if (!mounted) return;
-      setState(() => _isLoading = false);
+      // Said as a failure (question 97); it showed the empty page, as if
+      // the list were empty.
+      setState(() {
+        _isLoading = false;
+        _failed = true;
+      });
     }
   }
 
@@ -93,12 +104,36 @@ class _TasteProfileScreenState extends State<TasteProfileScreen>
       ),
       body: _isLoading
           ? _buildLoading()
-          : _profile == null
-              ? _buildEmpty()
-              : _preHanko
-                  ? _buildPreHankoProfile()
-                  : _buildProfile(),
+          : _failed
+              ? _buildFailed()
+              : _profile == null
+                  ? _buildEmpty()
+                  : _preHanko
+                      ? _buildPreHankoProfile()
+                      : _buildProfile(),
     );
+  }
+
+  /// The list couldn't be read (question 97): Profile's line and its Retry,
+  /// at the top of the column, where the page showed its empty state as if
+  /// your list were empty. The line names no cause the app can't verify
+  /// (ANILIST-OFFLINE-0908-REPORT.md's rule). Retry reads the list again.
+  Widget _buildFailed() {
+    return _column(SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(
+          AppTheme.hankoGutter, 28, AppTheme.hankoGutter, 40),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Shippori draws the typewriter apostrophe as a straight tick, so
+          // the line is set with the typographic one.
+          Text('Couldn’t load your list just now.',
+              style: AppTheme.hankoSerif(fontSize: 17, height: 1.5)),
+          const SizedBox(height: 12),
+          _TextTile(label: 'Retry', onTap: _analyze),
+        ],
+      ),
+    ));
   }
 
   Widget _buildLoading() {
@@ -126,10 +161,9 @@ class _TasteProfileScreenState extends State<TasteProfileScreen>
     );
   }
 
-  /// Nothing to read: what the page is for, at the top of its column. It
-  /// names no reason, since an empty list and one that couldn't be read
-  /// both arrive here; the old "Add some anime to your list" was wrong for
-  /// the second.
+  /// Nothing to read: what the page is for, at the top of its column. A
+  /// failed read has its own state now (_buildFailed), so this means an
+  /// empty list.
   Widget _buildEmpty() {
     return _column(SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(
@@ -1158,6 +1192,55 @@ class _HankoViewingStyle extends StatelessWidget {
           ],
         ),
       ],
+    );
+  }
+}
+
+/// A Hanko secondary tile with a word on it ("Retry"), as Profile's and the
+/// Calendar's: sumi 3 with a 1 px edge outline, Jost 600 15 washi, 48 dp
+/// tall, pressed with the 8% wash. Its own semantics node (container), as
+/// the Calendar's since dd45bd1, so a screen reader finds one button named
+/// "Retry" with its own tap, apart from the line above it.
+class _TextTile extends StatelessWidget {
+  const _TextTile({required this.label, required this.onTap});
+
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      container: true,
+      button: true,
+      child: Material(
+        color: AppTheme.hankoSumi3,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+          side: const BorderSide(color: AppTheme.hankoEdge),
+        ),
+        child: InkWell(
+          onTap: onTap,
+          splashFactory: NoSplash.splashFactory,
+          highlightColor: AppTheme.hankoPressWash,
+          hoverColor: AppTheme.hankoPressWash,
+          borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: AppTheme.hankoTouch),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 18),
+              child: Center(
+                widthFactor: 1,
+                heightFactor: 1,
+                child: Text(
+                  label,
+                  style: AppTheme.hankoSans(
+                      fontSize: 15, weight: FontWeight.w600, height: 1),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
