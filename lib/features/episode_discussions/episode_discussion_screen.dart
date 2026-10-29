@@ -521,7 +521,8 @@ class _CommentTileState extends State<_CommentTile> {
             child: Text(
               userName.isNotEmpty ? userName[0].toUpperCase() : 'A',
               style: TextStyle(
-                  color: Colors.white,
+                  // Sumi on coral, 5.64:1 (Hanko's rule; white was 3.35:1).
+                  color: AppTheme.textInverse,
                   fontWeight: FontWeight.bold,
                   fontSize: widget.isReply ? 11 : 13),
             ),
