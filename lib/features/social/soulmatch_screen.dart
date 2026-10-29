@@ -1041,8 +1041,8 @@ class _HankoFigure extends StatelessWidget {
   }
 }
 
-/// Shows as covers with their titles under them, four to a row (three in a
-/// narrow column), all in view: the old rows scrolled sideways, which hid
+/// Shows as covers with their titles under them, four to a row on a phone
+/// (fewer as text grows), all in view: the old rows scrolled sideways, which hid
 /// most of them on a phone and can't be scrolled with a mouse wheel, and
 /// "Both watched" gave no titles at all. Covers at AniList's own 230 : 325,
 /// with Hanko's 2 px corners on sumi 3, which also shows while one loads or
@@ -1056,10 +1056,19 @@ class _HankoCovers extends StatelessWidget {
 
   static const double _gap = 10;
 
+  /// The titles' size before the reader's text scale.
+  static const double _titleSize = AppTheme.hankoLabelSize;
+
   @override
   Widget build(BuildContext context) {
+    // As many to a row as leave each title room for its words at the
+    // reader's text size: four on a phone at 1.0x, three at 1.3x, two at
+    // 2.0x. Four at 1.3x broke "Steins;Gate" inside the word.
+    final scale = MediaQuery.textScalerOf(context).scale(_titleSize) /
+        _titleSize;
     return LayoutBuilder(builder: (context, constraints) {
-      final perRow = constraints.maxWidth >= 300 ? 4 : 3;
+      final room = constraints.maxWidth / scale;
+      final perRow = room >= 300 ? 4 : room >= 200 ? 3 : 2;
       final width = (constraints.maxWidth - (perRow - 1) * _gap) / perRow;
       final height = width * 325 / 230;
       return Wrap(
@@ -1092,7 +1101,7 @@ class _HankoCovers extends StatelessWidget {
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: AppTheme.hankoSans(
-                        fontSize: AppTheme.hankoLabelSize, height: 1.25),
+                        fontSize: _titleSize, height: 1.25),
                   ),
                 ],
               ),
