@@ -351,8 +351,22 @@ class _CollectionHeader extends StatelessWidget {
     required this.totalPoints,
   });
 
+  /// The header is the app bar's open state, a fixed 160 px under the back
+  /// button, and like an app bar's title its words grow with the reader's
+  /// text size only so far (question 74). At 1.3x they still fit below the
+  /// back button; at 2.0x they ran 101 px past the bottom, over the rarity
+  /// tabs. So they stop at 1.3x, the limit the bottom bar's labels have,
+  /// and Flutter's own app bars hold titles at a similar 1.34x. At 1.0x and
+  /// 1.3x nothing changes.
+  static const double _maxTextScale = 1.3;
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => MediaQuery.withClampedTextScaling(
+        maxScaleFactor: _maxTextScale,
+        child: _header(),
+      );
+
+  Widget _header() {
     final pct = totalCount > 0 ? unlockedCount / totalCount : 0.0;
 
     return Container(
@@ -674,7 +688,10 @@ class _CardDetailSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    // At large text the sheet is taller than the screen (at 2.0x it ran up
+    // to 88 px past it, question 74), so it scrolls. When it fits, as at
+    // 1.0x, the scroll view is exactly the sheet's height and nothing moves.
+    return SingleChildScrollView(child: Container(
       decoration: BoxDecoration(
         color: const Color(0xFF0F0C09),
         borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
@@ -732,19 +749,21 @@ class _CardDetailSheet extends StatelessWidget {
           ),
           const SizedBox(height: 8),
 
-          // Rarity + category chips
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
+          // Rarity + category chips. A Wrap, so at large text a chip that
+          // no longer fits takes a second line, centred, instead of running
+          // past the edge (2.0x: 37 px, question 74). On one line it is the
+          // Row it was: 8 px apart, centred.
+          Wrap(
+            alignment: WrapAlignment.center,
+            spacing: 8,
+            runSpacing: 8,
             children: [
               _Chip(label: rarity.label, color: rarity.color),
-              const SizedBox(width: 8),
               _Chip(label: _categoryLabel.toUpperCase(),
                   color: AppTheme.textMuted),
-              if (isUnlocked) ...[
-                const SizedBox(width: 8),
+              if (isUnlocked)
                 _Chip(label: '+${rarity.points} PTS',
                     color: const Color(0xFFD4A96A)),
-              ],
             ],
           ),
           const SizedBox(height: 16),
@@ -875,7 +894,7 @@ class _CardDetailSheet extends StatelessWidget {
           const SizedBox(height: 8),
         ],
       ),
-    );
+    ));
   }
 }
 
