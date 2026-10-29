@@ -1514,7 +1514,11 @@ class _HomeScreenState extends State<HomeScreen> {
 }
 
 // A Hanko secondary tile with a word on it ("Retry"): sumi 3 with a 1 px
-/// edge outline, Jost 600 15 washi, 48 dp tall.
+/// edge outline, Jost 600 15 washi, 48 dp tall. Its own semantics node
+/// (container; question 102, as the Calendar's and Activity's tiles since
+/// dd45bd1), so a screen reader finds one button named for its word, with
+/// its own tap. Without it, the tile merged into the node around it, and
+/// the sentence above read as part of one button.
 class _TextTile extends StatelessWidget {
   const _TextTile({required this.label, required this.onTap});
 
@@ -1524,6 +1528,7 @@ class _TextTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Semantics(
+      container: true,
       button: true,
       child: Material(
         color: AppTheme.hankoSumi3,
@@ -1848,10 +1853,13 @@ class _ImportPendingBanner extends StatelessWidget {
 
   /// hanko.html's sheet buttons: the main tile in washi with a sumi label,
   /// the quiet one with no fill and a washi label. 48 dp tall, square
-  /// corners, the 8% washi press.
+  /// corners, the 8% washi press. Each is its own semantics node
+  /// (container; question 102), so a screen reader finds "Import" and
+  /// "Dismiss" as two buttons, each with its own tap, apart from the note.
   static Widget _tile(String label,
       {required bool main, required VoidCallback onTap}) {
     return Semantics(
+      container: true,
       button: true,
       child: Material(
         color: main ? AppTheme.hankoWashi : Colors.transparent,
