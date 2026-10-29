@@ -520,6 +520,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
   /// this on would list each tool twice.
   static const bool _identityToolsInMenu = false;
 
+  /// The counts closed with "Top genres: A, B and C." until question 71.
+  /// The Taste row below says the same thing, as the first of the ways on
+  /// from Profile, so the line is kept here, switched off, rather than
+  /// said twice on one page.
+  static const bool _genresInCounts = false;
+
   /// Space between the rows below the hairline: 4 between rows in a group,
   /// as H5 set it, and 16 between groups, so the groups read without
   /// headings.
@@ -1107,8 +1113,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   /// The counts you can trust now (Hanko stage H5, item e), in words: titles
   /// all time and episodes, as one sentence in Shippori, then the statuses
-  /// and the top genres in Jost. "This year" and hours wait for completion
-  /// dates and episode lengths, which the list doesn't keep (question 27).
+  /// in Jost. "This year" and hours wait for completion dates and episode
+  /// lengths, which the list doesn't keep (question 27). The top genres
+  /// left this block (question 71): the Taste row a little further down
+  /// already names them; see _genresInCounts.
   ///
   /// Words, not tiles or pills: this is what "By status", "Top genres" and
   /// the header's "PACE · 6 WATCHING" and "7 DONE" pills said. As text on
@@ -1161,7 +1169,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             const SizedBox(height: 6),
             Text('${statuses.join(', ')}.', style: quiet),
           ],
-          if (genres.isNotEmpty) ...[
+          if (_genresInCounts && genres.isNotEmpty) ...[
             const SizedBox(height: 2),
             Text('Top genres: ${_inList(genres)}.', style: quiet),
           ],
