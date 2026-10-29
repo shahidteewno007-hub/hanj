@@ -464,32 +464,38 @@ class _AnimeCalendarScreenState extends State<AnimeCalendarScreen> {
   /// dp square in a 48 dp target, an edge outline when off, washi with a
   /// sumi bell when on, where the round coral bell glowed. It does what that
   /// bell did: the same toggle, the same write, the same message, in a
-  /// Hanko snack bar.
+  /// Hanko snack bar. It is its own semantics node with the same tap, so a
+  /// screen reader reaches it apart from the row it sits in; folded into the
+  /// row, the bell and the row's way into the show were one node.
   Widget _bell(String mediaId, String title, int episode) {
     final isOn = _remindersOn.contains(mediaId);
+    void toggle() {
+      final newVal = !isOn;
+      _toggleReminder(mediaId, title, episode, newVal);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(newVal
+            ? 'Reminder set for $title Ep $episode'
+            : 'Reminder removed for $title Ep $episode'),
+        backgroundColor: AppTheme.surfaceLight,
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+        ),
+        duration: const Duration(seconds: 2),
+      ));
+    }
+
     return Semantics(
+      container: true,
       button: true,
       toggled: isOn,
       label: 'Remind me when episode $episode of $title airs',
+      onTap: toggle,
       excludeSemantics: true,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: () {
-          final newVal = !isOn;
-          _toggleReminder(mediaId, title, episode, newVal);
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text(newVal
-                ? 'Reminder set for $title Ep $episode'
-                : 'Reminder removed for $title Ep $episode'),
-            backgroundColor: AppTheme.surfaceLight,
-            behavior: SnackBarBehavior.floating,
-            margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
-            ),
-            duration: const Duration(seconds: 2),
-          ));
-        },
+        onTap: toggle,
         child: SizedBox.square(
           dimension: AppTheme.hankoTouch,
           child: Center(
@@ -520,21 +526,24 @@ class _AnimeCalendarScreenState extends State<AnimeCalendarScreen> {
   /// The cover at 42 x 60, as Coming up's, with Hanko's 2 px corners on a
   /// sumi 3 ground, which is also what shows while it loads, when it fails,
   /// or when AniList sends none (the row used to lose its poster and shift).
+  /// Left out of the semantics tree: the title beside it names the show.
   Widget _hankoCover(String? url) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
-      child: SizedBox(
-        width: 42,
-        height: 60,
-        child: ColoredBox(
-          color: AppTheme.hankoSumi3,
-          child: url == null || url.isEmpty
-              ? const SizedBox.expand()
-              : CachedNetworkImage(
-                  imageUrl: url,
-                  fit: BoxFit.cover,
-                  errorWidget: (_, _, _) => const SizedBox.expand(),
-                ),
+    return ExcludeSemantics(
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+        child: SizedBox(
+          width: 42,
+          height: 60,
+          child: ColoredBox(
+            color: AppTheme.hankoSumi3,
+            child: url == null || url.isEmpty
+                ? const SizedBox.expand()
+                : CachedNetworkImage(
+                    imageUrl: url,
+                    fit: BoxFit.cover,
+                    errorWidget: (_, _, _) => const SizedBox.expand(),
+                  ),
+          ),
         ),
       ),
     );
@@ -580,11 +589,15 @@ class _DayChip extends StatelessWidget {
         : today
             ? AppTheme.hankoWashi
             : AppTheme.hankoStone;
+    // The label replaces the chip's own text, so the tap is given here too:
+    // excludeSemantics would otherwise drop the GestureDetector's, and a
+    // screen reader could find the day but not choose it.
     return Semantics(
       button: true,
       selected: selected,
       label: [name, if (today) 'today', if (hasEpisodes) 'has episodes']
           .join(', '),
+      onTap: onTap,
       excludeSemantics: true,
       child: MouseRegion(
         cursor: SystemMouseCursors.click,
@@ -665,7 +678,9 @@ Widget _hankoColumn(BuildContext context, Widget child) {
 
 /// A Hanko secondary tile with a word on it ("Retry"), as Profile's and
 /// Home's: sumi 3 with a 1 px edge outline, Jost 600 15 washi, 48 dp tall,
-/// pressed with the 8% wash.
+/// pressed with the 8% wash. Its own semantics node (container), so a
+/// screen reader finds one button named "Retry"; without it the button
+/// folded into the note around it, which then read as one long button.
 class _TextTile extends StatelessWidget {
   const _TextTile({required this.label, required this.onTap});
 
@@ -675,6 +690,7 @@ class _TextTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Semantics(
+      container: true,
       button: true,
       child: Material(
         color: AppTheme.hankoSumi3,

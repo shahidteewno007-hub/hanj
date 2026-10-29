@@ -464,22 +464,26 @@ class _ActivityCard extends StatelessWidget {
 
   /// The cover at 42 x 60 with Hanko's 2 px corners on a sumi 3 ground,
   /// which is also what shows while it loads, when it fails, or when the
-  /// entry has none (Profile's covers, stage H5).
+  /// entry has none (Profile's covers, stage H5). Left out of the semantics
+  /// tree: the sentence names the show, and the cover's image role made a
+  /// screen reader announce each line as an image.
   Widget _hankoCover(String? url) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
-      child: SizedBox(
-        width: 42,
-        height: 60,
-        child: ColoredBox(
-          color: AppTheme.hankoSumi3,
-          child: url == null || url.isEmpty
-              ? const SizedBox.expand()
-              : CachedNetworkImage(
-                  imageUrl: url,
-                  fit: BoxFit.cover,
-                  errorWidget: (_, _, _) => const SizedBox.expand(),
-                ),
+    return ExcludeSemantics(
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+        child: SizedBox(
+          width: 42,
+          height: 60,
+          child: ColoredBox(
+            color: AppTheme.hankoSumi3,
+            child: url == null || url.isEmpty
+                ? const SizedBox.expand()
+                : CachedNetworkImage(
+                    imageUrl: url,
+                    fit: BoxFit.cover,
+                    errorWidget: (_, _, _) => const SizedBox.expand(),
+                  ),
+          ),
         ),
       ),
     );
@@ -573,7 +577,9 @@ Widget _hankoColumn(BuildContext context, Widget child) {
 
 /// A Hanko secondary tile with a word on it, as Profile's and Home's: sumi 3
 /// with a 1 px edge outline, Jost 600 15 washi, 48 dp tall, pressed with the
-/// 8% wash.
+/// 8% wash. Its own semantics node (container), so a screen reader finds
+/// one button named for its word; without it the button folded into the
+/// note around it, which then read as one long button.
 class _TextTile extends StatelessWidget {
   const _TextTile({required this.label, required this.onTap});
 
@@ -583,6 +589,7 @@ class _TextTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Semantics(
+      container: true,
       button: true,
       child: Material(
         color: AppTheme.hankoSumi3,
