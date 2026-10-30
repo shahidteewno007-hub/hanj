@@ -384,6 +384,13 @@ class TasteAnalyzer {
     final avgRating = ratings.isEmpty
         ? 0.0
         : ratings.reduce((a, b) => a + b) / ratings.length;
+    // The rules read the average as the page shows it (question 108): one
+    // decimal, rounded the same way (toStringAsFixed), so the words and the
+    // number never disagree. Tested on the raw average, a 7.97 showed as
+    // "8.0" beside a profile that missed "High standards" and "The
+    // Connoisseur", which both ask for 8.0; a 6.46 showed as "6.5" beside
+    // "Hard to impress", which asks for under 6.5.
+    final shownAvg = double.parse(avgRating.toStringAsFixed(1));
 
     // Sort genres
     final sortedGenres = (genreCounts.entries.toList()
@@ -394,12 +401,12 @@ class TasteAnalyzer {
 
     // Determine archetype
     final topGenres = sortedGenres.take(3).map((g) => g.name).toList();
-    final archetype = _archetype(topGenres, avgRating, dropped, completed);
+    final archetype = _archetype(topGenres, shownAvg, dropped, completed);
 
     // Build traits
     final traits = _buildTraits(
       topGenres: topGenres,
-      avgRating: avgRating,
+      avgRating: shownAvg,
       dropped: dropped,
       completed: completed,
       total: total,
@@ -1321,51 +1328,58 @@ class _TasteProfileCardState extends State<TasteProfileCard> {
             : 'Your taste: ${_inList(genres)}';
 
     // Tappable while it loads too: the taste profile reads your list itself.
+    // One screen-reader button, as Profile's other rows (question 104): its
+    // own semantics node (container), named by the archetype and the line,
+    // with the InkWell's tap and focus inside it. Over excluded semantics
+    // the label left the node with neither. The row's own words are left
+    // out of the tree, since the label already says them.
     return Semantics(
+      container: true,
       button: true,
       label: line == null ? title : '$title. $line',
-      excludeSemantics: true,
       child: InkWell(
         onTap: () => Navigator.push(context,
             MaterialPageRoute(builder: (_) => const TasteProfileScreen())),
         splashFactory: NoSplash.splashFactory,
         highlightColor: AppTheme.hankoPressWash,
         hoverColor: AppTheme.hankoPressWash,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: 56),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Row(
-              children: [
-                const Icon(Icons.psychology_sharp,
-                    size: 22, color: AppTheme.hankoStone),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(title,
-                          style: AppTheme.hankoSans(
-                              fontSize: 15,
-                              weight: FontWeight.w500,
-                              height: 1.25)),
-                      if (line != null) ...[
-                        const SizedBox(height: 2),
-                        Text(line,
+        child: ExcludeSemantics(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 56),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Row(
+                children: [
+                  const Icon(Icons.psychology_sharp,
+                      size: 22, color: AppTheme.hankoStone),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(title,
                             style: AppTheme.hankoSans(
-                              fontSize: AppTheme.hankoMetaSize,
-                              color: AppTheme.hankoStone,
-                              height: 1.3,
-                            )),
+                                fontSize: 15,
+                                weight: FontWeight.w500,
+                                height: 1.25)),
+                        if (line != null) ...[
+                          const SizedBox(height: 2),
+                          Text(line,
+                              style: AppTheme.hankoSans(
+                                fontSize: AppTheme.hankoMetaSize,
+                                color: AppTheme.hankoStone,
+                                height: 1.3,
+                              )),
+                        ],
                       ],
-                    ],
+                    ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                const Icon(Icons.chevron_right_sharp,
-                    size: 20, color: AppTheme.hankoStone),
-              ],
+                  const SizedBox(width: 12),
+                  const Icon(Icons.chevron_right_sharp,
+                      size: 20, color: AppTheme.hankoStone),
+                ],
+              ),
             ),
           ),
         ),

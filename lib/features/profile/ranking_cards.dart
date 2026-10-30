@@ -1105,15 +1105,19 @@ class _SaveButtonState extends State<_SaveButton> {
   /// _HankoMainAction): a washi tile with sumi words, 15.34:1, 2 px corners,
   /// pressed with a sumi wash and no ripple. While the card is saved, a sumi
   /// spinner takes the icon's place and taps are ignored.
+  ///
+  /// Its own semantics node (container), named by its word, with the
+  /// InkWell's tap and focus inside it, as Soulmatch's Match since 2d721db
+  /// (question 104). A label over excluded semantics gave a node with no tap
+  /// and no focus, so a screen reader found Save card but couldn't press it.
   @override
   Widget build(BuildContext context) {
     if (_RankingCardsScreenState._preHanko) return _buildPreHanko();
     final label = _saving ? 'Saving…' : 'Save card';
     return Semantics(
+      container: true,
       button: true,
       enabled: !_saving,
-      label: label,
-      excludeSemantics: true,
       child: Material(
         color: AppTheme.hankoWashi,
         borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
