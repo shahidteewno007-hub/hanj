@@ -2571,15 +2571,21 @@ class _OverviewTab extends StatelessWidget {
   static const bool _showInformation = false;
 
   /// AniList's official streaming links for the show (`externalLinks` of
-  /// type STREAMING, from Stage 1c's request).
-  List<({String site, String url})> get _streams => [
-        for (final link in staffData?['externalLinks'] as List? ?? const [])
-          if (link is Map &&
-              link['type'] == 'STREAMING' &&
-              link['site'] is String &&
-              link['url'] is String)
-            (site: link['site'] as String, url: link['url'] as String),
-      ];
+  /// type STREAMING, from Stage 1c's request), one per site, the first kept
+  /// (question 113): AniList can list a site more than once (two Crunchyroll
+  /// pages, say), and Where to watch named it twice.
+  List<({String site, String url})> get _streams {
+    final sites = <String>{};
+    return [
+      for (final link in staffData?['externalLinks'] as List? ?? const [])
+        if (link is Map &&
+            link['type'] == 'STREAMING' &&
+            link['site'] is String &&
+            link['url'] is String &&
+            sites.add((link['site'] as String).trim().toLowerCase()))
+          (site: link['site'] as String, url: link['url'] as String),
+    ];
+  }
 
   final Anime anime;
   final Map<String, dynamic>? staffData;
