@@ -39,12 +39,16 @@ class _SoulmatchScreenState extends State<SoulmatchScreen> {
 
   Future<void> _match() async {
     final code = _codeCtrl.text.trim().toUpperCase();
+    // Pressing Match clears the last match first (question 107): a Match
+    // that failed one of these checks set its message but left the
+    // previous friend's match on screen under it, as if it still applied.
+    // The checks that reach the network already cleared it.
     if (code.isEmpty) {
-      setState(() => _error = 'Enter a friend\'s code');
+      setState(() { _error = 'Enter a friend\'s code'; _result = null; });
       return;
     }
     if (code == _myCode) {
-      setState(() => _error = 'That\'s your own code!');
+      setState(() { _error = 'That\'s your own code!'; _result = null; });
       return;
     }
 
