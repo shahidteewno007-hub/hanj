@@ -384,6 +384,13 @@ class TasteAnalyzer {
     final avgRating = ratings.isEmpty
         ? 0.0
         : ratings.reduce((a, b) => a + b) / ratings.length;
+    // The rules read the average as the page shows it (question 108): one
+    // decimal, rounded the same way (toStringAsFixed), so the words and the
+    // number never disagree. Tested on the raw average, a 7.97 showed as
+    // "8.0" beside a profile that missed "High standards" and "The
+    // Connoisseur", which both ask for 8.0; a 6.46 showed as "6.5" beside
+    // "Hard to impress", which asks for under 6.5.
+    final shownAvg = double.parse(avgRating.toStringAsFixed(1));
 
     // Sort genres
     final sortedGenres = (genreCounts.entries.toList()
@@ -394,12 +401,12 @@ class TasteAnalyzer {
 
     // Determine archetype
     final topGenres = sortedGenres.take(3).map((g) => g.name).toList();
-    final archetype = _archetype(topGenres, avgRating, dropped, completed);
+    final archetype = _archetype(topGenres, shownAvg, dropped, completed);
 
     // Build traits
     final traits = _buildTraits(
       topGenres: topGenres,
-      avgRating: avgRating,
+      avgRating: shownAvg,
       dropped: dropped,
       completed: completed,
       total: total,
