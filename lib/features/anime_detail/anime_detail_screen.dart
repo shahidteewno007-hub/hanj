@@ -1397,14 +1397,17 @@ class HankoDetailHeader extends StatefulWidget {
 
   /// "Episode 8 on Saturday": today, tomorrow, a weekday within the week,
   /// else the date. Worked out once per build, so nothing ticks; the live
-  /// countdown stays in Overview.
+  /// countdown stays in Overview. Calendar days are counted between UTC
+  /// dates, as Home's Coming up counts them (question 111): between local
+  /// midnights, a change to or from summer time made a day 23 hours long,
+  /// and tomorrow read "today".
   String? get _nextLine {
     final at = nextAiringAt;
     final episode = nextEpisode;
     if (at == null || episode == null) return null;
     final now = DateTime.now();
-    final day = DateTime(at.year, at.month, at.day)
-        .difference(DateTime(now.year, now.month, now.day))
+    final day = DateTime.utc(at.year, at.month, at.day)
+        .difference(DateTime.utc(now.year, now.month, now.day))
         .inDays;
     final when = switch (day) {
       < 0 => 'is out',
@@ -1738,10 +1741,16 @@ class _HankoMainAction extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final icon = this.icon;
+    // Its own semantics node (container) with the InkWell's tap and focus
+    // inside it (question 104, as the status word). With a [semanticLabel],
+    // the label used to sit over excluded semantics, which dropped the
+    // InkWell's tap: a screen reader found "Mark episode 8 watched" but
+    // couldn't press it. Now only the words drawn on the tile are left out,
+    // under the InkWell, when the label replaces them.
     return Semantics(
+      container: true,
       button: true,
       label: semanticLabel,
-      excludeSemantics: semanticLabel != null,
       child: Material(
         color: AppTheme.hankoWashi,
         borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
@@ -1750,28 +1759,31 @@ class _HankoMainAction extends StatelessWidget {
           borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
           splashFactory: NoSplash.splashFactory,
           highlightColor: AppTheme.hankoSumi.withValues(alpha: 0.08),
-          child: ConstrainedBox(
-            constraints: BoxConstraints(minWidth: minWidth, minHeight: minHeight),
-            child: Padding(
-              padding: EdgeInsets.symmetric(horizontal: icon == null ? 14 : 18),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  if (icon != null) ...[
-                    Icon(icon, size: 20, color: AppTheme.hankoSumi),
-                    const SizedBox(width: 6),
-                  ],
-                  Text(
-                    label,
-                    style: AppTheme.hankoSans(
-                      fontSize: fontSize,
-                      weight: FontWeight.w600,
-                      color: AppTheme.hankoSumi,
-                      height: 1,
+          child: ExcludeSemantics(
+            excluding: semanticLabel != null,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minWidth: minWidth, minHeight: minHeight),
+              child: Padding(
+                padding: EdgeInsets.symmetric(horizontal: icon == null ? 14 : 18),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    if (icon != null) ...[
+                      Icon(icon, size: 20, color: AppTheme.hankoSumi),
+                      const SizedBox(width: 6),
+                    ],
+                    Text(
+                      label,
+                      style: AppTheme.hankoSans(
+                        fontSize: fontSize,
+                        weight: FontWeight.w600,
+                        color: AppTheme.hankoSumi,
+                        height: 1,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
@@ -1801,40 +1813,49 @@ class _HankoStatusButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (icon, word) = _look(status);
+    // Its own semantics node (container), named "Status: <word>", with the
+    // InkWell's tap and focus inside it (question 104; the container pattern
+    // of dd45bd1 and 2d721db). A label over excluded semantics dropped both,
+    // so a screen reader found the word but couldn't open the sheet, and on
+    // the web the word couldn't take focus. Only the row's own word and icons
+    // are left out, under the InkWell, so the word isn't read twice.
     return Semantics(
+      container: true,
       button: true,
+      enabled: !busy && onTap != null,
       label: 'Status: $word',
       hint: 'Change status',
-      excludeSemantics: true,
       child: InkWell(
         onTap: busy ? null : onTap,
         borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
         splashFactory: NoSplash.splashFactory,
         highlightColor: AppTheme.hankoPressWash,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: AppTheme.hankoTouch),
-          child: Padding(
-            padding: const EdgeInsets.only(right: 6),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                SizedBox.square(
-                  dimension: 20,
-                  child: busy
-                      ? const Padding(
-                          padding: EdgeInsets.all(2),
-                          child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.hankoWashi),
-                        )
-                      : Icon(icon, size: 20, color: AppTheme.hankoWashi),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  word,
-                  style: AppTheme.hankoSans(fontSize: 15, weight: FontWeight.w500, height: 1),
-                ),
-                const SizedBox(width: 4),
-                const Icon(Icons.expand_more_sharp, size: 20, color: AppTheme.hankoStone),
-              ],
+        child: ExcludeSemantics(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: AppTheme.hankoTouch),
+            child: Padding(
+              padding: const EdgeInsets.only(right: 6),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox.square(
+                    dimension: 20,
+                    child: busy
+                        ? const Padding(
+                            padding: EdgeInsets.all(2),
+                            child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.hankoWashi),
+                          )
+                        : Icon(icon, size: 20, color: AppTheme.hankoWashi),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    word,
+                    style: AppTheme.hankoSans(fontSize: 15, weight: FontWeight.w500, height: 1),
+                  ),
+                  const SizedBox(width: 4),
+                  const Icon(Icons.expand_more_sharp, size: 20, color: AppTheme.hankoStone),
+                ],
+              ),
             ),
           ),
         ),
@@ -2313,18 +2334,25 @@ class _HankoLink extends StatelessWidget {
       ),
     );
     if (!linked) return Padding(padding: const EdgeInsets.only(bottom: 2), child: text);
+    // Its own semantics node (container) with the InkWell's tap and focus
+    // inside it (question 104, as the status word). The label used to sit
+    // over excluded semantics, which dropped the InkWell's tap, so a screen
+    // reader found "Studio, MAPPA" but couldn't open it. The name drawn on
+    // the page is left out, under the InkWell, so it isn't read twice.
     return Semantics(
+      container: true,
       link: true,
       label: semanticLabel,
-      excludeSemantics: true,
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
         splashFactory: NoSplash.splashFactory,
         highlightColor: AppTheme.hankoPressWash,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: AppTheme.hankoTouch, minWidth: double.infinity),
-          child: Align(alignment: Alignment.centerLeft, child: text),
+        child: ExcludeSemantics(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: AppTheme.hankoTouch, minWidth: double.infinity),
+            child: Align(alignment: Alignment.centerLeft, child: text),
+          ),
         ),
       ),
     );
@@ -2543,15 +2571,21 @@ class _OverviewTab extends StatelessWidget {
   static const bool _showInformation = false;
 
   /// AniList's official streaming links for the show (`externalLinks` of
-  /// type STREAMING, from Stage 1c's request).
-  List<({String site, String url})> get _streams => [
-        for (final link in staffData?['externalLinks'] as List? ?? const [])
-          if (link is Map &&
-              link['type'] == 'STREAMING' &&
-              link['site'] is String &&
-              link['url'] is String)
-            (site: link['site'] as String, url: link['url'] as String),
-      ];
+  /// type STREAMING, from Stage 1c's request), one per site, the first kept
+  /// (question 113): AniList can list a site more than once (two Crunchyroll
+  /// pages, say), and Where to watch named it twice.
+  List<({String site, String url})> get _streams {
+    final sites = <String>{};
+    return [
+      for (final link in staffData?['externalLinks'] as List? ?? const [])
+        if (link is Map &&
+            link['type'] == 'STREAMING' &&
+            link['site'] is String &&
+            link['url'] is String &&
+            sites.add((link['site'] as String).trim().toLowerCase()))
+          (site: link['site'] as String, url: link['url'] as String),
+    ];
+  }
 
   final Anime anime;
   final Map<String, dynamic>? staffData;
@@ -2773,30 +2807,37 @@ class _HankoWatchLinks extends StatelessWidget {
             for (final link in links)
               SizedBox(
                 width: cell,
+                // Its own semantics node (container) with the InkWell's tap
+                // and focus inside it (question 104, as the status word). The
+                // label used to sit over excluded semantics, which dropped the
+                // InkWell's tap, so a screen reader found "Watch on
+                // Crunchyroll" but couldn't open it.
                 child: Semantics(
+                  container: true,
                   link: true,
                   label: 'Watch on ${link.site}',
                   hint: 'Opens outside Hanj',
-                  excludeSemantics: true,
                   child: InkWell(
                     onTap: () => _open(link.url),
                     splashFactory: NoSplash.splashFactory,
                     highlightColor: AppTheme.hankoPressWash,
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(minHeight: AppTheme.hankoTouch),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              link.site,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: AppTheme.hankoSans(weight: FontWeight.w500, height: 1.2),
+                    child: ExcludeSemantics(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(minHeight: AppTheme.hankoTouch),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                link.site,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: AppTheme.hankoSans(weight: FontWeight.w500, height: 1.2),
+                              ),
                             ),
-                          ),
-                          const SizedBox(width: 8),
-                          const Icon(Icons.open_in_new_sharp, size: 16, color: AppTheme.hankoStone),
-                        ],
+                            const SizedBox(width: 8),
+                            const Icon(Icons.open_in_new_sharp, size: 16, color: AppTheme.hankoStone),
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -3675,29 +3716,33 @@ class _NextEpisodeCountdownState extends State<_NextEpisodeCountdown> {
 
   String _pad(int n) => n.toString().padLeft(2, '0');
 
+  /// When the episode airs, by Home's rules (Coming up's `_when`, question
+  /// 111): "Today at 13:00", "Tomorrow at 13:00", the weekday from 2 to 6
+  /// days on ("Friday at 13:00"), else the date ("13 Nov at 13:00"), by the
+  /// device's own calendar and its 24-hour clock. The date is the header's
+  /// own (`HankoDetailHeader._date`), so the two lines agree. It used to
+  /// count whole 24-hour spans, so an episode tomorrow at 13:00, seen after
+  /// 13:00 today, read "Today at 1:00 PM".
   String _friendlyDate() {
     final now = DateTime.now();
     final diff = widget.airingAt.difference(now);
     final local = widget.airingAt.toLocal();
 
     if (diff.isNegative) return 'Airing now';
-    if (diff.inDays == 0) return 'Today at ${_timeStr(local)}';
-    if (diff.inDays == 1) return 'Tomorrow at ${_timeStr(local)}';
-    if (diff.inDays < 7) {
-      const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-      return '${days[local.weekday - 1]} at ${_timeStr(local)}';
-    }
-    const months = ['Jan','Feb','Mar','Apr','May','Jun',
-                    'Jul','Aug','Sep','Oct','Nov','Dec'];
-    return '${months[local.month - 1]} ${local.day} at ${_timeStr(local)}';
+    final days = DateTime.utc(local.year, local.month, local.day)
+        .difference(DateTime.utc(now.year, now.month, now.day))
+        .inDays;
+    final day = switch (days) {
+      <= 0 => 'Today',
+      1 => 'Tomorrow',
+      < 7 => HankoDetailHeader._weekdays[local.weekday - 1],
+      _ => HankoDetailHeader._date(local),
+    };
+    return '$day at ${_timeStr(local)}';
   }
 
-  String _timeStr(DateTime dt) {
-    final h = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
-    final m = _pad(dt.minute);
-    final period = dt.hour < 12 ? 'AM' : 'PM';
-    return '$h:$m $period';
-  }
+  /// The 24-hour clock, as Home's: "13:00".
+  String _timeStr(DateTime dt) => '${_pad(dt.hour)}:${_pad(dt.minute)}';
 
   @override
   Widget build(BuildContext context) {
@@ -3715,6 +3760,50 @@ class _NextEpisodeCountdownState extends State<_NextEpisodeCountdown> {
     final m = timeUntil.inMinutes % 60;
     final s = timeUntil.inSeconds % 60;
     final isImminent = timeUntil.inHours < 1;
+
+    Future<void> toggle() async {
+      final newVal = !_reminderOn;
+      setState(() => _reminderOn = newVal);
+      final saving = _saveReminder(newVal);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(newVal
+              ? 'Reminder set for Episode ${widget.episode}'
+              : 'Reminder removed for Episode ${widget.episode}'),
+          backgroundColor: AppTheme.surfaceLight,
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppTheme.hankoRadius)),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+      // Question 84, with question 83's pattern: the write is awaited and
+      // caught. Unawaited, a refused write (by the rules, say) went to
+      // PlatformDispatcher.onError, which main.dart reports to Crashlytics as
+      // fatal, and the bell went on showing a reminder that wasn't saved. Now
+      // the bell goes back and the message says so, naming no cause. Offline,
+      // the write waits for the connection and the bell stays as tapped.
+      try {
+        await saving;
+      } catch (_) {
+        if (!context.mounted) return;
+        setState(() => _reminderOn = !newVal);
+        // In place of "Reminder set" if it's still showing.
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            SnackBar(
+              content: Text(newVal
+                  ? "Couldn't set the reminder. Try again."
+                  : "Couldn't remove the reminder. Try again."),
+              backgroundColor: AppTheme.surfaceLight,
+              behavior: SnackBarBehavior.floating,
+              margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppTheme.hankoRadius)),
+            ),
+          );
+      }
+    }
 
     // Hanko: a sumi 2 field with 2 px corners. No coral border and no
     // blurred glow (blur is the app's costliest raster effect, PERF.md); an
@@ -3737,80 +3826,43 @@ class _NextEpisodeCountdownState extends State<_NextEpisodeCountdown> {
               ),
               const Spacer(),
               // Notification bell: a square that is filled when on, 48 dp
-              // to touch, its state in its name for screen readers.
+              // to touch, its state in its name for screen readers. It is
+              // its own semantics node with the same tap as the gesture
+              // (question 104; Coming up's bell since 0111ffc). Folded into
+              // the card, the bell's name and state made the whole card one
+              // switch with no tap, so a screen reader couldn't set the
+              // reminder.
               Semantics(
+                container: true,
                 button: true,
                 toggled: _reminderOn,
                 label: 'Remind me when episode ${widget.episode} airs',
+                onTap: toggle,
                 excludeSemantics: true,
                 child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () async {
-                  final newVal = !_reminderOn;
-                  setState(() => _reminderOn = newVal);
-                  final saving = _saveReminder(newVal);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(newVal
-                          ? 'Reminder set for Episode ${widget.episode}'
-                          : 'Reminder removed for Episode ${widget.episode}'),
-                      backgroundColor: AppTheme.surfaceLight,
-                      behavior: SnackBarBehavior.floating,
-                      margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppTheme.hankoRadius)),
-                      duration: const Duration(seconds: 2),
-                    ),
-                  );
-                  // Question 84, with question 83's pattern: the write is
-                  // awaited and caught. Unawaited, a refused write (by the
-                  // rules, say) went to PlatformDispatcher.onError, which
-                  // main.dart reports to Crashlytics as fatal, and the bell
-                  // went on showing a reminder that wasn't saved. Now the
-                  // bell goes back and the message says so, naming no cause.
-                  // Offline, the write waits for the connection and the bell
-                  // stays as tapped.
-                  try {
-                    await saving;
-                  } catch (_) {
-                    if (!context.mounted) return;
-                    setState(() => _reminderOn = !newVal);
-                    // In place of "Reminder set" if it's still showing.
-                    ScaffoldMessenger.of(context)
-                      ..hideCurrentSnackBar()
-                      ..showSnackBar(
-                        SnackBar(
-                          content: Text(newVal
-                              ? "Couldn't set the reminder. Try again."
-                              : "Couldn't remove the reminder. Try again."),
-                          backgroundColor: AppTheme.surfaceLight,
-                          behavior: SnackBarBehavior.floating,
-                          margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppTheme.hankoRadius)),
+                  behavior: HitTestBehavior.opaque,
+                  onTap: toggle,
+                  child: SizedBox.square(
+                    dimension: AppTheme.hankoTouch,
+                    child: Center(
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 250),
+                        curve: Curves.easeOut,
+                        width: 36, height: 36,
+                        decoration: BoxDecoration(
+                          color: _reminderOn ? AppTheme.hankoWashi : Colors.transparent,
+                          borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+                          border: _reminderOn ? null : Border.all(color: AppTheme.hankoEdge),
                         ),
-                      );
-                  }
-                },
-                child: SizedBox.square(
-                  dimension: AppTheme.hankoTouch,
-                  child: Center(
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 250),
-                      curve: Curves.easeOut,
-                      width: 36, height: 36,
-                      decoration: BoxDecoration(
-                        color: _reminderOn ? AppTheme.hankoWashi : Colors.transparent,
-                        borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
-                        border: _reminderOn ? null : Border.all(color: AppTheme.hankoEdge),
-                      ),
-                      child: Icon(
-                        _reminderOn ? Icons.notifications_sharp : Icons.notifications_none_outlined,
-                        color: _reminderOn ? AppTheme.hankoSumi : AppTheme.hankoWashi,
-                        size: 18,
+                        child: Icon(
+                          _reminderOn ? Icons.notifications_sharp : Icons.notifications_none_outlined,
+                          color: _reminderOn ? AppTheme.hankoSumi : AppTheme.hankoWashi,
+                          size: 18,
+                        ),
                       ),
                     ),
                   ),
                 ),
-              ),
               ),
             ],
           ),

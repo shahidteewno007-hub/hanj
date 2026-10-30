@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
+import 'theme/app_theme.dart';
 import 'trailer_launcher_web.dart' if (dart.library.io) 'trailer_launcher_stub.dart' as platform;
 import 'trailer_player_mobile.dart' if (dart.library.html) 'trailer_player_stub.dart' as mobile;
 
@@ -144,115 +145,125 @@ class _TrailerButtonState extends State<TrailerButton> {
     }
   }
 
+  // Hanko (question 112): washi on sumi, with no glow and no coral, which
+  // marks only your own verdicts. It was a red disc with a red glow and a
+  // red "Watch Trailer" pill. Detail's Overview and Pulse's trailer sheet
+  // (web) both use this widget; Pulse's own trailer card already draws its
+  // play mark light on dark, so the sheet now matches the card it opens from.
   @override
   Widget build(BuildContext context) {
     if (_videoId == null) return const SizedBox.shrink();
+    final playing = _showPlayer && kIsWeb;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // ── Inline iframe (web only) ──────────────────────────
-        if (_showPlayer && kIsWeb)
-          ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: SizedBox(
-              width: double.infinity,
-              height: 220,
-              child: platform.buildIframeView(_videoId!),
-            ),
-          )
-
-        // ── Thumbnail (mobile + web before tap) ──────────────
-        else
-          MouseRegion(
-            cursor: SystemMouseCursors.click,
-            child: GestureDetector(
-              onTap: () => _handleTap(context),
-              child: Container(
+    return LayoutBuilder(builder: (context, constraints) {
+      // The video's own 16:9, so hqdefault's letterbox bars fall outside the
+      // frame on a phone (320 wide: 180 tall), up to the old 200 tall on
+      // wider screens. The web player takes the same frame, so nothing jumps.
+      final width = constraints.maxWidth;
+      final height = width * 9 / 16 < 200 ? width * 9 / 16 : 200.0;
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ── Inline iframe (web only) ──────────────────────────
+          if (playing)
+            ClipRRect(
+              borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+              child: SizedBox(
                 width: double.infinity,
-                height: 200,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(16),
-                  color: Colors.black,
-                  image: DecorationImage(
-                    image: NetworkImage(
-                        'https://img.youtube.com/vi/$_videoId/hqdefault.jpg'),
-                    fit: BoxFit.cover,
-                    opacity: 0.7,
-                    // Offline, or a 404 for a removed video: leave the black
-                    // box. Unhandled, the failure went to Crashlytics as fatal.
-                    onError: (_, _) {},
-                  ),
-                ),
-                child: Center(
+                height: height,
+                child: platform.buildIframeView(_videoId!),
+              ),
+            )
+
+          // ── Thumbnail (mobile + web before tap) ──────────────
+          // Left out of the semantics tree: the row under it does the same
+          // with words, as one button. Unlabelled, it was a nameless tap.
+          else
+            ExcludeSemantics(
+              child: MouseRegion(
+                cursor: SystemMouseCursors.click,
+                child: GestureDetector(
+                  onTap: () => _handleTap(context),
                   child: Container(
-                    width: 64,
-                    height: 64,
+                    width: double.infinity,
+                    height: height,
                     decoration: BoxDecoration(
-                      color: Colors.red.shade700,
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.red.withValues(alpha: 0.5),
-                          blurRadius: 20,
-                          spreadRadius: 4,
-                        ),
-                      ],
+                      borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+                      // Sumi 3, as Hanko's covers: what shows while the
+                      // picture loads, when it fails, or offline.
+                      color: AppTheme.hankoSumi3,
+                      image: DecorationImage(
+                        image: NetworkImage(
+                            'https://img.youtube.com/vi/$_videoId/hqdefault.jpg'),
+                        fit: BoxFit.cover,
+                        // Offline, or a 404 for a removed video: leave the
+                        // sumi frame. Unhandled, the failure went to
+                        // Crashlytics as fatal.
+                        onError: (_, _) {},
+                      ),
                     ),
-                    child: const Icon(Icons.play_arrow_rounded,
-                        color: Colors.white, size: 36),
+                    // The play mark: a washi triangle on a sumi tile with an
+                    // edge keyline, readable on any picture. No shadow.
+                    child: Center(
+                      child: Container(
+                        width: 56,
+                        height: 56,
+                        decoration: BoxDecoration(
+                          color: AppTheme.hankoSumi.withValues(alpha: 0.88),
+                          borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+                          border: Border.all(color: AppTheme.hankoEdge),
+                        ),
+                        child: const Icon(Icons.play_arrow_sharp,
+                            color: AppTheme.hankoWashi, size: 32),
+                      ),
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
 
-        const SizedBox(height: 8),
+          const SizedBox(height: 4),
 
-        // ── Toggle button ─────────────────────────────────────
-        // On mobile this toggles nothing (always shows thumbnail),
-        // but we still render it as "Watch Trailer" for consistency.
-        GestureDetector(
-          onTap: () {
-            if (kIsWeb) {
-              setState(() => _showPlayer = !_showPlayer);
-            } else {
-              _handleTap(context);
-            }
-          },
-          child: Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: Colors.red.shade700.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                  color: Colors.red.shade700.withValues(alpha: 0.4)),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  _showPlayer && kIsWeb
-                      ? Icons.stop_rounded
-                      : Icons.play_circle_filled_rounded,
-                  color: Colors.red.shade400,
-                  size: 14,
+          // ── The row ───────────────────────────────────────────
+          // A plain 48 dp row in washi, as Detail's "Join the discussion":
+          // Hanko keeps pills for controls that change something. On mobile
+          // it opens the player, as the picture does; on the web it shows or
+          // closes the inline player. Its own semantics node with the
+          // InkWell's tap and focus (question 104's container pattern).
+          Semantics(
+            container: true,
+            button: true,
+            child: InkWell(
+              onTap: () {
+                if (kIsWeb) {
+                  setState(() => _showPlayer = !_showPlayer);
+                } else {
+                  _handleTap(context);
+                }
+              },
+              borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+              splashFactory: NoSplash.splashFactory,
+              highlightColor: AppTheme.hankoPressWash,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: AppTheme.hankoTouch),
+                child: Row(
+                  children: [
+                    Icon(playing ? Icons.close_sharp : Icons.play_arrow_sharp,
+                        size: 20, color: AppTheme.hankoWashi),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        playing ? 'Close the trailer' : 'Watch the trailer',
+                        style: AppTheme.hankoSans(fontSize: 15, weight: FontWeight.w500),
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 4),
-                Text(
-                  _showPlayer && kIsWeb ? 'Close Trailer' : 'Watch Trailer',
-                  style: TextStyle(
-                    color: Colors.red.shade400,
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
-        ),
-      ],
-    );
+        ],
+      );
+    });
   }
 }

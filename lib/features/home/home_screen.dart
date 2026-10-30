@@ -825,8 +825,9 @@ class _HomeScreenState extends State<HomeScreen> {
             // ── From your watchlist tonight (item d) ─────────
             // One show from your own watchlist, a new one each day. Tonight's
             // Drop, the season pick for everyone, keeps the slot only when
-            // the watchlist is empty.
-            if (_planToWatch.isNotEmpty)
+            // the watchlist holds nothing the pick can land on (empty, or
+            // only old MyAnimeList imports: question 114, see _pickable).
+            if (_pickable.isNotEmpty)
               SliverToBoxAdapter(
                 key: const ValueKey('home-watchlist-pick'),
                 child: _recordColumn(Padding(
@@ -1321,13 +1322,24 @@ class _HomeScreenState extends State<HomeScreen> {
         onError: (_, _) {});
   }
 
-  /// Tonight's watchlist pick: the day of the year, modulo the watchlist's
-  /// length (newest first), the rotation Tonight's Drop has always used,
-  /// applied to your own list. The same pick all day, a new one tomorrow.
+  /// The watchlist entries the pick can land on (question 114): not
+  /// MyAnimeList imports from before the D21 fix. They are keyed by their
+  /// MyAnimeList id, which AniList reads as another show or none, so one
+  /// opens nearly empty, and a show to start tonight should open. The
+  /// entries are left as they are: the watchlist link counts them, and My
+  /// List shows them.
+  List<Map<String, dynamic>> get _pickable =>
+      [for (final e in _planToWatch) if (!_isMalImport(e)) e];
+
+  /// Tonight's watchlist pick: the day of the year, modulo the number of
+  /// entries it can land on (newest first), the rotation Tonight's Drop has
+  /// always used, applied to your own list. The same pick all day, a new one
+  /// tomorrow.
   Map<String, dynamic> _watchlistPick() {
+    final pickable = _pickable;
     final now = DateTime.now();
     final dayOfYear = now.difference(DateTime(now.year, 1, 1)).inDays;
-    return _planToWatch[dayOfYear % _planToWatch.length];
+    return pickable[dayOfYear % pickable.length];
   }
 
   void _openEntry(Map<String, dynamic> data) {
