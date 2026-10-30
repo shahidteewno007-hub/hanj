@@ -765,47 +765,55 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Widget _pinnedCard(Map<String, dynamic> card) {
     final name = ((card['name'] ?? card['cardName']) as String?) ?? '';
+    // One screen-reader button with a tap and focus, as the favourites'
+    // covers (question 104; see _favourite).
     return Semantics(
+      container: true,
       button: true,
       label: name.isEmpty
           ? 'Your pinned Hanj Card'
           : 'Your pinned Hanj Card, $name',
       hint: 'Opens your collection',
-      excludeSemantics: true,
-      child: GestureDetector(
+      child: InkWell(
         onTap: () => Navigator.push(context,
             MaterialPageRoute(builder: (_) => const CardCollectionScreen())),
+        splashFactory: NoSplash.splashFactory,
+        highlightColor: Colors.transparent,
+        hoverColor: Colors.transparent,
+        focusColor: Colors.transparent,
         // Square corners: HanjCard is square by design
         // (_CardShell paints square, HanjCard clips with
         // ClipRect). This was the only place one got
         // rounded off.
-        child: ClipRect(
-          child: SizedBox(
-            width:  hc.HanjCard.kWidth  * _pinnedScale,
-            height: hc.HanjCard.kHeight * _pinnedScale,
-            // Render the card at its natural 200x300 and scale the
-            // whole thing down. The card has fixed-pixel internals
-            // (footer text, paddings) that don't shrink on their own,
-            // so sizing it directly overflows at small sizes.
-            // The card is drawn like a picture, so the text-size setting
-            // doesn't reach inside it: at 1.3x its footer wrapped and was
-            // cut off. Its name is in the spoken label above.
-            child: FittedBox(
-              fit: BoxFit.contain,
-              child: MediaQuery.withNoTextScaling(
-                child: hc.HanjCard(
-                  isUnlocked: true,
-                  card: hc.HanjCardData(
-                    id: (card['id'] as String?) ?? '',
-                    name: name,
-                    description: (card['description'] as String?) ?? '',
-                    rarity: hc.CardRarity.values.firstWhere(
-                      (r) => r.name == ((card['rarity'] as String?) ?? 'common'),
-                      orElse: () => hc.CardRarity.common,
+        child: ExcludeSemantics(
+          child: ClipRect(
+            child: SizedBox(
+              width:  hc.HanjCard.kWidth  * _pinnedScale,
+              height: hc.HanjCard.kHeight * _pinnedScale,
+              // Render the card at its natural 200x300 and scale the
+              // whole thing down. The card has fixed-pixel internals
+              // (footer text, paddings) that don't shrink on their own,
+              // so sizing it directly overflows at small sizes.
+              // The card is drawn like a picture, so the text-size setting
+              // doesn't reach inside it: at 1.3x its footer wrapped and was
+              // cut off. Its name is in the spoken label above.
+              child: FittedBox(
+                fit: BoxFit.contain,
+                child: MediaQuery.withNoTextScaling(
+                  child: hc.HanjCard(
+                    isUnlocked: true,
+                    card: hc.HanjCardData(
+                      id: (card['id'] as String?) ?? '',
+                      name: name,
+                      description: (card['description'] as String?) ?? '',
+                      rarity: hc.CardRarity.values.firstWhere(
+                        (r) => r.name == ((card['rarity'] as String?) ?? 'common'),
+                        orElse: () => hc.CardRarity.common,
+                      ),
+                      category: ((card['category'] as String?) ?? 'ÆTHER').toUpperCase(),
+                      kanji: (card['kanji'] as String?) ?? '道',
+                      cardNumber: (card['cardNumber'] as int?) ?? 0,
                     ),
-                    category: ((card['category'] as String?) ?? 'ÆTHER').toUpperCase(),
-                    kanji: (card['kanji'] as String?) ?? '道',
-                    cardNumber: (card['cardNumber'] as int?) ?? 0,
                   ),
                 ),
               ),
@@ -872,17 +880,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  /// A favourite's cover is one screen-reader button (question 104): its
+  /// own semantics node (container), named by its label, with the InkWell's
+  /// tap and focus inside it, so a screen reader can press it and, on the
+  /// web, it can take focus. A label over excluded semantics made a node
+  /// with neither. The cover is left out of the tree, since the label names
+  /// the show, and the ink is clear: it would only sit under the art.
   Widget _favourite(Map<String, dynamic> entry, double width, double height) {
     final title = entry['title'] as String? ?? 'Unknown';
     final rating = HankoSeal.formatScore((entry['userRating'] as num).toDouble());
     return Semantics(
+      container: true,
       button: true,
       label: 'Favourite: $title, your rating $rating',
-      excludeSemantics: true,
-      child: GestureDetector(
+      child: InkWell(
         onTap: () => _openEntry(entry),
-        child: _Cover(
-            url: entry['imageUrl'] as String?, width: width, height: height),
+        splashFactory: NoSplash.splashFactory,
+        highlightColor: Colors.transparent,
+        hoverColor: Colors.transparent,
+        focusColor: Colors.transparent,
+        child: ExcludeSemantics(
+          child: _Cover(
+              url: entry['imageUrl'] as String?, width: width, height: height),
+        ),
       ),
     );
   }
@@ -1084,16 +1104,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
           children: [
             for (var i = 0; i < count && i < 3; i++) ...[
               if (i > 0) const SizedBox(width: 8),
+              // One screen-reader button with a tap and focus, as the
+              // favourites' covers (question 104; see _favourite).
               Semantics(
+                container: true,
                 button: true,
                 label: (shelf.entries[i]['title'] as String?) ?? 'Unknown',
-                excludeSemantics: true,
-                child: GestureDetector(
+                child: InkWell(
                   onTap: () => _openEntry(shelf.entries[i]),
-                  child: _Cover(
-                    url: shelf.entries[i]['imageUrl'] as String?,
-                    width: 64,
-                    height: 90,
+                  splashFactory: NoSplash.splashFactory,
+                  highlightColor: Colors.transparent,
+                  hoverColor: Colors.transparent,
+                  focusColor: Colors.transparent,
+                  child: ExcludeSemantics(
+                    child: _Cover(
+                      url: shelf.entries[i]['imageUrl'] as String?,
+                      width: 64,
+                      height: 90,
+                    ),
                   ),
                 ),
               ),
@@ -1579,6 +1607,14 @@ class _Cover extends StatelessWidget {
 /// No box, no glow, no colour of its own: coral now means your
 /// seal, so neither the gold nor the coral banner it replaces survives. At
 /// least 56 px tall, pressed with the 8% wash.
+///
+/// One screen-reader button (question 104): its own semantics node
+/// (container), named by its title and its line, with the InkWell's tap
+/// and focus inside it, so a screen reader can open the row and, on the
+/// web, it can take focus. The label used to sit over excluded semantics,
+/// which left the row's node with neither: a screen reader found the row
+/// but had no tap to send it. The row's own words are left out of the
+/// tree, since the label already says them.
 class _EntryRow extends StatelessWidget {
   const _EntryRow({
     required this.icon,
@@ -1595,46 +1631,48 @@ class _EntryRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Semantics(
+      container: true,
       button: true,
       label: '$title. $line',
-      excludeSemantics: true,
       child: InkWell(
         onTap: onTap,
         splashFactory: NoSplash.splashFactory,
         highlightColor: AppTheme.hankoPressWash,
         hoverColor: AppTheme.hankoPressWash,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: 56),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Row(
-              children: [
-                Icon(icon, size: 22, color: AppTheme.hankoStone),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(title,
-                          style: AppTheme.hankoSans(
-                              fontSize: 15,
-                              weight: FontWeight.w500,
-                              height: 1.25)),
-                      const SizedBox(height: 2),
-                      Text(line,
-                          style: AppTheme.hankoSans(
-                            fontSize: AppTheme.hankoMetaSize,
-                            color: AppTheme.hankoStone,
-                            height: 1.3,
-                          )),
-                    ],
+        child: ExcludeSemantics(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 56),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Row(
+                children: [
+                  Icon(icon, size: 22, color: AppTheme.hankoStone),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(title,
+                            style: AppTheme.hankoSans(
+                                fontSize: 15,
+                                weight: FontWeight.w500,
+                                height: 1.25)),
+                        const SizedBox(height: 2),
+                        Text(line,
+                            style: AppTheme.hankoSans(
+                              fontSize: AppTheme.hankoMetaSize,
+                              color: AppTheme.hankoStone,
+                              height: 1.3,
+                            )),
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                const Icon(Icons.chevron_right_sharp,
-                    size: 20, color: AppTheme.hankoStone),
-              ],
+                  const SizedBox(width: 12),
+                  const Icon(Icons.chevron_right_sharp,
+                      size: 20, color: AppTheme.hankoStone),
+                ],
+              ),
             ),
           ),
         ),
