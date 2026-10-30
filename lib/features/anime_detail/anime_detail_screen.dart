@@ -1801,40 +1801,49 @@ class _HankoStatusButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (icon, word) = _look(status);
+    // Its own semantics node (container), named "Status: <word>", with the
+    // InkWell's tap and focus inside it (question 104; the container pattern
+    // of dd45bd1 and 2d721db). A label over excluded semantics dropped both,
+    // so a screen reader found the word but couldn't open the sheet, and on
+    // the web the word couldn't take focus. Only the row's own word and icons
+    // are left out, under the InkWell, so the word isn't read twice.
     return Semantics(
+      container: true,
       button: true,
+      enabled: !busy && onTap != null,
       label: 'Status: $word',
       hint: 'Change status',
-      excludeSemantics: true,
       child: InkWell(
         onTap: busy ? null : onTap,
         borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
         splashFactory: NoSplash.splashFactory,
         highlightColor: AppTheme.hankoPressWash,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: AppTheme.hankoTouch),
-          child: Padding(
-            padding: const EdgeInsets.only(right: 6),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                SizedBox.square(
-                  dimension: 20,
-                  child: busy
-                      ? const Padding(
-                          padding: EdgeInsets.all(2),
-                          child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.hankoWashi),
-                        )
-                      : Icon(icon, size: 20, color: AppTheme.hankoWashi),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  word,
-                  style: AppTheme.hankoSans(fontSize: 15, weight: FontWeight.w500, height: 1),
-                ),
-                const SizedBox(width: 4),
-                const Icon(Icons.expand_more_sharp, size: 20, color: AppTheme.hankoStone),
-              ],
+        child: ExcludeSemantics(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: AppTheme.hankoTouch),
+            child: Padding(
+              padding: const EdgeInsets.only(right: 6),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox.square(
+                    dimension: 20,
+                    child: busy
+                        ? const Padding(
+                            padding: EdgeInsets.all(2),
+                            child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.hankoWashi),
+                          )
+                        : Icon(icon, size: 20, color: AppTheme.hankoWashi),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    word,
+                    style: AppTheme.hankoSans(fontSize: 15, weight: FontWeight.w500, height: 1),
+                  ),
+                  const SizedBox(width: 4),
+                  const Icon(Icons.expand_more_sharp, size: 20, color: AppTheme.hankoStone),
+                ],
+              ),
             ),
           ),
         ),
@@ -3716,6 +3725,50 @@ class _NextEpisodeCountdownState extends State<_NextEpisodeCountdown> {
     final s = timeUntil.inSeconds % 60;
     final isImminent = timeUntil.inHours < 1;
 
+    Future<void> toggle() async {
+      final newVal = !_reminderOn;
+      setState(() => _reminderOn = newVal);
+      final saving = _saveReminder(newVal);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(newVal
+              ? 'Reminder set for Episode ${widget.episode}'
+              : 'Reminder removed for Episode ${widget.episode}'),
+          backgroundColor: AppTheme.surfaceLight,
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppTheme.hankoRadius)),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+      // Question 84, with question 83's pattern: the write is awaited and
+      // caught. Unawaited, a refused write (by the rules, say) went to
+      // PlatformDispatcher.onError, which main.dart reports to Crashlytics as
+      // fatal, and the bell went on showing a reminder that wasn't saved. Now
+      // the bell goes back and the message says so, naming no cause. Offline,
+      // the write waits for the connection and the bell stays as tapped.
+      try {
+        await saving;
+      } catch (_) {
+        if (!context.mounted) return;
+        setState(() => _reminderOn = !newVal);
+        // In place of "Reminder set" if it's still showing.
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            SnackBar(
+              content: Text(newVal
+                  ? "Couldn't set the reminder. Try again."
+                  : "Couldn't remove the reminder. Try again."),
+              backgroundColor: AppTheme.surfaceLight,
+              behavior: SnackBarBehavior.floating,
+              margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppTheme.hankoRadius)),
+            ),
+          );
+      }
+    }
+
     // Hanko: a sumi 2 field with 2 px corners. No coral border and no
     // blurred glow (blur is the app's costliest raster effect, PERF.md); an
     // imminent episode shows in its date line, in washi.
@@ -3737,80 +3790,43 @@ class _NextEpisodeCountdownState extends State<_NextEpisodeCountdown> {
               ),
               const Spacer(),
               // Notification bell: a square that is filled when on, 48 dp
-              // to touch, its state in its name for screen readers.
+              // to touch, its state in its name for screen readers. It is
+              // its own semantics node with the same tap as the gesture
+              // (question 104; Coming up's bell since 0111ffc). Folded into
+              // the card, the bell's name and state made the whole card one
+              // switch with no tap, so a screen reader couldn't set the
+              // reminder.
               Semantics(
+                container: true,
                 button: true,
                 toggled: _reminderOn,
                 label: 'Remind me when episode ${widget.episode} airs',
+                onTap: toggle,
                 excludeSemantics: true,
                 child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () async {
-                  final newVal = !_reminderOn;
-                  setState(() => _reminderOn = newVal);
-                  final saving = _saveReminder(newVal);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(newVal
-                          ? 'Reminder set for Episode ${widget.episode}'
-                          : 'Reminder removed for Episode ${widget.episode}'),
-                      backgroundColor: AppTheme.surfaceLight,
-                      behavior: SnackBarBehavior.floating,
-                      margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppTheme.hankoRadius)),
-                      duration: const Duration(seconds: 2),
-                    ),
-                  );
-                  // Question 84, with question 83's pattern: the write is
-                  // awaited and caught. Unawaited, a refused write (by the
-                  // rules, say) went to PlatformDispatcher.onError, which
-                  // main.dart reports to Crashlytics as fatal, and the bell
-                  // went on showing a reminder that wasn't saved. Now the
-                  // bell goes back and the message says so, naming no cause.
-                  // Offline, the write waits for the connection and the bell
-                  // stays as tapped.
-                  try {
-                    await saving;
-                  } catch (_) {
-                    if (!context.mounted) return;
-                    setState(() => _reminderOn = !newVal);
-                    // In place of "Reminder set" if it's still showing.
-                    ScaffoldMessenger.of(context)
-                      ..hideCurrentSnackBar()
-                      ..showSnackBar(
-                        SnackBar(
-                          content: Text(newVal
-                              ? "Couldn't set the reminder. Try again."
-                              : "Couldn't remove the reminder. Try again."),
-                          backgroundColor: AppTheme.surfaceLight,
-                          behavior: SnackBarBehavior.floating,
-                          margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppTheme.hankoRadius)),
+                  behavior: HitTestBehavior.opaque,
+                  onTap: toggle,
+                  child: SizedBox.square(
+                    dimension: AppTheme.hankoTouch,
+                    child: Center(
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 250),
+                        curve: Curves.easeOut,
+                        width: 36, height: 36,
+                        decoration: BoxDecoration(
+                          color: _reminderOn ? AppTheme.hankoWashi : Colors.transparent,
+                          borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+                          border: _reminderOn ? null : Border.all(color: AppTheme.hankoEdge),
                         ),
-                      );
-                  }
-                },
-                child: SizedBox.square(
-                  dimension: AppTheme.hankoTouch,
-                  child: Center(
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 250),
-                      curve: Curves.easeOut,
-                      width: 36, height: 36,
-                      decoration: BoxDecoration(
-                        color: _reminderOn ? AppTheme.hankoWashi : Colors.transparent,
-                        borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
-                        border: _reminderOn ? null : Border.all(color: AppTheme.hankoEdge),
-                      ),
-                      child: Icon(
-                        _reminderOn ? Icons.notifications_sharp : Icons.notifications_none_outlined,
-                        color: _reminderOn ? AppTheme.hankoSumi : AppTheme.hankoWashi,
-                        size: 18,
+                        child: Icon(
+                          _reminderOn ? Icons.notifications_sharp : Icons.notifications_none_outlined,
+                          color: _reminderOn ? AppTheme.hankoSumi : AppTheme.hankoWashi,
+                          size: 18,
+                        ),
                       ),
                     ),
                   ),
                 ),
-              ),
               ),
             ],
           ),
