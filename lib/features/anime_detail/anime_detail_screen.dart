@@ -1397,14 +1397,17 @@ class HankoDetailHeader extends StatefulWidget {
 
   /// "Episode 8 on Saturday": today, tomorrow, a weekday within the week,
   /// else the date. Worked out once per build, so nothing ticks; the live
-  /// countdown stays in Overview.
+  /// countdown stays in Overview. Calendar days are counted between UTC
+  /// dates, as Home's Coming up counts them (question 111): between local
+  /// midnights, a change to or from summer time made a day 23 hours long,
+  /// and tomorrow read "today".
   String? get _nextLine {
     final at = nextAiringAt;
     final episode = nextEpisode;
     if (at == null || episode == null) return null;
     final now = DateTime.now();
-    final day = DateTime(at.year, at.month, at.day)
-        .difference(DateTime(now.year, now.month, now.day))
+    final day = DateTime.utc(at.year, at.month, at.day)
+        .difference(DateTime.utc(now.year, now.month, now.day))
         .inDays;
     final when = switch (day) {
       < 0 => 'is out',
@@ -3707,29 +3710,33 @@ class _NextEpisodeCountdownState extends State<_NextEpisodeCountdown> {
 
   String _pad(int n) => n.toString().padLeft(2, '0');
 
+  /// When the episode airs, by Home's rules (Coming up's `_when`, question
+  /// 111): "Today at 13:00", "Tomorrow at 13:00", the weekday from 2 to 6
+  /// days on ("Friday at 13:00"), else the date ("13 Nov at 13:00"), by the
+  /// device's own calendar and its 24-hour clock. The date is the header's
+  /// own (`HankoDetailHeader._date`), so the two lines agree. It used to
+  /// count whole 24-hour spans, so an episode tomorrow at 13:00, seen after
+  /// 13:00 today, read "Today at 1:00 PM".
   String _friendlyDate() {
     final now = DateTime.now();
     final diff = widget.airingAt.difference(now);
     final local = widget.airingAt.toLocal();
 
     if (diff.isNegative) return 'Airing now';
-    if (diff.inDays == 0) return 'Today at ${_timeStr(local)}';
-    if (diff.inDays == 1) return 'Tomorrow at ${_timeStr(local)}';
-    if (diff.inDays < 7) {
-      const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-      return '${days[local.weekday - 1]} at ${_timeStr(local)}';
-    }
-    const months = ['Jan','Feb','Mar','Apr','May','Jun',
-                    'Jul','Aug','Sep','Oct','Nov','Dec'];
-    return '${months[local.month - 1]} ${local.day} at ${_timeStr(local)}';
+    final days = DateTime.utc(local.year, local.month, local.day)
+        .difference(DateTime.utc(now.year, now.month, now.day))
+        .inDays;
+    final day = switch (days) {
+      <= 0 => 'Today',
+      1 => 'Tomorrow',
+      < 7 => HankoDetailHeader._weekdays[local.weekday - 1],
+      _ => HankoDetailHeader._date(local),
+    };
+    return '$day at ${_timeStr(local)}';
   }
 
-  String _timeStr(DateTime dt) {
-    final h = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
-    final m = _pad(dt.minute);
-    final period = dt.hour < 12 ? 'AM' : 'PM';
-    return '$h:$m $period';
-  }
+  /// The 24-hour clock, as Home's: "13:00".
+  String _timeStr(DateTime dt) => '${_pad(dt.hour)}:${_pad(dt.minute)}';
 
   @override
   Widget build(BuildContext context) {
