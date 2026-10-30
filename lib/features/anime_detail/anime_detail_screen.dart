@@ -1738,10 +1738,16 @@ class _HankoMainAction extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final icon = this.icon;
+    // Its own semantics node (container) with the InkWell's tap and focus
+    // inside it (question 104, as the status word). With a [semanticLabel],
+    // the label used to sit over excluded semantics, which dropped the
+    // InkWell's tap: a screen reader found "Mark episode 8 watched" but
+    // couldn't press it. Now only the words drawn on the tile are left out,
+    // under the InkWell, when the label replaces them.
     return Semantics(
+      container: true,
       button: true,
       label: semanticLabel,
-      excludeSemantics: semanticLabel != null,
       child: Material(
         color: AppTheme.hankoWashi,
         borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
@@ -1750,28 +1756,31 @@ class _HankoMainAction extends StatelessWidget {
           borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
           splashFactory: NoSplash.splashFactory,
           highlightColor: AppTheme.hankoSumi.withValues(alpha: 0.08),
-          child: ConstrainedBox(
-            constraints: BoxConstraints(minWidth: minWidth, minHeight: minHeight),
-            child: Padding(
-              padding: EdgeInsets.symmetric(horizontal: icon == null ? 14 : 18),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  if (icon != null) ...[
-                    Icon(icon, size: 20, color: AppTheme.hankoSumi),
-                    const SizedBox(width: 6),
-                  ],
-                  Text(
-                    label,
-                    style: AppTheme.hankoSans(
-                      fontSize: fontSize,
-                      weight: FontWeight.w600,
-                      color: AppTheme.hankoSumi,
-                      height: 1,
+          child: ExcludeSemantics(
+            excluding: semanticLabel != null,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minWidth: minWidth, minHeight: minHeight),
+              child: Padding(
+                padding: EdgeInsets.symmetric(horizontal: icon == null ? 14 : 18),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    if (icon != null) ...[
+                      Icon(icon, size: 20, color: AppTheme.hankoSumi),
+                      const SizedBox(width: 6),
+                    ],
+                    Text(
+                      label,
+                      style: AppTheme.hankoSans(
+                        fontSize: fontSize,
+                        weight: FontWeight.w600,
+                        color: AppTheme.hankoSumi,
+                        height: 1,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
@@ -2322,18 +2331,25 @@ class _HankoLink extends StatelessWidget {
       ),
     );
     if (!linked) return Padding(padding: const EdgeInsets.only(bottom: 2), child: text);
+    // Its own semantics node (container) with the InkWell's tap and focus
+    // inside it (question 104, as the status word). The label used to sit
+    // over excluded semantics, which dropped the InkWell's tap, so a screen
+    // reader found "Studio, MAPPA" but couldn't open it. The name drawn on
+    // the page is left out, under the InkWell, so it isn't read twice.
     return Semantics(
+      container: true,
       link: true,
       label: semanticLabel,
-      excludeSemantics: true,
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
         splashFactory: NoSplash.splashFactory,
         highlightColor: AppTheme.hankoPressWash,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: AppTheme.hankoTouch, minWidth: double.infinity),
-          child: Align(alignment: Alignment.centerLeft, child: text),
+        child: ExcludeSemantics(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: AppTheme.hankoTouch, minWidth: double.infinity),
+            child: Align(alignment: Alignment.centerLeft, child: text),
+          ),
         ),
       ),
     );
@@ -2782,30 +2798,37 @@ class _HankoWatchLinks extends StatelessWidget {
             for (final link in links)
               SizedBox(
                 width: cell,
+                // Its own semantics node (container) with the InkWell's tap
+                // and focus inside it (question 104, as the status word). The
+                // label used to sit over excluded semantics, which dropped the
+                // InkWell's tap, so a screen reader found "Watch on
+                // Crunchyroll" but couldn't open it.
                 child: Semantics(
+                  container: true,
                   link: true,
                   label: 'Watch on ${link.site}',
                   hint: 'Opens outside Hanj',
-                  excludeSemantics: true,
                   child: InkWell(
                     onTap: () => _open(link.url),
                     splashFactory: NoSplash.splashFactory,
                     highlightColor: AppTheme.hankoPressWash,
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(minHeight: AppTheme.hankoTouch),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              link.site,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: AppTheme.hankoSans(weight: FontWeight.w500, height: 1.2),
+                    child: ExcludeSemantics(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(minHeight: AppTheme.hankoTouch),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                link.site,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: AppTheme.hankoSans(weight: FontWeight.w500, height: 1.2),
+                              ),
                             ),
-                          ),
-                          const SizedBox(width: 8),
-                          const Icon(Icons.open_in_new_sharp, size: 16, color: AppTheme.hankoStone),
-                        ],
+                            const SizedBox(width: 8),
+                            const Icon(Icons.open_in_new_sharp, size: 16, color: AppTheme.hankoStone),
+                          ],
+                        ),
                       ),
                     ),
                   ),
