@@ -1217,11 +1217,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
     String count(int value, String one, String many) =>
         '${n.format(value)} ${value == 1 ? one : many}';
 
+    // The sentence is Shippori, which draws the typewriter apostrophe as a
+    // straight tick, so "You’ve" takes the typographic one (as the failure
+    // line below, question 109).
     final sentence = titles == 0
         ? 'Nothing logged yet.'
         : episodes == 0
-            ? 'You\'ve logged ${count(titles, 'title', 'titles')}.'
-            : 'You\'ve logged ${count(titles, 'title', 'titles')} and '
+            ? 'You’ve logged ${count(titles, 'title', 'titles')}.'
+            : 'You’ve logged ${count(titles, 'title', 'titles')} and '
                 'watched ${count(episodes, 'episode', 'episodes')}.';
     // Each number keeps its word (question 89): a no-break space joins
     // them, so a line never ends on a number whose word went on to the
@@ -1265,6 +1268,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   /// The list couldn't be read: say so, naming no cause the app can't
   /// verify (ANILIST-OFFLINE-0908-REPORT.md's rule), rather than showing an
   /// empty record. Retry rebuilds, which listens to the list afresh.
+  ///
+  /// The line takes the typographic apostrophe (question 109): Shippori
+  /// draws the typewriter one as a straight tick, as the Taste page found.
   Widget _buildListFailed() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(
@@ -1272,7 +1278,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Couldn\'t load your list just now.',
+          Text('Couldn’t load your list just now.',
               style: AppTheme.hankoSerif(fontSize: 17, height: 1.5)),
           const SizedBox(height: 12),
           _TextTile(label: 'Retry', onTap: () => setState(() {})),
