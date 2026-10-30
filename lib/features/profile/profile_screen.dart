@@ -1959,18 +1959,24 @@ class _DiaryRow extends StatelessWidget {
       ),
     );
 
+    // Its own semantics node (container), named by the spoken line. A row
+    // that opens its show is a screen-reader button with the InkWell's tap
+    // and focus inside it (question 104, as Profile's other rows); a batch
+    // row ("148 titles updated") opens nothing and stays a plain line. The
+    // label used to sit over excluded semantics, which dropped the InkWell's
+    // tap and focus: a screen reader heard "button" with nothing to press.
     return Semantics(
+      container: true,
       button: onTap != null,
       label: spoken,
-      excludeSemantics: true,
       child: onTap == null
-          ? row
+          ? ExcludeSemantics(child: row)
           : InkWell(
               onTap: onTap,
               splashFactory: NoSplash.splashFactory,
               highlightColor: AppTheme.hankoPressWash,
               hoverColor: AppTheme.hankoPressWash,
-              child: row,
+              child: ExcludeSemantics(child: row),
             ),
     );
   }
