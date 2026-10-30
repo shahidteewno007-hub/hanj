@@ -1214,8 +1214,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     required List<String> genres,
   }) {
     final n = NumberFormat.decimalPattern();
+    // Each number keeps its word here too (question 110): a no-break space
+    // joins them, so the sentence never ends a line on a number whose word
+    // went on to the next ("23 / titles" at 2.0x), as the statuses below.
     String count(int value, String one, String many) =>
-        '${n.format(value)} ${value == 1 ? one : many}';
+        '${n.format(value)}\u00A0${value == 1 ? one : many}';
 
     // The sentence is Shippori, which draws the typewriter apostrophe as a
     // straight tick, so "You’ve" takes the typographic one (as the failure
