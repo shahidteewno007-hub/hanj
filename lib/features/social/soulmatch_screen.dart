@@ -107,7 +107,7 @@ class _SoulmatchScreenState extends State<SoulmatchScreen> {
   /// the page's one washi action. A match follows below the screen's one
   /// hairline as a record: the percentage in Shippori, its verdict in
   /// words, the sentence that names your friend, the three counts, then
-  /// what you share, what you both watched, where your lists differ and
+  /// what you share, what is on both lists, where your lists differ and
   /// what to watch from theirs, each under a Shippori head, with space
   /// between and no boxes.
   ///
@@ -974,7 +974,10 @@ class _HankoResult extends StatelessWidget {
         ],
         if (result.sharedAnime.isNotEmpty) ...[
           const SizedBox(height: 32),
-          const _HankoHead('Both watched'),
+          // "On both lists", not "Both watched" (question 106): the shows
+          // are every title on both lists, so a show you both only plan
+          // to watch is among them.
+          const _HankoHead('On both lists'),
           _HankoCovers(items: result.sharedAnime),
         ],
         if (result.disagreements.isNotEmpty) ...[
