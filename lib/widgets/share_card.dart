@@ -175,7 +175,7 @@ class _ShareCardSheetState extends State<ShareCardSheet> {
                   label: Text(_isCapturing ? 'Saving...' : 'Save Image'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppTheme.primary,
-                    foregroundColor: Colors.white,
+                    foregroundColor: AppTheme.textInverse, // sumi on coral, 5.64:1
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12)),
@@ -214,8 +214,17 @@ class _ShareCard extends StatelessWidget {
     }
   }
 
+  /// The card people save and post, drawn at one size like a printed card
+  /// (question 75, as question 52 did for the Hanj Card faces): the
+  /// reader's text size stays out of it, while the sheet's own words and
+  /// buttons around it still follow the setting. The card is a fixed 160 px
+  /// tall, so its text has no room to grow inside it, and the saved image
+  /// would change with the phone's settings. At 1.0 nothing changes.
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) =>
+      MediaQuery.withNoTextScaling(child: _card());
+
+  Widget _card() {
     return Container(
       width: double.infinity,
       height: 160,
@@ -285,12 +294,12 @@ class _ShareCard extends StatelessWidget {
                               ),
                             ),
                             const SizedBox(width: 6),
-                            const Text(
+                            // The wordmark in Shippori Mincho (stage H2).
+                            Text(
                               'Hanj',
-                              style: TextStyle(
-                                color: Color(0xFFF5F0E8),
+                              style: AppTheme.shipporiMincho(
+                                color: const Color(0xFFF5F0E8),
                                 fontSize: 12,
-                                fontWeight: FontWeight.w700,
                                 letterSpacing: 0.5,
                               ),
                             ),

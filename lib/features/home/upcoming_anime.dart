@@ -150,7 +150,12 @@ class _UpcomingAnimeScreenState extends State<UpcomingAnimeScreen>
         .collection('alerts').doc(anime.id);
 
     if (_alertedIds.contains(anime.id)) {
-      await ref.delete();
+      try {
+        await ref.delete();
+      } catch (_) {
+        _alertNotSaved(removing: true);
+        return;
+      }
       if (!mounted) return;
       setState(() => _alertedIds.remove(anime.id));
       if (mounted) {
@@ -163,14 +168,19 @@ class _UpcomingAnimeScreenState extends State<UpcomingAnimeScreen>
         );
       }
     } else {
-      await ref.set({
-        'animeId':    anime.id,
-        'title':      anime.titleEnglish ?? anime.title,
-        'imageUrl':   anime.imageUrl,
-        'season':     anime.season,
-        'seasonYear': anime.seasonYear,
-        'addedAt':    FieldValue.serverTimestamp(),
-      });
+      try {
+        await ref.set({
+          'animeId':    anime.id,
+          'title':      anime.titleEnglish ?? anime.title,
+          'imageUrl':   anime.imageUrl,
+          'season':     anime.season,
+          'seasonYear': anime.seasonYear,
+          'addedAt':    FieldValue.serverTimestamp(),
+        });
+      } catch (_) {
+        _alertNotSaved(removing: false);
+        return;
+      }
       if (!mounted) return;
       setState(() => _alertedIds.add(anime.id));
       if (mounted) {
@@ -191,6 +201,29 @@ class _UpcomingAnimeScreenState extends State<UpcomingAnimeScreen>
         );
       }
     }
+  }
+
+  /// Question 84, with question 83's pattern: a refused alert write (by the
+  /// rules, say) is caught in _toggleAlert. Uncaught, it went to
+  /// PlatformDispatcher.onError, which main.dart reports to Crashlytics as
+  /// fatal. This bell only moves once its write has landed, so there is no
+  /// bell to put back: it still shows what is saved, and no confirmation
+  /// was shown. The message says so, naming no cause, in place of any
+  /// message still showing, in this screen's own message style. Offline,
+  /// the write waits for the connection, as before.
+  void _alertNotSaved({required bool removing}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(removing
+              ? "Couldn't remove the reminder. Try again."
+              : "Couldn't set the reminder. Try again."),
+          backgroundColor: AppTheme.surfaceMid,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
   }
 
   @override
@@ -460,7 +493,15 @@ class _UpcomingCard extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────
 
 class UpcomingAnimeRow extends StatefulWidget {
-  const UpcomingAnimeRow({super.key});
+  const UpcomingAnimeRow({super.key, this.skip = const {}});
+
+  /// The shows Home's season chart already lists, by AniList id. The chart
+  /// and this strip read the same request, the season's most popular shows
+  /// (Hanko H4 f), so the strip leaves those out and starts after them
+  /// (question 44). Matched by id, not by position: the chart's copy can be
+  /// up to an hour older than this one and ranked a little differently, and
+  /// when the chart couldn't load at all, nothing is skipped.
+  final Set<String> skip;
 
   @override
   State<UpcomingAnimeRow> createState() => _UpcomingAnimeRowState();
@@ -502,7 +543,9 @@ class _UpcomingAnimeRowState extends State<UpcomingAnimeRow> {
       final results = await _anilist.getSeasonal(
           _currentSeason(), DateTime.now().year);
       if (results.isNotEmpty) {
-        _cache = results.take(10).toList(); // update cache only on success
+        // The whole page (up to 20): the strip shows ten once the chart's
+        // shows are left out (widget.skip), so ten alone could fall short.
+        _cache = List.of(results); // update cache only on success
         if (mounted) setState(() { _anime = _cache; _isLoading = false; });
       } else {
         // Empty response — keep existing data, just stop spinner
@@ -559,39 +602,70 @@ class _UpcomingAnimeRowState extends State<UpcomingAnimeRow> {
 
   @override
   Widget build(BuildContext context) {
+    // Hanko (stage H4, item h; hanko.html's poster strip, .mlt): 72 × 102
+    // covers with square 2 px corners on sumi 3 while they load, each title
+    // under its cover in Jost 500 12 on up to two lines, and "See all" as a
+    // quiet washi link in a 48 dp target. No coral and no arrow: in Hanko
+    // coral is your seal, and nothing in this row is yours. The data, the
+    // static cache and where each tap goes are as they were.
+    final scaler = MediaQuery.textScalerOf(context);
+    // The columns widen as the titles' text grows, so a long word still fits
+    // one line: at 1.3x a 72 px column broke "Apothecary" mid-word. Tied to
+    // the 12 px title's own growth (Android's large sizes scale non-linearly),
+    // and never narrower than the frame's 72 px. The cover keeps 72 x 102.
+    final grow = scaler.scale(12) / 12;
+    final itemWidth = grow > 1 ? 72 * grow : 72.0;
+    final coverHeight = itemWidth * 102 / 72;
+    // Two lines of title at the reader's text size, so the strip grows with
+    // large text instead of cutting the titles' second line.
+    final stripHeight = coverHeight + 6 + scaler.scale(12) * 1.25 * 2 + 4;
+
     if (_isLoading && _anime.isEmpty) {
-      return const SizedBox(
-        height: 200,
-        child: Center(child: CircularProgressIndicator(
-            color: AppTheme.primary, strokeWidth: 2)),
+      // The size the loaded block takes, so nothing below jumps when it
+      // arrives.
+      return SizedBox(
+        height: AppTheme.hankoTouch + stripHeight,
+        child: const Center(
+          child: SizedBox(
+            width: 20,
+            height: 20,
+            child: CircularProgressIndicator(
+                color: AppTheme.hankoWashi, strokeWidth: 1.5),
+          ),
+        ),
       );
     }
 
-    if (_anime.isEmpty) return const SizedBox.shrink();
+    // The season after the chart's shows (widget.skip), ten at most. A short
+    // season that the chart already shows in full leaves nothing, and the
+    // block is left out, as when the request failed with nothing saved.
+    final shown =
+        _anime.where((a) => !widget.skip.contains(a.id)).take(10).toList();
+    if (shown.isEmpty) return const SizedBox.shrink();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // Header
         Padding(
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+          // The link's 8 px of padding sits in the gutter, so its word
+          // lines up with the gutter edge.
+          padding: const EdgeInsets.fromLTRB(
+              AppTheme.hankoGutter, 0, AppTheme.hankoGutter - 8, 0),
           child: Row(
             children: [
-              Text('This Season',
-                  style: AppTheme.serif(
-                      fontSize: 20, weight: FontWeight.w600)),
-              const Spacer(),
-              GestureDetector(
+              Expanded(
+                child: Semantics(
+                  header: true,
+                  child: Text('This season',
+                      style: AppTheme.hankoSerif(height: 1.3)),
+                ),
+              ),
+              const SizedBox(width: 12),
+              _SeeAllLink(
                 onTap: () => Navigator.push(context,
                     MaterialPageRoute(
                         builder: (_) => const UpcomingAnimeScreen())),
-                child: Text(
-                  'SEE ALL →',
-                  style: AppTheme.mono(
-                      fontSize: 11,
-                      color: AppTheme.primary,
-                      letterSpacing: 1),
-                ),
               ),
             ],
           ),
@@ -599,57 +673,69 @@ class _UpcomingAnimeRowState extends State<UpcomingAnimeRow> {
 
         // Horizontal scroll
         SizedBox(
-          height: 260,
-          child: ListView.builder(
+          height: stripHeight,
+          child: ListView.separated(
             scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            itemCount: _anime.length,
+            padding:
+                const EdgeInsets.symmetric(horizontal: AppTheme.hankoGutter),
+            itemCount: shown.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 10),
             itemBuilder: (_, i) {
-              final anime = _anime[i];
-              return GestureDetector(
-                onTap: () => Navigator.push(context,
-                    MaterialPageRoute(
-                        builder: (_) => AnimeDetailScreen(anime: anime))),
-                child: Container(
-                  width: 140,
-                  margin: const EdgeInsets.only(right: 12),
-                  child: Stack(
-                    children: [
-                      // Card
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(12),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            // Poster
-                            Expanded(
+              final anime = shown[i];
+              final title = anime.titleEnglish ?? anime.title;
+              void open() => Navigator.push(context,
+                  MaterialPageRoute(
+                      builder: (_) => AnimeDetailScreen(anime: anime)));
+              // excludeSemantics drops the InkWell's own tap action with the
+              // rest of the subtree, so the node carries onTap itself.
+              return Semantics(
+                button: true,
+                label: title,
+                onTap: open,
+                excludeSemantics: true,
+                child: InkWell(
+                  onTap: open,
+                  splashFactory: NoSplash.splashFactory,
+                  highlightColor: AppTheme.hankoPressWash,
+                  hoverColor: AppTheme.hankoPressWash,
+                  child: SizedBox(
+                    width: itemWidth,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Poster
+                        ClipRRect(
+                          borderRadius:
+                              BorderRadius.circular(AppTheme.hankoRadius),
+                          child: SizedBox(
+                            width: itemWidth,
+                            height: coverHeight,
+                            child: ColoredBox(
+                              color: AppTheme.hankoSumi3,
                               child: anime.imageUrl != null
                                   ? CachedNetworkImage(
                                       imageUrl: anime.imageUrl!,
-                                      width: 140,
                                       fit: BoxFit.cover,
                                       errorWidget: (_, _, _) =>
-                                          Container(color: AppTheme.surfaceLight),
+                                          const SizedBox.expand(),
                                     )
-                                  : Container(color: AppTheme.surfaceLight),
+                                  : const SizedBox.expand(),
                             ),
-                            // Title
-                            Container(
-                              color: AppTheme.surface,
-                              padding: const EdgeInsets.all(8),
-                              child: Text(
-                                anime.titleEnglish ?? anime.title,
-                                style: AppTheme.sans(
-                                    fontSize: 11,
-                                    weight: FontWeight.w600),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
+                          ),
                         ),
-                      ),
-                    ],
+                        const SizedBox(height: 6),
+                        // Title
+                        Text(
+                          title,
+                          style: AppTheme.hankoSans(
+                              fontSize: AppTheme.hankoLabelSize,
+                              weight: FontWeight.w500,
+                              height: 1.25),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               );
@@ -657,6 +743,47 @@ class _UpcomingAnimeRowState extends State<UpcomingAnimeRow> {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Hanko's quiet link, as Home's "See all": Jost 500 13 in washi, underlined
+/// in edge, in a 48 dp target. A secondary way on, never shaped as a button.
+class _SeeAllLink extends StatelessWidget {
+  const _SeeAllLink({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      child: InkWell(
+        onTap: onTap,
+        splashFactory: NoSplash.splashFactory,
+        highlightColor: AppTheme.hankoPressWash,
+        hoverColor: AppTheme.hankoPressWash,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(
+              minHeight: AppTheme.hankoTouch, minWidth: AppTheme.hankoTouch),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Align(
+              widthFactor: 1,
+              child: Text(
+                'See all',
+                style: AppTheme.hankoSans(
+                  fontSize: AppTheme.hankoMetaSize,
+                  weight: FontWeight.w500,
+                ).copyWith(
+                  decoration: TextDecoration.underline,
+                  decorationColor: AppTheme.hankoEdge,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

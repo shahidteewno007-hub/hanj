@@ -1,9 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:intl/intl.dart';
 
+import '../../core/responsive.dart';
 import '../../core/theme/app_theme.dart';
+import '../../models/anime_model.dart';
+import '../../widgets/hanko_seal.dart';
+import '../../widgets/hanko_seal_register.dart';
 import '../../services/auth_service.dart';
 import '../../services/firestore_service.dart';
 import '../../services/founder_service.dart';
@@ -19,6 +25,7 @@ import '../profile/taste_profile.dart';
 import '../profile/ranking_cards.dart';
 import '../cards/card_collection_screen.dart';
 import '../cards/hanj_card.dart' as hc;
+import '../anime_detail/anime_detail_screen.dart';
 import '../../cadre/screens/cadre_lobby_screen.dart';
 import '../auth/delete_account_screen.dart';
 
@@ -143,6 +150,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
         stream: _firestoreService.getAnimeList(),
         builder: (context, snapshot) {
           final docs = snapshot.data?.docs ?? [];
+          // The list's state (stage H5). Until the first snapshot the list
+          // isn't known, and Profile claims nothing about it: no "0 titles"
+          // for someone with a long list. A failed read says so.
+          //
+          // An empty answer from the device's cache counts as known. It
+          // can't be told from an unread list, but every setState here
+          // makes a new stream (getAnimeList() in build), and the listener
+          // that replaces the first one answers from the cache at once and
+          // never hears the server confirm an empty result (that change is
+          // metadata only), so waiting for it left an empty list blank
+          // forever. Only a first load offline with nothing cached could
+          // say "Nothing logged yet." wrongly, as the old "0 Titles" did.
+          final listFailed = snapshot.hasError;
+          final listKnown = !listFailed && snapshot.hasData;
 
           // Compute stats
           int totalAnime = docs.length;
@@ -150,21 +171,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
           int watching = 0;
           int planToWatch = 0;
           int dropped = 0;
-          double totalRating = 0;
-          int ratedCount = 0;
+          // Episodes under one definition (stage H5, item e), the one
+          // Advanced Stats uses (stats_screen.dart): a completed show counts
+          // its episode total, and any other show the episode you logged,
+          // dropped and paused ones included, since you watched those too.
+          // Rewatches aren't counted: the list keeps no rewatch count.
           int totalEpisodes = 0;
           Map<String, int> genreCounts = {};
+          // Every rating as stored, for the seal register (item d).
+          final ratings = <double>[];
+          // The entries themselves, for favourites (item c).
+          final entries = <Map<String, dynamic>>[];
 
           for (final doc in docs) {
             final data = doc.data() as Map<String, dynamic>;
+            entries.add(data);
             switch (data['status']) {
               case 'COMPLETED':
                 completed++;
-                totalEpisodes += (data['episodes'] as int?) ?? 0;
                 break;
               case 'WATCHING':
                 watching++;
-                totalEpisodes += (data['currentEpisode'] as int?) ?? 0;
                 break;
               case 'PLAN_TO_WATCH':
                 planToWatch++;
@@ -173,10 +200,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 dropped++;
                 break;
             }
+            final total = (data['episodes'] as num?)?.toInt();
+            final current = (data['currentEpisode'] as num?)?.toInt();
+            if (data['status'] == 'COMPLETED' && total != null) {
+              totalEpisodes += total;
+            } else if (current != null) {
+              totalEpisodes += current;
+            }
             if (data['userRating'] != null) {
-              totalRating +=
-                  (data['userRating'] as num).toDouble();
-              ratedCount++;
+              ratings.add((data['userRating'] as num).toDouble());
             }
             final genres =
                 (data['genres'] as List<dynamic>?)?.cast<String>() ?? [];
@@ -185,14 +217,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
             }
           }
 
-          final avgRating =
-              ratedCount > 0 ? totalRating / ratedCount : 0.0;
-          final watchTimeMinutes = totalEpisodes * 24;
           final topGenres = (genreCounts.entries.toList()
                 ..sort((a, b) => b.value.compareTo(a.value)))
               .take(3)
               .map((e) => e.key)
               .toList();
+          final shelves = _shelves(entries);
 
           return MediaQuery.removePadding(
             context: context,
@@ -200,28 +230,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
             child: CustomScrollView(
             slivers: [
               // ── AppBar ──────────────────────────────────
+              // Name first (Hanko stage H5): the name below heads the page, so
+              // the bar keeps only its actions, as hanko.html draws it.
               SliverAppBar(
                 backgroundColor: AppTheme.background,
                 floating: true,
                 snap: true,
-                titleSpacing: 20,
-                title: Text('Profile',
-                    style: AppTheme.serif(
-                        fontSize: 22, weight: FontWeight.w700)),
                 actions: [
                   IconButton(
-                    icon: const Icon(Icons.download_rounded,
-                        color: AppTheme.textSecondary, size: 20),
+                    icon: const Icon(Icons.download_sharp,
+                        color: AppTheme.hankoWashi, size: 22),
                     tooltip: 'Import',
+                    style: _hankoIconButtonStyle,
                     onPressed: () => Navigator.push(context,
                         MaterialPageRoute(
                             builder: (_) =>
                                 const AnilistImportScreen())),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.edit_outlined,
-                        color: AppTheme.textSecondary, size: 20),
+                    icon: const Icon(Icons.edit_sharp,
+                        color: AppTheme.hankoWashi, size: 22),
                     tooltip: 'Edit Profile',
+                    style: _hankoIconButtonStyle,
                     onPressed: () async {
                       await Navigator.push(context,
                           MaterialPageRoute(
@@ -233,8 +263,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   // Theme toggle hidden — light mode coming soon
                   // (Re-enable when AppTheme.background etc. are made theme-aware)
                   PopupMenuButton<String>(
-                    icon: const Icon(Icons.more_vert_rounded,
-                        color: AppTheme.textSecondary, size: 20),
+                    icon: const Icon(Icons.more_vert_sharp,
+                        color: AppTheme.hankoWashi, size: 22),
+                    style: _hankoIconButtonStyle,
                     color: AppTheme.surfaceMid,
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12)),
@@ -281,13 +312,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       }
                     },
                     itemBuilder: (_) => [
-                      _menuItem('cards', Icons.grid_view_rounded, 'Ranking Cards'),
-                      _menuItem('stats', Icons.bar_chart_rounded, 'Advanced Stats'),
-                      // 'Your Wrapped' is hidden during beta — a yearly recap
-                      // has no meaningful data to show mid-year.
-                      _menuItem('feed', Icons.dynamic_feed_rounded, 'Activity Feed'),
-                      _menuItem('calendar', Icons.calendar_month_rounded, 'Anime Calendar'),
-                      _menuItem('social', Icons.people_rounded, 'Social'),
+                      // The identity tools are rows on the page now (question
+                      // 55); see _identityToolsInMenu.
+                      if (_identityToolsInMenu) ...[
+                        _menuItem('cards', Icons.grid_view_rounded, 'Ranking Cards'),
+                        _menuItem('stats', Icons.bar_chart_rounded, 'Advanced Stats'),
+                        // 'Your Wrapped' is hidden during beta — a yearly recap
+                        // has no meaningful data to show mid-year.
+                        _menuItem('feed', Icons.dynamic_feed_rounded, 'Activity Feed'),
+                        _menuItem('calendar', Icons.calendar_month_rounded, 'Anime Calendar'),
+                        _menuItem('social', Icons.people_rounded, 'Social'),
+                      ],
                       _menuItem('notifications', Icons.notifications_outlined, 'Notifications'),
                       const PopupMenuDivider(),
                       _menuItem('more', Icons.more_horiz_rounded, 'More'),
@@ -299,414 +334,178 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ],
               ),
 
-              // ── Profile Hero Card ────────────────────────
+              // ── The header (Hanko stage H5, item a) ──────
               SliverToBoxAdapter(
                 key: const ValueKey('profile-header'),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
-                  child: GestureDetector(
-                    onTap: () async {
-                      await Navigator.push(context,
-                          MaterialPageRoute(
-                              builder: (_) =>
-                                  const EditProfileScreen()));
-                      _loadAvatarPrefs();
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.all(20),
-                      decoration: BoxDecoration(
-                        color: AppTheme.surface,
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: AppTheme.border),
-                      ),
-                      child: Row(
-                        children: [
-                          // Avatar
-                          Stack(
-                            children: [
-                              Container(
-                                width: 60,
-                                height: 60,
-                                decoration: BoxDecoration(
-                                  gradient: _avatarImageUrl == null
-                                      ? LinearGradient(
-                                          colors: _avatarGradients[
-                                              _avatarColorIndex],
-                                          begin: Alignment.topLeft,
-                                          end: Alignment.bottomRight,
-                                        )
-                                      : null,
-                                  borderRadius:
-                                      BorderRadius.circular(16),
-                                ),
-                                child: _avatarImageUrl != null
-                                    ? ClipRRect(
-                                        borderRadius:
-                                            BorderRadius.circular(16),
-                                        child: Image.network(
-                                          _avatarImageUrl!,
-                                          fit: BoxFit.cover,
-                                          errorBuilder: (_, _, _) =>
-                                              Center(
-                                            child: Text(initial,
-                                                style: AppTheme.serif(
-                                                    fontSize: 24,
-                                                    weight:
-                                                        FontWeight.w700,
-                                                    color: Colors.white)),
-                                          ),
-                                        ),
-                                      )
-                                    : Center(
-                                        child: Text(initial,
-                                            style: AppTheme.serif(
-                                                fontSize: 24,
-                                                weight: FontWeight.w700,
-                                                color: Colors.white)),
-                                      ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment:
-                                  CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  user?.displayName ?? 'Anime Fan',
-                                  style: AppTheme.serif(
-                                      fontSize: 20,
-                                      weight: FontWeight.w700),
-                                ),
-                                if (_founderStatus.isFounder &&
-                                    _founderStatus.number != null) ...[
-                                  const SizedBox(height: 6),
-                                  FounderBadge(number: _founderStatus.number!),
-                                ],
-                                const SizedBox(height: 2),
-                                Text(
-                                  'MEMBER SINCE ${user?.metadata.creationTime?.year ?? '—'} · ★ ${avgRating.toStringAsFixed(1)} AVG',
-                                  style: AppTheme.mono(
-                                      fontSize: 10,
-                                      color: AppTheme.textMuted,
-                                      letterSpacing: 0.8),
-                                ),
-                                const SizedBox(height: 8),
-                                Row(
-                                  children: [
-                                    _PillBadge(
-                                      'PACE · ${watching > 0 ? "$watching" : "0"} WATCHING',
-                                      AppTheme.watching,
-                                    ),
-                                    const SizedBox(width: 8),
-                                    _PillBadge(
-                                      '$completed DONE',
-                                      AppTheme.completed,
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
+                child: _column(_buildHeader(user, initial)),
+              ),
+
+              // ── The list couldn't be read ────────────────
+              if (listFailed)
+                SliverToBoxAdapter(
+                  key: const ValueKey('profile-list-failed'),
+                  child: _column(_buildListFailed()),
                 ),
+
+              // ── Favourites (Hanko stage H5, item c) ──────
+              if (listKnown && totalAnime > 0)
+                SliverToBoxAdapter(
+                  key: const ValueKey('profile-favourites'),
+                  child: _column(_buildFavourites(_topRated(entries))),
+                ),
+
+              // ── The counts (Hanko stage H5, item e) ──────
+              // In words, in place of the four stat tiles, "By status" and
+              // "Top genres". With an empty list, the page's one sentence.
+              if (listKnown)
+                SliverToBoxAdapter(
+                  key: const ValueKey('profile-counts'),
+                  child: _column(_buildCounts(
+                    titles: totalAnime,
+                    episodes: totalEpisodes,
+                    watching: watching,
+                    completed: completed,
+                    planned: planToWatch,
+                    dropped: dropped,
+                    genres: topGenres,
+                  )),
+                ),
+
+              // ── Your ratings (Hanko stage H5, item d) ────
+              if (listKnown && totalAnime > 0)
+                SliverToBoxAdapter(
+                  key: const ValueKey('profile-ratings'),
+                  child: _column(_buildRatings(ratings)),
+                ),
+
+              // ── Recent diary (Hanko stage H5, item f) ────
+              if (listKnown && totalAnime > 0)
+                SliverToBoxAdapter(
+                  key: const ValueKey('profile-diary'),
+                  child: _column(_buildDiary(_diary(entries))),
+                ),
+
+              // ── Shelves (Hanko stage H5, item g) ─────────
+              // Only once a shelf exists: nothing in the app makes one
+              // until stage H7, so for now this never shows.
+              if (listKnown && shelves.isNotEmpty)
+                SliverToBoxAdapter(
+                  key: const ValueKey('profile-shelves'),
+                  child: _column(_buildShelves(shelves)),
+                ),
+
+              // ── The ways on from Profile ─────────────────
+              // Quiet Hanko rows below the screen's one hairline, which
+              // closes your record. Hanj Cards and Cadre came first (stage
+              // H5); the identity tools joined them from the ⋮ menu
+              // (question 55), each opening exactly what its menu entry
+              // opened. Grouped by space alone, no headings: your record in
+              // more depth; what you collect and play; then other people
+              // and the season.
+              //
+              // Your taste leads them (question 57): the Taste card, now one
+              // of these rows (taste_profile.dart), since taste comes first
+              // on Profile (question 2). It reads your list itself, so it
+              // shows once the list has titles, as the card did.
+              SliverToBoxAdapter(
+                key: const ValueKey('profile-section-c'),
+                child: _column(Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                      AppTheme.hankoGutter, 30, AppTheme.hankoGutter, 0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const ColoredBox(
+                        color: AppTheme.hankoHairline,
+                        child: SizedBox(height: 1),
+                      ),
+                      const SizedBox(height: 10),
+                      if (totalAnime > 0) ...[
+                        const TasteProfileCard(
+                            key: ValueKey('profile-taste')),
+                        const SizedBox(height: _rowGap),
+                      ],
+                      _EntryRow(
+                        icon: Icons.bar_chart_sharp,
+                        title: 'Advanced Stats',
+                        line: 'See your list in charts and numbers',
+                        onTap: () => Navigator.push(context, MaterialPageRoute(
+                            builder: (_) => const StatsScreen())),
+                      ),
+                      const SizedBox(height: _rowGap),
+                      _EntryRow(
+                        icon: Icons.dynamic_feed_sharp,
+                        title: 'Activity Feed',
+                        line: 'Look back at everything you\'ve logged',
+                        onTap: () => Navigator.push(context, MaterialPageRoute(
+                            builder: (_) => const ActivityFeedScreen())),
+                      ),
+                      const SizedBox(height: _groupGap),
+                      // With the card out of the header (see
+                      // _pinnedCardInHeader), the row names your pinned
+                      // card in words, with no card art.
+                      _EntryRow(
+                        icon: Icons.style_sharp,
+                        title: 'Hanj Cards',
+                        line: _pinnedName.isEmpty
+                            ? 'Collect rare cards by watching anime'
+                            : 'Pinned: $_pinnedName',
+                        onTap: () => Navigator.push(context, MaterialPageRoute(
+                            builder: (_) => const CardCollectionScreen())),
+                      ),
+                      const SizedBox(height: _rowGap),
+                      _EntryRow(
+                        icon: Icons.grid_view_sharp,
+                        title: 'Ranking Cards',
+                        line: 'Save your Top 9 and taste as images',
+                        onTap: () => Navigator.push(context, MaterialPageRoute(
+                            builder: (_) => const RankingCardsScreen())),
+                      ),
+                      const SizedBox(height: _rowGap),
+                      _EntryRow(
+                        icon: Icons.local_fire_department_sharp,
+                        title: 'Cadre',
+                        line: 'Draft a deck from any cast and clash',
+                        onTap: () => Navigator.push(context, MaterialPageRoute(
+                            builder: (_) => const CadreLobbyScreen())),
+                      ),
+                      const SizedBox(height: _groupGap),
+                      _EntryRow(
+                        icon: Icons.people_sharp,
+                        title: 'Social',
+                        line: 'Compare your taste with a friend\'s',
+                        onTap: () => Navigator.push(context, MaterialPageRoute(
+                            builder: (_) => const SocialScreen())),
+                      ),
+                      const SizedBox(height: _rowGap),
+                      _EntryRow(
+                        icon: Icons.calendar_month_sharp,
+                        title: 'Anime Calendar',
+                        line: 'See what airs next, day by day',
+                        onTap: () => Navigator.push(context, MaterialPageRoute(
+                            builder: (_) => const AnimeCalendarScreen())),
+                      ),
+                    ],
+                  ),
+                )),
               ),
 
               // ── Founder Card (first 50 users only) ───────
-              // Until status is known, hold the card's footprint so it fills
-              // in rather than appearing and pushing everything below it down.
+              // Moved below the record (stage H5): the Founder pill stays
+              // under the name, and the full card no longer pushes the
+              // record out of the first screen. Collapsed to a short note,
+              // the page's last word (question 57, founder_card.dart).
+              // Until status is known the placeholder stands in; in Hanko it
+              // reserves nothing, since nothing sits below the note.
               if (!_founderResolved)
-                const SliverToBoxAdapter(
-                  key: ValueKey('profile-founder'),
-                  child: FounderCardPlaceholder(),
+                SliverToBoxAdapter(
+                  key: const ValueKey('profile-founder'),
+                  child: _column(const FounderCardPlaceholder()),
                 )
               else if (_founderStatus.isFounder)
                 SliverToBoxAdapter(
                   key: const ValueKey('profile-founder'),
-                  child: FounderCard(status: _founderStatus),
-                ),
-
-              // ── Collection Hero Card ─────────────────────
-              SliverToBoxAdapter(
-                key: const ValueKey('profile-collection'),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-                  child: Container(
-                    padding: const EdgeInsets.fromLTRB(24, 20, 16, 20),
-                    decoration: BoxDecoration(
-                      color: AppTheme.surfaceLight,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: AppTheme.border),
-                    ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        // Left — stats
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'COLLECTION',
-                                style: AppTheme.mono(
-                                  fontSize: 10,
-                                  color: AppTheme.textMuted,
-                                  letterSpacing: 1.4,
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              Row(
-                                crossAxisAlignment: CrossAxisAlignment.baseline,
-                                textBaseline: TextBaseline.alphabetic,
-                                children: [
-                                  Text(
-                                    '$totalAnime',
-                                    style: AppTheme.mono(
-                                      fontSize: 52,
-                                      weight: FontWeight.w700,
-                                      color: AppTheme.textPrimary,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    'Titles',
-                                    style: AppTheme.serif(
-                                      fontSize: 18,
-                                      weight: FontWeight.w600,
-                                      color: AppTheme.textMuted,
-                                      style: FontStyle.italic,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                'Tracked on Hanj',
-                                style: AppTheme.sans(
-                                  fontSize: 12,
-                                  color: AppTheme.textMuted,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        // Right — real HanjCard or faint logo
-                        if (_featuredCard != null)
-                          GestureDetector(
-                            onTap: () => Navigator.push(context,
-                                MaterialPageRoute(builder: (_) => const CardCollectionScreen())),
-                            // Square corners: HanjCard is square by design
-                            // (_CardShell paints square, HanjCard clips with
-                            // ClipRect). This was the only place one got
-                            // rounded off.
-                            child: ClipRect(
-                              child: SizedBox(
-                                width:  hc.HanjCard.kWidth  * 0.52,
-                                height: hc.HanjCard.kHeight * 0.52,
-                                // Render the card at its natural 200x300 and scale the
-                                // whole thing down. The card has fixed-pixel internals
-                                // (footer text, paddings) that don't shrink on their own,
-                                // so sizing it directly overflows at small sizes.
-                                child: FittedBox(
-                                  fit: BoxFit.contain,
-                                  child: hc.HanjCard(
-                                    isUnlocked: true,
-                                    card: hc.HanjCardData(
-                                      id: (_featuredCard!['id'] as String?) ?? '',
-                                      name: ((_featuredCard!['name'] ?? _featuredCard!['cardName']) as String?) ?? '',
-                                      description: (_featuredCard!['description'] as String?) ?? '',
-                                      rarity: hc.CardRarity.values.firstWhere(
-                                        (r) => r.name == ((_featuredCard!['rarity'] as String?) ?? 'common'),
-                                        orElse: () => hc.CardRarity.common,
-                                      ),
-                                      category: ((_featuredCard!['category'] as String?) ?? 'ÆTHER').toUpperCase(),
-                                      kanji: (_featuredCard!['kanji'] as String?) ?? '道',
-                                      cardNumber: (_featuredCard!['cardNumber'] as int?) ?? 0,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          )
-                        else
-                          Opacity(
-                            opacity: 0.07,
-                            child: Image.asset(
-                              'assets/images/hanj_wing_transparent.png',
-                              width: 78, height: 78,
-                              fit: BoxFit.contain,
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-
-              // ── Stat tiles ───────────────────────────────
-              SliverToBoxAdapter(
-                key: const ValueKey('profile-section-a'),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: _StatTile(
-                          label: 'EPISODES',
-                          value: '$totalEpisodes',
-                          sub: 'watched',
-                          icon: Icons.play_arrow_rounded,
-                          iconColor: AppTheme.watching,
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: _StatTile(
-                          label: 'AVG RATING',
-                          value: avgRating.toStringAsFixed(1),
-                          sub: 'of 10',
-                          icon: Icons.star_rounded,
-                          iconColor: AppTheme.accent,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              SliverToBoxAdapter(
-                key: const ValueKey('profile-section-b'),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: _StatTile(
-                          label: 'WATCH TIME',
-                          value: _formatWatchTime(watchTimeMinutes),
-                          sub: 'lifetime',
-                          icon: Icons.access_time_rounded,
-                          iconColor: AppTheme.primary,
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: _StatTile(
-                          label: 'COMPLETED',
-                          value: '$completed',
-                          sub: 'series',
-                          icon: Icons.check_rounded,
-                          iconColor: AppTheme.completed,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-
-              // ── Hanj Cards ───────────────────────────────
-              SliverToBoxAdapter(
-                key: const ValueKey('profile-section-c'),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-                  child: _HanjCardsBanner(
-                    onTap: () => Navigator.push(context, MaterialPageRoute(
-                        builder: (_) => const CardCollectionScreen())),
-                  ),
-                ),
-              ),
-
-              // ── Cadre ────────────────────────────────────
-              SliverToBoxAdapter(
-                key: const ValueKey('profile-section-d'),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-                  child: _CadreBanner(
-                    onTap: () => Navigator.push(context, MaterialPageRoute(
-                        builder: (_) => const CadreLobbyScreen())),
-                  ),
-                ),
-              ),
-
-              // ── Anime Taste Profile ──────────────────────
-              if (totalAnime > 0)
-                const SliverToBoxAdapter(
-                  key: ValueKey('profile-stats-header'),
-                  child: Padding(
-                    padding: EdgeInsets.fromLTRB(20, 16, 20, 0),
-                    child: TasteProfileCard(),
-                  ),
-                ),
-
-              // ── By Status bar ────────────────────────────
-              if (totalAnime > 0)
-                SliverToBoxAdapter(
-                  key: const ValueKey('profile-stats'),
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-                    child: _StatusBreakdown(
-                      watching: watching,
-                      completed: completed,
-                      planToWatch: planToWatch,
-                      dropped: dropped,
-                      total: totalAnime,
-                    ),
-                  ),
-                ),
-
-              // ── Top Genres ───────────────────────────────
-              if (topGenres.isNotEmpty)
-                SliverToBoxAdapter(
-                  key: const ValueKey('profile-genres'),
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-                    child: Container(
-                      padding: const EdgeInsets.all(20),
-                      decoration: BoxDecoration(
-                        color: AppTheme.surfaceLight,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: AppTheme.border),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('Top genres',
-                              style: AppTheme.serif(
-                                  fontSize: 18,
-                                  weight: FontWeight.w600)),
-                          const SizedBox(height: 12),
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: topGenres
-                                .map((g) => Container(
-                                      padding:
-                                          const EdgeInsets.symmetric(
-                                              horizontal: 12,
-                                              vertical: 6),
-                                      decoration: BoxDecoration(
-                                        color: AppTheme.primary
-                                            .withValues(alpha: 0.12),
-                                        borderRadius:
-                                            BorderRadius.circular(20),
-                                        border: Border.all(
-                                            color: AppTheme.primary
-                                                .withValues(alpha: 0.3)),
-                                      ),
-                                      child: Text(g,
-                                          style: AppTheme.sans(
-                                              fontSize: 13,
-                                              color: AppTheme.primary)),
-                                    ))
-                                .toList(),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
+                  child: _column(FounderCard(status: _founderStatus)),
                 ),
 
               const SliverToBoxAdapter(child: SizedBox(height: 40)),
@@ -715,6 +514,876 @@ class _ProfileScreenState extends State<ProfileScreen> {
         );
         },
       ),
+    );
+  }
+
+  /// Ranking Cards, Advanced Stats, Activity Feed, Anime Calendar and Social
+  /// sat behind the unlabelled ⋮ menu, where most people never find them.
+  /// Since question 55 they are rows on the page instead, and the menu keeps
+  /// Notifications, More and Sign Out. Their entries and routes are kept
+  /// here, switched off, so the menu's history stays readable; switching
+  /// this on would list each tool twice.
+  static const bool _identityToolsInMenu = false;
+
+  /// The counts closed with "Top genres: A, B and C." until question 71.
+  /// The Taste row below says the same thing, as the first of the ways on
+  /// from Profile, so the line is kept here, switched off, rather than
+  /// said twice on one page.
+  static const bool _genresInCounts = false;
+
+  /// Your pinned Hanj Card stood beside your name in the header (stage H5,
+  /// item b) until Shahid's call of 2026-10-29. It was the loudest thing on
+  /// a calm page, its frame and glow competing with your name and your
+  /// seal; it pushed the name onto two lines; it was Profile's costliest
+  /// frame to paint (PERF.md S2-3); and the Hanj Cards row below already
+  /// leads to the collection. So the header gives your name the whole
+  /// width, and that row names your pinned card in words. The card's code
+  /// is kept below (_pinnedCard), switched off here.
+  static const bool _pinnedCardInHeader = false;
+
+  /// Space between the rows below the hairline: 4 between rows in a group,
+  /// as H5 set it, and 16 between groups, so the groups read without
+  /// headings.
+  static const double _rowGap = 4;
+  static const double _groupGap = 16;
+
+  // Hanko's press: an 8% washi wash, no ripple, square corners.
+  static const ButtonStyle _hankoIconButtonStyle = ButtonStyle(
+    overlayColor: WidgetStatePropertyAll(AppTheme.hankoPressWash),
+    splashFactory: NoSplash.splashFactory,
+    shape: WidgetStatePropertyAll(RoundedRectangleBorder(
+      borderRadius: BorderRadius.all(Radius.circular(AppTheme.hankoRadius)),
+    )),
+  );
+
+  /// On a wide window (1024 px and up) each block keeps the phone's column
+  /// instead of stretching: Responsive.proseMaxWidth, 440 px, plus the
+  /// gutters, hung on the left edge as Home's record column is (stage H4,
+  /// item i). Below 1024 it does nothing, so a phone keeps its layout in
+  /// either orientation (WEB.md §9.2).
+  Widget _column(Widget child) {
+    if (!Responsive.isDesktop(context)) return child;
+    return Align(
+      alignment: Alignment.topLeft,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(
+            maxWidth: Responsive.proseMaxWidth + 2 * AppTheme.hankoGutter),
+        child: child,
+      ),
+    );
+  }
+
+  /// The header (Hanko stage H5, item a): your monogram, your name, the
+  /// Founder pill under it, and "Logging anime since 2025" from the
+  /// account's creation date. Hanj keeps no handle (no username field), so
+  /// none is drawn. Tapping it opens Edit Profile, as the old header card
+  /// did.
+  ///
+  /// The name sits beside the monogram when it has 200 px there, and under
+  /// it when the column is narrower, so a long name never squeezes into a
+  /// sliver beside the seal. A word too long for even the whole column sets
+  /// the name a little smaller (_nameScaler), so it is never broken.
+  Widget _buildHeader(User? user, String initial) {
+    final name = user?.displayName ?? 'Anime Fan';
+    final since = user?.metadata.creationTime?.year;
+    final founder = _founderStatus.isFounder && _founderStatus.number != null;
+
+    final identity = LayoutBuilder(builder: (context, constraints) {
+      final words = Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Semantics(
+            header: true,
+            child: Text(name,
+                style: _nameStyle,
+                textScaler: _nameScaler(context, name, constraints.maxWidth)),
+          ),
+          if (founder) ...[
+            const SizedBox(height: 8),
+            FounderBadge(number: _founderStatus.number!),
+          ],
+          if (since != null) ...[
+            const SizedBox(height: 6),
+            Text(
+              'Logging anime since $since',
+              style: AppTheme.hankoSans(
+                fontSize: AppTheme.hankoMetaSize,
+                color: AppTheme.hankoStone,
+                height: 1.3,
+              ),
+            ),
+          ],
+        ],
+      );
+      final monogram = _Monogram(initial: initial, imageUrl: _avatarImageUrl);
+      // Beside the monogram when there are 200 px there and the name's
+      // longest word fits them; otherwise under it.
+      final room = constraints.maxWidth - _Monogram.size - 14;
+      final beside = room >= 200 && _longestWord(context, name) <= room;
+      return beside
+          ? Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                monogram,
+                const SizedBox(width: 14),
+                Expanded(child: words),
+              ],
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                monogram,
+                const SizedBox(height: 14),
+                words,
+              ],
+            );
+    });
+
+    final editable = Semantics(
+      hint: 'Edit profile',
+      child: InkWell(
+        onTap: () async {
+          await Navigator.push(context,
+              MaterialPageRoute(
+                  builder: (_) =>
+                      const EditProfileScreen()));
+          _loadAvatarPrefs();
+        },
+        splashFactory: NoSplash.splashFactory,
+        highlightColor: AppTheme.hankoPressWash,
+        hoverColor: AppTheme.hankoPressWash,
+        child: identity,
+      ),
+    );
+
+    final card = _pinnedCardInHeader ? _featuredCard : null;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+          AppTheme.hankoGutter, 4, AppTheme.hankoGutter, 0),
+      // Switched off (_pinnedCardInHeader): your pinned Hanj Card stood
+      // beside your name (item b), as hanko.html places it, at the right of
+      // the header. When the column left beside it couldn't hold the name's
+      // longest word (large text, a long name), the card moved under the
+      // name instead, so no word was ever broken in the middle.
+      child: card == null
+          ? editable
+          : LayoutBuilder(builder: (context, constraints) {
+              const cardWidth = hc.HanjCard.kWidth * _pinnedScale;
+              final column = constraints.maxWidth - 16 - cardWidth;
+              if (_longestWord(context, name) > column) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    editable,
+                    const SizedBox(height: 16),
+                    _pinnedCard(card),
+                  ],
+                );
+              }
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: editable),
+                  const SizedBox(width: 16),
+                  _pinnedCard(card),
+                ],
+              );
+            }),
+    );
+  }
+
+  /// How wide the name's longest word sets, at the text size in use (or at
+  /// [scaler]), so the header can keep every word whole. A line may break
+  /// after a hyphen, so "Kristoffersen-Okonkwo" counts as two words.
+  static double _longestWord(BuildContext context, String name,
+      {TextScaler? scaler}) {
+    final painter = TextPainter(
+      textDirection: Directionality.of(context),
+      textScaler: scaler ?? MediaQuery.textScalerOf(context),
+      maxLines: 1,
+    );
+    var longest = 0.0;
+    for (final word in name.replaceAll('-', '- ').split(RegExp(r'\s+'))) {
+      painter
+        ..text = TextSpan(text: word, style: _nameStyle)
+        ..layout();
+      if (painter.width > longest) longest = painter.width;
+    }
+    painter.dispose();
+    return longest;
+  }
+
+  /// The text size for the name in a column [width] wide: the reader's own,
+  /// unless the name's longest word is wider than the whole column even on
+  /// a line of its own, as a long surname can be at 2.0x. Then the whole
+  /// name is set just small enough for that word to fit, so no word is ever
+  /// broken in the middle (question 76). Every name that fits keeps the
+  /// reader's size exactly.
+  static TextScaler _nameScaler(
+      BuildContext context, String name, double width) {
+    final reader = MediaQuery.textScalerOf(context);
+    if (width <= 0) return reader;
+    final longest = _longestWord(context, name);
+    if (longest <= width) return reader;
+    // A word's width grows in step with its size. Start from the size that
+    // should just fit, rounded down to a half pixel, and step down until
+    // the word measures inside the column.
+    final size = _nameStyle.fontSize!;
+    var fitted = (reader.scale(size) * width / longest * 2).floorToDouble() / 2;
+    while (fitted > 1 &&
+        _longestWord(context, name,
+                scaler: TextScaler.linear(fitted / size)) >
+            width) {
+      fitted -= 0.5;
+    }
+    return TextScaler.linear((fitted < 1 ? 1 : fitted) / size);
+  }
+
+  /// The name's style: Shippori 28, as hanko.html sets it.
+  static final TextStyle _nameStyle =
+      AppTheme.hankoSerif(fontSize: 28, height: 1.15);
+
+  /// Your pinned Hanj Card (Hanko stage H5, item b), drawn at 0.7 of its
+  /// 200 x 300 (140 x 210), so its name sets at about 12.6 px; at the old
+  /// 0.52 it was about 9.4 px, below one device pixel per hairline on the
+  /// CPH2573 (DESIGN.md §3.3.2). Tapping it opens your collection, as
+  /// before.
+  ///
+  /// It is the live card, glow and all, as before. PERF.md S2-3 measured
+  /// Profile's worst raster frame (40.1 ms) on this card at 0.52; at 0.7
+  /// and in the header it needs measuring again on the phone.
+  static const double _pinnedScale = 0.7;
+
+  /// Your pinned card's name, as the Hanj Cards row says it ("Pinned: The
+  /// Critic"), or '' when no card is pinned.
+  String get _pinnedName {
+    final card = _featuredCard;
+    if (card == null) return '';
+    return ((card['name'] ?? card['cardName']) as String?) ?? '';
+  }
+
+  Widget _pinnedCard(Map<String, dynamic> card) {
+    final name = ((card['name'] ?? card['cardName']) as String?) ?? '';
+    // One screen-reader button with a tap and focus, as the favourites'
+    // covers (question 104; see _favourite).
+    return Semantics(
+      container: true,
+      button: true,
+      label: name.isEmpty
+          ? 'Your pinned Hanj Card'
+          : 'Your pinned Hanj Card, $name',
+      hint: 'Opens your collection',
+      child: InkWell(
+        onTap: () => Navigator.push(context,
+            MaterialPageRoute(builder: (_) => const CardCollectionScreen())),
+        splashFactory: NoSplash.splashFactory,
+        highlightColor: Colors.transparent,
+        hoverColor: Colors.transparent,
+        focusColor: Colors.transparent,
+        // Square corners: HanjCard is square by design
+        // (_CardShell paints square, HanjCard clips with
+        // ClipRect). This was the only place one got
+        // rounded off.
+        child: ExcludeSemantics(
+          child: ClipRect(
+            child: SizedBox(
+              width:  hc.HanjCard.kWidth  * _pinnedScale,
+              height: hc.HanjCard.kHeight * _pinnedScale,
+              // Render the card at its natural 200x300 and scale the
+              // whole thing down. The card has fixed-pixel internals
+              // (footer text, paddings) that don't shrink on their own,
+              // so sizing it directly overflows at small sizes.
+              // The card is drawn like a picture, so the text-size setting
+              // doesn't reach inside it: at 1.3x its footer wrapped and was
+              // cut off. Its name is in the spoken label above.
+              child: FittedBox(
+                fit: BoxFit.contain,
+                child: MediaQuery.withNoTextScaling(
+                  child: hc.HanjCard(
+                    isUnlocked: true,
+                    card: hc.HanjCardData(
+                      id: (card['id'] as String?) ?? '',
+                      name: name,
+                      description: (card['description'] as String?) ?? '',
+                      rarity: hc.CardRarity.values.firstWhere(
+                        (r) => r.name == ((card['rarity'] as String?) ?? 'common'),
+                        orElse: () => hc.CardRarity.common,
+                      ),
+                      category: ((card['category'] as String?) ?? 'ÆTHER').toUpperCase(),
+                      kanji: (card['kanji'] as String?) ?? '道',
+                      cardNumber: (card['cardNumber'] as int?) ?? 0,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Favourites (Hanko stage H5, item c; question 26): three covers across,
+  /// filled from your top-rated shows, since hand-picking them needs a
+  /// field on your user document that isn't approved yet. They are the art
+  /// for "what you chose", so they carry no words; the aside says how they
+  /// were chosen, and each says its title and rating to a screen reader.
+  ///
+  /// Three across fill the column: 101 x 143 on a 360 px phone, at the
+  /// covers' own 230 : 325, so nothing is cropped. Fewer than three rated:
+  /// the rest are empty dashed slots, Hanko's mark for "not yet". None: the
+  /// three slots and a line saying how to fill them. A cover opens its show.
+  Widget _buildFavourites(List<Map<String, dynamic>> favourites) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+          AppTheme.hankoGutter, 26, AppTheme.hankoGutter, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const _SectionHead('Favourites', aside: 'Your highest rated'),
+          LayoutBuilder(builder: (context, constraints) {
+            const gap = 8.0;
+            final width = (constraints.maxWidth - 2 * gap) / 3;
+            final height = width * 325 / 230;
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (var i = 0; i < 3; i++) ...[
+                  if (i > 0) const SizedBox(width: gap),
+                  if (i < favourites.length)
+                    _favourite(favourites[i], width, height)
+                  else
+                    HankoSeal.unrated(
+                      size: height,
+                      width: width,
+                      showAdd: false,
+                      semanticLabel: 'Empty favourite',
+                    ),
+                ],
+              ],
+            );
+          }),
+          if (favourites.isEmpty) ...[
+            const SizedBox(height: 10),
+            Text(
+              'Rate shows on their pages to fill these.',
+              style: AppTheme.hankoSans(
+                fontSize: AppTheme.hankoMetaSize,
+                color: AppTheme.hankoStone,
+                height: 1.4,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// A favourite's cover is one screen-reader button (question 104): its
+  /// own semantics node (container), named by its label, with the InkWell's
+  /// tap and focus inside it, so a screen reader can press it and, on the
+  /// web, it can take focus. A label over excluded semantics made a node
+  /// with neither. The cover is left out of the tree, since the label names
+  /// the show, and the ink is clear: it would only sit under the art.
+  Widget _favourite(Map<String, dynamic> entry, double width, double height) {
+    final title = entry['title'] as String? ?? 'Unknown';
+    final rating = HankoSeal.formatScore((entry['userRating'] as num).toDouble());
+    return Semantics(
+      container: true,
+      button: true,
+      label: 'Favourite: $title, your rating $rating',
+      child: InkWell(
+        onTap: () => _openEntry(entry),
+        splashFactory: NoSplash.splashFactory,
+        highlightColor: Colors.transparent,
+        hoverColor: Colors.transparent,
+        focusColor: Colors.transparent,
+        child: ExcludeSemantics(
+          child: _Cover(
+              url: entry['imageUrl'] as String?, width: width, height: height),
+        ),
+      ),
+    );
+  }
+
+  /// Your top three for Favourites. Candidates are shows you rated on
+  /// Hanj's 1–10 scale that you are watching or have finished: a show on
+  /// your watchlist isn't seen yet, a dropped one isn't a favourite, and an
+  /// imported rating on another scale (D20) can't be compared. Ties break
+  /// in this order:
+  ///  1. the higher rating;
+  ///  2. a finished show before one still in progress, since a verdict on
+  ///     the whole show is the firmer one;
+  ///  3. the more recent rating, with undated ones (imports) last;
+  ///  4. the title, A to Z, so the order never shuffles between visits.
+  static List<Map<String, dynamic>> _topRated(
+      List<Map<String, dynamic>> entries) {
+    final rated = [
+      for (final e in entries)
+        if (e['userRating'] is num &&
+            _onScale((e['userRating'] as num).toDouble()) &&
+            (e['status'] == 'COMPLETED' || e['status'] == 'WATCHING'))
+          e,
+    ];
+    rated.sort((a, b) {
+      final byRating =
+          (b['userRating'] as num).compareTo(a['userRating'] as num);
+      if (byRating != 0) return byRating;
+      final aDone = a['status'] == 'COMPLETED', bDone = b['status'] == 'COMPLETED';
+      if (aDone != bDone) return aDone ? -1 : 1;
+      final aAt = _when(a['ratedAt']), bAt = _when(b['ratedAt']);
+      if (aAt != bAt) {
+        if (aAt == null) return 1;
+        if (bAt == null) return -1;
+        final byDate = bAt.compareTo(aAt);
+        if (byDate != 0) return byDate;
+      }
+      return ((a['title'] as String?) ?? '')
+          .toLowerCase()
+          .compareTo(((b['title'] as String?) ?? '').toLowerCase());
+    });
+    return rated.take(3).toList();
+  }
+
+  /// The recent diary (Hanko stage H5, item f): your latest dated moments,
+  /// newest first, five at most. It is partial until the list keeps watch
+  /// dates (question 27), so each row says only what its date can prove:
+  ///  - "Rated": the date of your rating (ratedAt), with your seal.
+  ///  - "Updated": lastWatched, which adds, status changes, imports and
+  ///    episodes all write, so it can't say which; the row adds what the
+  ///    show is now ("now watching, 7 of 28").
+  /// An update within six hours of the rating is the same sitting (you
+  /// finished it and sealed it), so only the rating shows. More than three
+  /// updates on one day read as one batch row ("148 titles updated"), the
+  /// shape an import leaves, rather than filling the diary with it.
+  /// Entries with neither date (a write still pending, or an older entry)
+  /// can't be placed in time and are left out.
+  Widget _buildDiary(List<_DiaryItem> items) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+          AppTheme.hankoGutter, 26, AppTheme.hankoGutter, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const _SectionHead('Recent diary'),
+          if (items.isEmpty)
+            Text(
+              'Nothing dated yet.',
+              style: AppTheme.hankoSans(
+                fontSize: AppTheme.hankoMetaSize,
+                color: AppTheme.hankoStone,
+                height: 1.4,
+              ),
+            ),
+          for (var i = 0; i < items.length; i++) ...[
+            if (i > 0) const SizedBox(height: 6),
+            _DiaryRow(
+              item: items[i],
+              onTap: items[i].entry == null
+                  ? null
+                  : () => _openEntry(items[i].entry!),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  static List<_DiaryItem> _diary(List<Map<String, dynamic>> entries) {
+    final items = <_DiaryItem>[];
+    final updated = <_DiaryItem>[];
+    for (final e in entries) {
+      final ratedAt = e['userRating'] is num ? _when(e['ratedAt']) : null;
+      final updatedAt = _when(e['lastWatched']);
+      if (ratedAt != null) items.add(_DiaryItem(ratedAt, e, rated: true));
+      if (updatedAt != null &&
+          (ratedAt == null ||
+              updatedAt.difference(ratedAt).abs() > const Duration(hours: 6))) {
+        updated.add(_DiaryItem(updatedAt, e, rated: false));
+      }
+    }
+    final byDay = <DateTime, List<_DiaryItem>>{};
+    for (final u in updated) {
+      byDay
+          .putIfAbsent(DateTime(u.at.year, u.at.month, u.at.day), () => [])
+          .add(u);
+    }
+    for (final day in byDay.values) {
+      if (day.length > 3) {
+        final latest =
+            day.map((u) => u.at).reduce((a, b) => a.isAfter(b) ? a : b);
+        items.add(_DiaryItem(latest, null, rated: false, count: day.length));
+      } else {
+        items.addAll(day);
+      }
+    }
+    items.sort((a, b) => b.at.compareTo(a.at));
+    return items.take(5).toList();
+  }
+
+  /// Shelves (Hanko stage H5, item g): your list entries grouped by their
+  /// tags, the field the uncalled tags API writes (firestore_service.dart's
+  /// updateTags), read from the list Profile already has, so it costs no
+  /// request. Stage H7 builds the shelves themselves; nothing writes a tag
+  /// yet, so today this section never shows, and it promises nothing in
+  /// the meantime. Once a shelf exists it appears here as hanko.html draws
+  /// it, under the privacy line the repo rules call for: list entries are
+  /// readable by any signed-in user (firestore.rules, animeList).
+  ///
+  /// Biggest shelf first, then by name; three shelves at most, each with
+  /// its first three covers and how many more.
+  Widget _buildShelves(List<_Shelf> shelves) {
+    final quiet = AppTheme.hankoSans(
+      fontSize: AppTheme.hankoLabelSize,
+      color: AppTheme.hankoStone,
+      height: 1.35,
+    );
+    final more = shelves.length - 3;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+          AppTheme.hankoGutter, 26, AppTheme.hankoGutter, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const _SectionHead('Shelves', bottom: 8),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Padding(
+                padding: EdgeInsets.only(top: 1),
+                child: Icon(Icons.visibility_sharp,
+                    size: 16, color: AppTheme.hankoStone),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text('Shelves are visible to signed-in Hanj users.',
+                    style: quiet),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          for (var i = 0; i < shelves.length && i < 3; i++) ...[
+            if (i > 0) const SizedBox(height: 18),
+            _shelf(shelves[i], quiet),
+          ],
+          if (more > 0) ...[
+            const SizedBox(height: 14),
+            Text(more == 1 ? 'and 1 more shelf' : 'and $more more shelves',
+                style: quiet),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _shelf(_Shelf shelf, TextStyle quiet) {
+    final count = shelf.entries.length;
+    final rest = count - 3;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: double.infinity,
+          child: Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.end,
+            spacing: 12,
+            runSpacing: 2,
+            children: [
+              Text(shelf.name,
+                  style: AppTheme.hankoSerif(
+                      fontSize: AppTheme.hankoListTitleSize, height: 1.25)),
+              Text(count == 1 ? '1 title' : '$count titles', style: quiet),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            for (var i = 0; i < count && i < 3; i++) ...[
+              if (i > 0) const SizedBox(width: 8),
+              // One screen-reader button with a tap and focus, as the
+              // favourites' covers (question 104; see _favourite).
+              Semantics(
+                container: true,
+                button: true,
+                label: (shelf.entries[i]['title'] as String?) ?? 'Unknown',
+                child: InkWell(
+                  onTap: () => _openEntry(shelf.entries[i]),
+                  splashFactory: NoSplash.splashFactory,
+                  highlightColor: Colors.transparent,
+                  hoverColor: Colors.transparent,
+                  focusColor: Colors.transparent,
+                  child: ExcludeSemantics(
+                    child: _Cover(
+                      url: shelf.entries[i]['imageUrl'] as String?,
+                      width: 64,
+                      height: 90,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+            if (rest > 0)
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 12),
+                  child: Text('and $rest more', style: quiet),
+                ),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  static List<_Shelf> _shelves(List<Map<String, dynamic>> entries) {
+    final byTag = <String, List<Map<String, dynamic>>>{};
+    for (final e in entries) {
+      final tags = e['tags'];
+      if (tags is! List) continue;
+      final names = {
+        for (final t in tags.whereType<String>())
+          if (t.trim().isNotEmpty) t.trim(),
+      };
+      for (final name in names) {
+        byTag.putIfAbsent(name, () => []).add(e);
+      }
+    }
+    final shelves = [
+      for (final s in byTag.entries) _Shelf(s.key, s.value),
+    ];
+    shelves.sort((a, b) {
+      final bySize = b.entries.length.compareTo(a.entries.length);
+      return bySize != 0
+          ? bySize
+          : a.name.toLowerCase().compareTo(b.name.toLowerCase());
+    });
+    return shelves;
+  }
+
+  /// Whether a stored rating lands on Hanj's 1–10 scale at its nearest
+  /// half step, as the seal register places it.
+  static bool _onScale(double rating) {
+    final step = (rating * 2).round() / 2;
+    return step >= 1 && step <= 10;
+  }
+
+  /// A Firestore timestamp as a date; null when missing or still pending.
+  static DateTime? _when(Object? value) =>
+      value is Timestamp ? value.toDate() : null;
+
+  /// Opens a list entry's show, as My List's rows do.
+  void _openEntry(Map<String, dynamic> data) {
+    final id = data['animeId']?.toString() ?? '';
+    if (id.isEmpty) return;
+    final anime = Anime(
+      id: id,
+      title: data['title'] as String? ?? 'Unknown',
+      imageUrl: data['imageUrl'] as String?,
+      episodes: (data['episodes'] as num?)?.toInt(),
+      genres: (data['genres'] as List<dynamic>?)?.whereType<String>().toList() ??
+          const [],
+      averageScore: (data['averageScore'] as num?)?.toDouble(),
+    );
+    Navigator.push(context,
+        MaterialPageRoute(builder: (_) => AnimeDetailScreen(anime: anime)));
+  }
+
+  /// The counts you can trust now (Hanko stage H5, item e), in words: titles
+  /// all time and episodes, as one sentence in Shippori, then the statuses
+  /// in Jost. "This year" and hours wait for completion dates and episode
+  /// lengths, which the list doesn't keep (question 27). The top genres
+  /// left this block (question 71): the Taste row a little further down
+  /// already names them; see _genresInCounts.
+  ///
+  /// Words, not tiles or pills: this is what "By status", "Top genres" and
+  /// the header's "PACE · 6 WATCHING" and "7 DONE" pills said. As text on
+  /// the page it reads in washi and stone on sumi (15.3:1 and 6.9:1) and
+  /// wraps at any text size, where the pills measured 4.51:1 and 4.42:1 at
+  /// 9 px and overflowed by 15 px at 1.3x (H2 QA, N8 and S2).
+  Widget _buildCounts({
+    required int titles,
+    required int episodes,
+    required int watching,
+    required int completed,
+    required int planned,
+    required int dropped,
+    required List<String> genres,
+  }) {
+    final n = NumberFormat.decimalPattern();
+    // Each number keeps its word here too (question 110): a no-break space
+    // joins them, so the sentence never ends a line on a number whose word
+    // went on to the next ("23 / titles" at 2.0x), as the statuses below.
+    String count(int value, String one, String many) =>
+        '${n.format(value)}\u00A0${value == 1 ? one : many}';
+
+    // The sentence is Shippori, which draws the typewriter apostrophe as a
+    // straight tick, so "You’ve" takes the typographic one (as the failure
+    // line below, question 109).
+    final sentence = titles == 0
+        ? 'Nothing logged yet.'
+        : episodes == 0
+            ? 'You’ve logged ${count(titles, 'title', 'titles')}.'
+            : 'You’ve logged ${count(titles, 'title', 'titles')} and '
+                'watched ${count(episodes, 'episode', 'episodes')}.';
+    // Each number keeps its word (question 89): a no-break space joins
+    // them, so a line never ends on a number whose word went on to the
+    // next line ("1 / dropped.").
+    final statuses = [
+      if (watching > 0) '${n.format(watching)}\u00A0watching',
+      if (completed > 0) '${n.format(completed)}\u00A0completed',
+      if (planned > 0) '${n.format(planned)}\u00A0on your watchlist',
+      if (dropped > 0) '${n.format(dropped)}\u00A0dropped',
+    ];
+    final quiet = AppTheme.hankoSans(
+      fontSize: AppTheme.hankoMetaSize,
+      color: AppTheme.hankoStone,
+      height: 1.4,
+    );
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+          AppTheme.hankoGutter, 22, AppTheme.hankoGutter, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(sentence, style: AppTheme.hankoSerif(fontSize: 17, height: 1.5)),
+          if (titles == 0) ...[
+            const SizedBox(height: 6),
+            Text('Add a show from Discover or Search to start your journal.',
+                style: quiet),
+          ],
+          if (statuses.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text('${statuses.join(', ')}.', style: quiet),
+          ],
+          if (_genresInCounts && genres.isNotEmpty) ...[
+            const SizedBox(height: 2),
+            Text('Top genres: ${_inList(genres)}.', style: quiet),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// The list couldn't be read: say so, naming no cause the app can't
+  /// verify (ANILIST-OFFLINE-0908-REPORT.md's rule), rather than showing an
+  /// empty record. Retry rebuilds, which listens to the list afresh.
+  ///
+  /// The line takes the typographic apostrophe (question 109): Shippori
+  /// draws the typewriter one as a straight tick, as the Taste page found.
+  Widget _buildListFailed() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+          AppTheme.hankoGutter, 22, AppTheme.hankoGutter, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Couldn’t load your list just now.',
+              style: AppTheme.hankoSerif(fontSize: 17, height: 1.5)),
+          const SizedBox(height: 12),
+          _TextTile(label: 'Retry', onTap: () => setState(() {})),
+        ],
+      ),
+    );
+  }
+
+  /// "A", "A and B", "A, B and C".
+  static String _inList(List<String> items) => items.length < 2
+      ? items.join()
+      : '${items.sublist(0, items.length - 1).join(', ')} and ${items.last}';
+
+  /// Your ratings as Hanko's seal register (stage H5, item d; question 39):
+  /// each score keeps its place on Hanj's 1–10 ruler in half steps, and how
+  /// often you gave it becomes the size of its impression. Its caption
+  /// sentence ("12 rated, average 8.9, most often 10.") sits above it.
+  ///
+  /// Ratings imported on another scale (D20: an 85 from a 100-point list)
+  /// can't be placed on the ruler. The register leaves them out of the
+  /// drawing and of the caption's numbers, and a line under it says how
+  /// many. With no ratings at all, the register's own empty ruler says
+  /// "No ratings yet." and no caption repeats it.
+  Widget _buildRatings(List<double> ratings) {
+    final offScale = ratings.where((r) => !_onScale(r)).length;
+    final drawn = ratings.length - offScale;
+    final register = HankoSealRegister.fromRatings(ratings);
+    final quiet = AppTheme.hankoSans(
+      fontSize: AppTheme.hankoMetaSize,
+      color: AppTheme.hankoStone,
+      height: 1.4,
+    );
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+          AppTheme.hankoGutter, 26, AppTheme.hankoGutter, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _SectionHead('Your ratings', bottom: drawn > 0 ? 8 : 12),
+          if (drawn > 0) ...[
+            Text(register.summary, style: quiet),
+            const SizedBox(height: 10),
+          ],
+          // Only imported ratings: an empty ruler saying "No ratings yet."
+          // would contradict the line below, so it is left out.
+          if (drawn > 0 || offScale == 0) register,
+          if (offScale > 0) ...[
+            if (drawn > 0) const SizedBox(height: 8),
+            Text(
+              offScale == 1
+                  ? '1 imported rating is on another scale, so it isn\'t '
+                      'drawn here.'
+                  : '$offScale imported ratings are on another scale, so '
+                      'they aren\'t drawn here.',
+              style: quiet,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// The avatar before Hanko: the picked character image, or the initial on
+  /// one of eight stock gradients chosen in Edit Profile. Stage H5's monogram
+  /// replaced it on Profile; kept as design history and a deletion
+  /// candidate. Edit Profile still offers the colours.
+  Widget _legacyAvatarTile(String initial) {
+    return Container(
+      width: 60,
+      height: 60,
+      decoration: BoxDecoration(
+        gradient: _avatarImageUrl == null
+            ? LinearGradient(
+                colors: _avatarGradients[_avatarColorIndex],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              )
+            : null,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: _avatarImageUrl != null
+          ? ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: Image.network(
+                _avatarImageUrl!,
+                fit: BoxFit.cover,
+                errorBuilder: (_, _, _) => Center(
+                  child: Text(initial,
+                      style: AppTheme.serif(
+                          fontSize: 24,
+                          weight: FontWeight.w700,
+                          color: Colors.white)),
+                ),
+              ),
+            )
+          : Center(
+              child: Text(initial,
+                  style: AppTheme.serif(
+                      fontSize: 24,
+                      weight: FontWeight.w700,
+                      color: Colors.white)),
+            ),
     );
   }
 
@@ -822,6 +1491,496 @@ class _ProfileScreenState extends State<ProfileScreen> {
 }
 
 // ── Helper Widgets ───────────────────────────────────────────
+
+/// Your monogram (Hanko stage H5, item a): your initial pressed in your seal,
+/// 64 px with Shippori at 30 as hanko.html draws it. A character picked in
+/// Edit Profile takes its place, in the same square; if that image fails, the
+/// seal shows instead. The name beside it says who this is, so it is left
+/// out of the screen-reader tree.
+class _Monogram extends StatelessWidget {
+  const _Monogram({required this.initial, this.imageUrl});
+
+  final String initial;
+  final String? imageUrl;
+
+  static const double size = 64;
+
+  @override
+  Widget build(BuildContext context) {
+    final seal = HankoSeal(label: initial, size: size, fontSize: 30);
+    final url = imageUrl;
+    return ExcludeSemantics(
+      child: url == null || url.isEmpty
+          ? seal
+          : ClipRRect(
+              borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+              child: SizedBox.square(
+                dimension: size,
+                child: Image.network(
+                  url,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, _, _) => seal,
+                ),
+              ),
+            ),
+    );
+  }
+}
+
+/// A Hanko section head (hanko.html's .sec-h): Shippori 16 in washi, with
+/// an optional aside in Jost 12 stone at the line's end. The aside wraps
+/// under the head when the line is too short, so large text never pushes
+/// it off the edge.
+class _SectionHead extends StatelessWidget {
+  const _SectionHead(this.title, {this.aside, this.bottom = 12});
+
+  final String title;
+  final String? aside;
+
+  /// Space below the head; 8 where a caption follows it.
+  final double bottom;
+
+  @override
+  Widget build(BuildContext context) {
+    final aside = this.aside;
+    final head = Semantics(
+      header: true,
+      child: Text(title,
+          style: AppTheme.hankoSerif(
+              fontSize: AppTheme.hankoSectionSize, height: 1.3)),
+    );
+    return Padding(
+      padding: EdgeInsets.only(bottom: bottom),
+      // The Wrap takes the full width, or it would shrink to its children
+      // and spaceBetween would leave the aside beside the head.
+      child: aside == null
+          ? head
+          : SizedBox(
+              width: double.infinity,
+              child: Wrap(
+                alignment: WrapAlignment.spaceBetween,
+                crossAxisAlignment: WrapCrossAlignment.end,
+                spacing: 12,
+                runSpacing: 2,
+                children: [
+                  head,
+                  Text(aside,
+                      style: AppTheme.hankoSans(
+                        fontSize: AppTheme.hankoLabelSize,
+                        color: AppTheme.hankoStone,
+                        height: 1.3,
+                      )),
+                ],
+              ),
+            ),
+    );
+  }
+}
+
+/// A cover from the list entry's stored URL (AniList's `large`, 230 px
+/// wide), with Hanko's 2 px corners on a sumi 3 ground, which is also what
+/// shows while it loads or when it fails.
+class _Cover extends StatelessWidget {
+  const _Cover({required this.url, required this.width, required this.height});
+
+  final String? url;
+  final double width;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    final u = url;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+      child: SizedBox(
+        width: width,
+        height: height,
+        child: ColoredBox(
+          color: AppTheme.hankoSumi3,
+          child: u == null || u.isEmpty
+              ? const SizedBox.expand()
+              : CachedNetworkImage(
+                  imageUrl: u,
+                  fit: BoxFit.cover,
+                  errorWidget: (_, _, _) => const SizedBox.expand(),
+                ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A way on from Profile (Hanj Cards, Cadre and, since question 55, the
+/// identity tools from the ⋮ menu) as a quiet Hanko row: an icon in stone,
+/// the name in Jost 15 500 washi, a line in Jost 13 stone and a chevron.
+/// No box, no glow, no colour of its own: coral now means your
+/// seal, so neither the gold nor the coral banner it replaces survives. At
+/// least 56 px tall, pressed with the 8% wash.
+///
+/// One screen-reader button (question 104): its own semantics node
+/// (container), named by its title and its line, with the InkWell's tap
+/// and focus inside it, so a screen reader can open the row and, on the
+/// web, it can take focus. The label used to sit over excluded semantics,
+/// which left the row's node with neither: a screen reader found the row
+/// but had no tap to send it. The row's own words are left out of the
+/// tree, since the label already says them.
+class _EntryRow extends StatelessWidget {
+  const _EntryRow({
+    required this.icon,
+    required this.title,
+    required this.line,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String line;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      container: true,
+      button: true,
+      label: '$title. $line',
+      child: InkWell(
+        onTap: onTap,
+        splashFactory: NoSplash.splashFactory,
+        highlightColor: AppTheme.hankoPressWash,
+        hoverColor: AppTheme.hankoPressWash,
+        child: ExcludeSemantics(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 56),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Row(
+                children: [
+                  Icon(icon, size: 22, color: AppTheme.hankoStone),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(title,
+                            style: AppTheme.hankoSans(
+                                fontSize: 15,
+                                weight: FontWeight.w500,
+                                height: 1.25)),
+                        const SizedBox(height: 2),
+                        Text(line,
+                            style: AppTheme.hankoSans(
+                              fontSize: AppTheme.hankoMetaSize,
+                              color: AppTheme.hankoStone,
+                              height: 1.3,
+                            )),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  const Icon(Icons.chevron_right_sharp,
+                      size: 20, color: AppTheme.hankoStone),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A Shippori title on up to [maxLines] lines whose last line fades out at
+/// its end when the title runs longer, instead of an ellipsis: Shippori
+/// draws "…" as the centred Japanese ⋯ (AppTheme.hankoSerif). Flutter's own
+/// TextOverflow.fade on a multi-line Text fades the bottom half of the last
+/// line instead, so the title is split after its last full line and that
+/// line is set on its own, one line with TextOverflow.fade.
+///
+/// The same as Home's (stage H4, home_screen.dart on its branch), which this
+/// file can't import: widgets are private to their file, and a shared one
+/// needs its own approval. It finds the last line's start with
+/// getPositionForOffset, because on CanvasKit getLineBoundary at a line's
+/// first offset answers with the line before (H4's emulator run).
+class _FadeTitle extends StatelessWidget {
+  const _FadeTitle(this.text, {required this.style, required this.maxLines});
+
+  final String text;
+  final TextStyle style;
+  final int maxLines;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(builder: (context, constraints) {
+      final painter = TextPainter(
+        text: TextSpan(text: text, style: style),
+        textDirection: Directionality.of(context),
+        textScaler: MediaQuery.textScalerOf(context),
+        maxLines: maxLines,
+      )..layout(maxWidth: constraints.maxWidth);
+      final overflows = painter.didExceedMaxLines;
+      final lines = overflows ? painter.computeLineMetrics() : null;
+      final lastStart = lines == null || lines.length < maxLines
+          ? 0
+          : painter
+              .getPositionForOffset(Offset(
+                  0, lines[maxLines - 1].baseline - lines[maxLines - 1].ascent / 2))
+              .offset;
+      painter.dispose();
+      if (!overflows || lastStart <= 0) {
+        return Text(text,
+            style: style,
+            maxLines: maxLines,
+            softWrap: maxLines > 1,
+            overflow: TextOverflow.fade);
+      }
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(text.substring(0, lastStart).trimRight(),
+              style: style, maxLines: maxLines - 1),
+          Text(text.substring(lastStart).trimLeft(),
+              style: style,
+              maxLines: 1,
+              softWrap: false,
+              overflow: TextOverflow.fade),
+        ],
+      );
+    });
+  }
+}
+
+/// A Hanko secondary tile with a word on it ("Retry"), as Home's: sumi 3
+/// with a 1 px edge outline, Jost 600 15 washi, 48 dp tall. Its own
+/// semantics node (container; question 102, as the Calendar's and
+/// Activity's tiles since dd45bd1), so a screen reader finds one button
+/// named for its word, with its own tap, wherever the tile is placed. Here
+/// the page already gave it a node of its own (checked on 2026-10-30); in
+/// the Calendar's and Activity's notes, a tile without it folded into the
+/// note, which then read as one long button.
+class _TextTile extends StatelessWidget {
+  const _TextTile({required this.label, required this.onTap});
+
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      container: true,
+      button: true,
+      child: Material(
+        color: AppTheme.hankoSumi3,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+          side: const BorderSide(color: AppTheme.hankoEdge),
+        ),
+        child: InkWell(
+          onTap: onTap,
+          splashFactory: NoSplash.splashFactory,
+          highlightColor: AppTheme.hankoPressWash,
+          hoverColor: AppTheme.hankoPressWash,
+          borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: AppTheme.hankoTouch),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 18),
+              child: Center(
+                widthFactor: 1,
+                heightFactor: 1,
+                child: Text(
+                  label,
+                  style: AppTheme.hankoSans(
+                      fontSize: 15, weight: FontWeight.w600, height: 1),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A shelf: one of your tags and the list entries that carry it.
+class _Shelf {
+  const _Shelf(this.name, this.entries);
+
+  final String name;
+  final List<Map<String, dynamic>> entries;
+}
+
+/// One line of the recent diary: a rating, an update, or a day's batch of
+/// updates ([entry] null, [count] titles).
+class _DiaryItem {
+  const _DiaryItem(this.at, this.entry, {required this.rated, this.count = 1});
+
+  final DateTime at;
+  final Map<String, dynamic>? entry;
+  final bool rated;
+  final int count;
+}
+
+/// A diary row (hanko.html's .pdia): the day and the weekday (or the year,
+/// before this one) in Jost, the cover at 30 x 42, the title in Shippori 15
+/// on one line fading at its end, what the date means under it, and your
+/// seal when the show is rated. The date column grows with the text size.
+class _DiaryRow extends StatelessWidget {
+  const _DiaryRow({required this.item, this.onTap});
+
+  final _DiaryItem item;
+  final VoidCallback? onTap;
+
+  static const _months = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  ];
+  static const _monthNames = [
+    'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August',
+    'September', 'October', 'November', 'December',
+  ];
+  static const _weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  static const _weekdayNames = [
+    'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday',
+  ];
+
+  /// "Updated · now watching, 7 of 28": lastWatched can't say what the
+  /// update was, so the row says what the show is now.
+  static String _updatedLine(Map<String, dynamic> e) {
+    final current = (e['currentEpisode'] as num?)?.toInt() ?? 0;
+    final total = (e['episodes'] as num?)?.toInt();
+    final String? now = switch (e['status']) {
+      'WATCHING' => total != null && total > 0
+          ? 'watching, $current of $total'
+          : 'watching, $current watched',
+      'COMPLETED' => 'completed',
+      'PLAN_TO_WATCH' => 'on your watchlist',
+      'DROPPED' => 'dropped',
+      _ => null,
+    };
+    return now == null ? 'Updated' : 'Updated · now $now';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final at = item.at;
+    final thisYear = at.year == DateTime.now().year;
+    final entry = item.entry;
+    final title = entry == null
+        ? '${NumberFormat.decimalPattern().format(item.count)} titles updated'
+        : (entry['title'] as String?) ?? 'Unknown';
+    final meta = entry == null
+        ? null
+        : item.rated
+            ? 'Rated'
+            : _updatedLine(entry);
+    final rating = entry != null && entry['userRating'] is num
+        ? (entry['userRating'] as num).toDouble()
+        : null;
+    final spoken = [
+      '${_weekdayNames[at.weekday - 1]} ${at.day} ${_monthNames[at.month - 1]}'
+          '${thisYear ? '' : ' ${at.year}'}',
+      if (entry == null) title else '${item.rated ? 'rated' : 'updated'} $title',
+      if (entry != null && !item.rated) _updatedLine(entry).replaceFirst('Updated · ', ''),
+      if (rating != null) 'your rating ${HankoSeal.formatScore(rating)}',
+    ].join(', ');
+
+    final row = ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: AppTheme.hankoTouch),
+      child: Row(
+        children: [
+          SizedBox(
+            width: MediaQuery.textScalerOf(context).scale(46),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '${at.day} ${_months[at.month - 1]}',
+                  maxLines: 1,
+                  softWrap: false,
+                  style: AppTheme.hankoSans(
+                    fontSize: AppTheme.hankoMetaSize,
+                    weight: FontWeight.w500,
+                    height: 1.15,
+                    tabular: true,
+                  ),
+                ),
+                Text(
+                  thisYear ? _weekdays[at.weekday - 1] : '${at.year}',
+                  maxLines: 1,
+                  softWrap: false,
+                  style: AppTheme.hankoSans(
+                    fontSize: AppTheme.hankoDataSmallSize,
+                    color: AppTheme.hankoAsh,
+                    height: 1.2,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          entry == null
+              ? const SizedBox(width: 30, height: 42)
+              : _Cover(url: entry['imageUrl'] as String?, width: 30, height: 42),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _FadeTitle(
+                  title,
+                  maxLines: 2,
+                  style: AppTheme.hankoSerif(
+                      fontSize: AppTheme.hankoListTitleSize, height: 1.25),
+                ),
+                if (meta != null) ...[
+                  const SizedBox(height: 3),
+                  Text(
+                    meta,
+                    maxLines: 2,
+                    overflow: TextOverflow.fade,
+                    style: AppTheme.hankoSans(
+                      fontSize: AppTheme.hankoLabelSize,
+                      color: AppTheme.hankoStone,
+                      height: 1.2,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          if (rating != null) ...[
+            const SizedBox(width: 12),
+            HankoSeal.score(rating, size: 28),
+          ],
+        ],
+      ),
+    );
+
+    // Its own semantics node (container), named by the spoken line. A row
+    // that opens its show is a screen-reader button with the InkWell's tap
+    // and focus inside it (question 104, as Profile's other rows); a batch
+    // row ("148 titles updated") opens nothing and stays a plain line. The
+    // label used to sit over excluded semantics, which dropped the InkWell's
+    // tap and focus: a screen reader heard "button" with nothing to press.
+    return Semantics(
+      container: true,
+      button: onTap != null,
+      label: spoken,
+      child: onTap == null
+          ? ExcludeSemantics(child: row)
+          : InkWell(
+              onTap: onTap,
+              splashFactory: NoSplash.splashFactory,
+              highlightColor: AppTheme.hankoPressWash,
+              hoverColor: AppTheme.hankoPressWash,
+              child: ExcludeSemantics(child: row),
+            ),
+    );
+  }
+}
 
 class _PillBadge extends StatelessWidget {
   final String label;
@@ -1260,7 +2419,7 @@ class _HanjCardMini extends StatelessWidget {
 
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFF0D0B09),
+        color: const Color(0xFF121110),
         border: Border.all(color: color.withValues(alpha: 0.75), width: 1.5),
         borderRadius: BorderRadius.circular(6),
         boxShadow: [

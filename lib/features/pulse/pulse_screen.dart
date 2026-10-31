@@ -1,7 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:shimmer/shimmer.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/trailer_launcher.dart';
@@ -85,7 +84,7 @@ class _PulseScreenState extends State<PulseScreen>
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
       child: Text(
         'Pulse',
-        style: GoogleFonts.playfairDisplay(
+        style: AppTheme.shipporiMincho(
           fontSize: 28,
           fontWeight: FontWeight.w700,
           color: const Color(0xFFF3EEE7),
@@ -107,12 +106,12 @@ class _PulseScreenState extends State<PulseScreen>
         indicatorSize: TabBarIndicatorSize.label,
         labelColor: const Color(0xFFF97316),
         unselectedLabelColor: const Color(0xFFF3EEE7).withOpacity(0.45),
-        labelStyle: GoogleFonts.dmSans(
+        labelStyle: AppTheme.jost(
           fontSize: 12,
           fontWeight: FontWeight.w700,
           letterSpacing: 1.2,
         ),
-        unselectedLabelStyle: GoogleFonts.dmSans(
+        unselectedLabelStyle: AppTheme.jost(
           fontSize: 12,
           fontWeight: FontWeight.w600,
           letterSpacing: 1.2,
@@ -232,7 +231,7 @@ class _PulseTabViewState extends State<_PulseTabView>
             Text(
               AnilistService.messageFor(failStatus) ?? widget.emptyMessage,
               textAlign: TextAlign.center,
-              style: GoogleFonts.dmSans(
+              style: AppTheme.jost(
                 fontSize: 14,
                 color: const Color(0xFFF3EEE7).withOpacity(0.40),
                 height: 1.6,
@@ -245,7 +244,7 @@ class _PulseTabViewState extends State<_PulseTabView>
                 style:
                     TextButton.styleFrom(foregroundColor: const Color(0xFFF97316)),
                 child: Text('Refresh',
-                    style: GoogleFonts.dmSans(
+                    style: AppTheme.jost(
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
                         letterSpacing: 0.8)),
@@ -284,7 +283,7 @@ class _TrailerCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(card.title,
-                  style: GoogleFonts.playfairDisplay(
+                  style: AppTheme.shipporiMincho(
                       fontSize: 16,
                       fontWeight: FontWeight.w700,
                       color: const Color(0xFFF3EEE7))),
@@ -352,7 +351,7 @@ class _TrailerCard extends StatelessWidget {
                     card.title,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.playfairDisplay(
+                    style: AppTheme.shipporiMincho(
                       fontSize: 17,
                       fontWeight: FontWeight.w700,
                       color: const Color(0xFFF3EEE7),
@@ -363,7 +362,7 @@ class _TrailerCard extends StatelessWidget {
                     const SizedBox(height: 5),
                     Text(
                       card.reason!,
-                      style: GoogleFonts.dmSans(
+                      style: AppTheme.jost(
                         fontSize: 11,
                         color: const Color(0xFFF3EEE7).withOpacity(0.55),
                       ),
@@ -456,7 +455,7 @@ class _StandardCard extends StatelessWidget {
                       card.title,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.dmSans(
+                      style: AppTheme.jost(
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
                         color: const Color(0xFFF3EEE7),
@@ -468,7 +467,7 @@ class _StandardCard extends StatelessWidget {
                       card.headline,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.dmSans(
+                      style: AppTheme.jost(
                         fontSize: 12,
                         color: const Color(0xFFF3EEE7).withOpacity(0.55),
                       ),
@@ -487,7 +486,7 @@ class _StandardCard extends StatelessWidget {
                           card.reason!,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: GoogleFonts.dmSans(
+                          style: AppTheme.jost(
                             fontSize: 10,
                             fontWeight: FontWeight.w500,
                             color:
@@ -547,7 +546,7 @@ class _TypeBadge extends StatelessWidget {
     final color = _colors[type] ?? const Color(0xFF8A8A8A);
     return Text(
       label,
-      style: GoogleFonts.spaceGrotesk(
+      style: AppTheme.jostTabular(
         fontSize: 9,
         fontWeight: FontWeight.w700,
         color: color,

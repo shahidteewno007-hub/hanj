@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import '../../core/theme/app_theme.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -24,7 +23,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
   static const _coral   = Color(0xFFE8624A);
   static const _magenta = Color(0xFFCA2868);
-  static const _bg      = Color(0xFF0D0B09);
+  static const _bg      = Color(0xFF121110);
   static const _cream   = Color(0xFFF5F0E8);
 
   static const _contentPages = [
@@ -309,7 +308,7 @@ class _ImportPageContent extends StatelessWidget {
               // Tag
               Text(
                 'IMPORT',
-                style: GoogleFonts.spaceGrotesk(
+                style: AppTheme.jostTabular(
                   color: _coral,
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
@@ -322,7 +321,7 @@ class _ImportPageContent extends StatelessWidget {
               // Title
               Text(
                 'Bring Your\nList Along',
-                style: GoogleFonts.playfairDisplay(
+                style: AppTheme.shipporiMincho(
                   color: Colors.white,
                   fontSize: 44,
                   fontWeight: FontWeight.w700,
@@ -594,7 +593,7 @@ class _PageContent extends StatelessWidget {
 
               Text(
                 page.tag,
-                style: GoogleFonts.spaceGrotesk(
+                style: AppTheme.jostTabular(
                   color: page.accentColor,
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
@@ -606,7 +605,7 @@ class _PageContent extends StatelessWidget {
 
               Text(
                 page.title,
-                style: GoogleFonts.playfairDisplay(
+                style: AppTheme.shipporiMincho(
                   color: Colors.white,
                   fontSize: 50,
                   fontWeight: FontWeight.w700,

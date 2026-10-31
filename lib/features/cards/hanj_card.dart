@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../../core/theme/app_theme.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HANJ CARD WIDGET
@@ -95,8 +96,18 @@ class HanjCard extends StatelessWidget {
     this.height = kHeight,
   });
 
+  /// A Hanj Card is drawn like a printed card, at one size (question 52):
+  /// the reader's text size never reaches inside its face. Its type is
+  /// already sized to the face (w * 0.09 for the name, w * 0.045 for the
+  /// description, the 7.5 px serial), so at 1.3x the legendary issue row ran
+  /// up to 26 px past the face, and the seasonal and legendary panels up to
+  /// 25 px past their bottoms. At 1.0 nothing changes. The detail sheet says
+  /// the card's name again under the face, in text that does grow.
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) =>
+      MediaQuery.withNoTextScaling(child: _face());
+
+  Widget _face() {
     if (!isUnlocked) return _LockedCard(card: card, width: width, height: height);
 
     Widget card0;
@@ -150,7 +161,7 @@ class _CommonCard extends StatelessWidget {
             child: Center(
               child: Text(
                 card.kanji,
-                style: GoogleFonts.playfairDisplay(
+                style: AppTheme.shipporiMincho(
                   fontSize: w * 0.65,
                   fontWeight: FontWeight.w900,
                   color: const Color(0xFF2A2725),
@@ -190,9 +201,8 @@ class _CommonCard extends StatelessWidget {
                         card.name,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.playfairDisplay(
+                        style: AppTheme.shipporiMincho(
                           fontSize: w * 0.09,
-                          fontStyle: FontStyle.italic,
                           color: Colors.white,
                           fontWeight: FontWeight.w600,
                           height: 1.15,
@@ -285,7 +295,7 @@ class _RareCard extends StatelessWidget {
                     children: [
                       Text(card.name,
                         maxLines: 2, overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.playfairDisplay(fontSize: w * 0.09, fontStyle: FontStyle.italic, color: Colors.white, fontWeight: FontWeight.w600, height: 1.15)),
+                        style: AppTheme.shipporiMincho(fontSize: w * 0.09, color: Colors.white, fontWeight: FontWeight.w600, height: 1.15)),
                       const SizedBox(height: 4),
                       Text(card.description,
                         maxLines: 2, overflow: TextOverflow.ellipsis,
@@ -378,7 +388,7 @@ class _EpicCard extends StatelessWidget {
                     children: [
                       Text(card.name,
                         maxLines: 2, overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.playfairDisplay(fontSize: w * 0.09, fontStyle: FontStyle.italic, color: Colors.white, fontWeight: FontWeight.w600, height: 1.15)),
+                        style: AppTheme.shipporiMincho(fontSize: w * 0.09, color: Colors.white, fontWeight: FontWeight.w600, height: 1.15)),
                       const SizedBox(height: 4),
                       Text(card.description,
                         maxLines: 2, overflow: TextOverflow.ellipsis,
@@ -410,6 +420,28 @@ class _LegendaryCard extends StatelessWidget {
   Widget build(BuildContext context) {
     const gold    = Color(0xFFD4A96A);
     const darkBg  = Color(0xFF0A0805);
+
+    // The name fits its face: Shippori Mincho runs about 8% wider than the
+    // Playfair it replaced, so "Year of Anime" no longer fitted the grid's
+    // 158 px card. One line at the face's size, scaled down when it must be,
+    // but never below 80% of that size; a longer name ("Ghost of Seasons
+    // Past") takes two lines at 80%, and the description gives up its third
+    // line for it. The reader's text size no longer reaches the face
+    // (HanjCard draws it at one size, question 52), so the scaler is 1.0.
+    final nameStyle = AppTheme.shipporiMincho(fontSize: w * 0.10, color: gold, fontWeight: FontWeight.w700, height: 1.1);
+    final nameRoom = w - 28 - w * 0.13; // the panel's padding and the kanji's column
+    final scaler = MediaQuery.maybeTextScalerOf(context) ?? TextScaler.noScaling;
+    final namePainter = TextPainter(
+      text: TextSpan(text: card.name, style: nameStyle),
+      textDirection: TextDirection.ltr,
+      textScaler: scaler,
+      maxLines: 1,
+    )..layout();
+    final nameWidth = namePainter.width;
+    namePainter.dispose();
+    final nameFloor = w * 0.10 * 0.8;
+    final nameOnOneLine = nameWidth <= nameRoom ||
+        scaler.scale(w * 0.10) * nameRoom / nameWidth >= nameFloor;
 
     return _CardShell(
       width: w,
@@ -449,7 +481,7 @@ class _LegendaryCard extends StatelessWidget {
                     alignment: Alignment.bottomLeft,
                     child: Text(
                       'ONE\nHUNDRED!',
-                      style: GoogleFonts.playfairDisplay(
+                      style: AppTheme.shipporiMincho(
                         fontSize: w * 0.15,
                         fontWeight: FontWeight.w900,
                         color: gold,
@@ -507,15 +539,23 @@ class _LegendaryCard extends StatelessWidget {
                         ],
                       ),
                       const SizedBox(height: 6),
-                      // Card name
-                      Text(
-                        card.name,
-                        style: GoogleFonts.playfairDisplay(fontSize: w * 0.10, fontStyle: FontStyle.italic, color: gold, fontWeight: FontWeight.w700, height: 1.1),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
+                      // Card name (fitted, see nameOnOneLine)
+                      if (nameOnOneLine)
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: Text(card.name, style: nameStyle, maxLines: 1),
+                        )
+                      else
+                        Text(
+                          card.name,
+                          style: nameStyle.copyWith(fontSize: nameFloor),
+                          textScaler: TextScaler.noScaling,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       const SizedBox(height: 6),
-                      Text(card.description, style: TextStyle(fontSize: w * 0.045, color: const Color(0xFFCCBB99).withOpacity(0.8), height: 1.45), maxLines: 3, overflow: TextOverflow.ellipsis),
+                      Text(card.description, style: TextStyle(fontSize: w * 0.045, color: const Color(0xFFCCBB99).withOpacity(0.8), height: 1.45), maxLines: nameOnOneLine ? 3 : 2, overflow: TextOverflow.ellipsis),
                       const Spacer(),
                       // Divider
                       Container(height: 0.5, color: gold.withOpacity(0.25)),
@@ -699,9 +739,8 @@ class _SeasonalCard extends StatelessWidget {
                         // Card name
                         Text(
                           card.name,
-                          style: GoogleFonts.playfairDisplay(
+                          style: AppTheme.shipporiMincho(
                             fontSize: w * 0.10,
-                            fontStyle: FontStyle.italic,
                             color: const Color(0xFFCCEEDD),
                             fontWeight: FontWeight.w700,
                             height: 1.1),
@@ -780,7 +819,7 @@ class _LockedCard extends StatelessWidget {
                 const SizedBox(height: 10),
                 Text(
                   '???',
-                  style: GoogleFonts.playfairDisplay(fontSize: 28, fontStyle: FontStyle.italic, color: col.withOpacity(0.5), fontWeight: FontWeight.w600),
+                  style: AppTheme.shipporiMincho(fontSize: 28, color: col.withOpacity(0.5), fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 6),
                 Text(

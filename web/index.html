@@ -37,7 +37,7 @@
     body {
       margin: 0;
       min-height: 100%;
-      background-color: #0D0B09;
+      background-color: #121110;
           background-size: 100% 100%;
     }
 
@@ -98,21 +98,21 @@
   <!-- ── Loading shell ──────────────────────────────────────────────────────
        Paints before Flutter boots. A cold visit downloads ~4 MB (app +
        CanvasKit) before the first Flutter frame, and without this the whole
-       wait is a bare #0D0B09 screen that reads as a broken link.
+       wait is a bare #121110 screen that reads as a broken link.
 
        Deliberately self-contained: no webfont (fetching one would add to the
-       very wait this is covering, so the wordmark uses a system serif),
+       very wait this is covering, so the wordmark is drawn as inline outlines),
        no image request, no external CSS. Everything here is inline and paints
        on the first pass.
 
-       The background is #0D0B09 — the same colour Flutter paints first in
+       The background is #121110 (sumi) — the same colour Flutter paints first in
        AuthWrapper's waiting branch — so the handover has no flash. -->
   <style id="hanj-splash-style">
     #hanj-splash {
       position: fixed;
       inset: 0;
       z-index: 9999;
-      background: #0D0B09;
+      background: #121110;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -134,13 +134,16 @@
     }
     .hanj-splash__word {
       margin-top: 14px;
-      /* System serif, chosen to echo Playfair Display without a network
-         request. Never a webfont here. */
-      font-family: Georgia, "Times New Roman", "Times", serif;
+      /* "Hanj" in Shippori Mincho 600 (stage H2), as inline outlines taken
+         from the app's bundled Latin cut, so the shell shows the wordmark's
+         own letters before any font can load. Still never a webfont here:
+         a path paints on the first pass. One em of the font is 34px, the
+         size the Georgia stand-in had, tracked -0.5px as it was. */
+      display: block;
       font-size: 34px;
-      line-height: 1;
-      letter-spacing: -0.5px;
-      color: #F3EEE7;
+      height: 1em;
+      width: auto;
+      fill: #EEE7DA;
     }
     .hanj-splash__bar {
       position: relative;
@@ -189,7 +192,7 @@
   <div id="hanj-splash">
     <div class="hanj-splash__inner">
       <!-- The wing mark, inline. No background rect: the shell already paints
-           #0D0B09. Two strokes rather than three, matching favicon.svg. The old
+           #121110. Two strokes rather than three, matching favicon.svg. The old
            ">=96px only" rule for the three-stroke master was wrong: it described
            file size, not render size. See MARK-SIZES.md. Still no webfont and no
            image request here, per the W2 note below. -->
@@ -201,7 +204,9 @@
                 stroke-width="7.0" stroke-linecap="round"/>
         </g>
       </svg>
-      <div class="hanj-splash__word">Hanj</div>
+      <!-- "Hanj" drawn from Shippori Mincho SemiBold (SIL Open Font License 1.1,
+           Copyright 2021 The Shippori Mincho Project Authors). -->
+      <svg class="hanj-splash__word" viewBox="39 -753 2219 1000" role="img" aria-label="Hanj"><path d="M829 -25Q837 -25 837 -13Q837 0 829 0L518 0Q511 0 511 -13Q511 -25 518 -25L532 -25Q572 -25 594 -41Q616 -57 616 -100L616 -366L269 -366L269 -100Q269 -57 291 -41.5Q313 -26 354 -26L367 -26Q372 -26 373.5 -23Q375 -20 375 -13Q375 -1 367 -1L56 -1Q49 -1 49 -13Q49 -26 56 -26L70 -26Q110 -26 132.5 -42Q155 -58 155 -100L155 -634Q155 -677 132.5 -692.5Q110 -708 70 -708L56 -708Q49 -708 49 -721Q49 -734 56 -734L367 -734Q375 -734 375 -721Q375 -708 367 -708L354 -708Q312 -708 291 -692.5Q270 -677 270 -634L270 -403L617 -403L617 -633Q617 -676 594.5 -692Q572 -708 532 -708L518 -708Q511 -708 511 -720Q511 -733 518 -733L829 -733Q834 -733 835.5 -730Q837 -727 837 -720Q837 -708 829 -708L816 -708Q775 -708 753.5 -692Q732 -676 732 -633L731 -100Q731 -57 753 -41Q775 -25 816 -25L829 -25ZM1427.3 -78L1426.3 -73Q1412.3 -33 1380.8 -10.5Q1349.3 12 1316.3 12Q1248.3 12 1229.3 -57Q1191.3 -22 1143.8 -4Q1096.3 14 1049.3 14Q988.3 14 952.8 -14.5Q917.3 -43 917.3 -92Q917.3 -131 936.8 -159.5Q956.3 -188 995.3 -210Q1018.3 -223 1046.8 -230.5Q1075.3 -238 1131.3 -251Q1207.3 -269 1223.3 -274L1223.3 -318Q1223.3 -372 1219.3 -396.5Q1215.3 -421 1201.3 -438Q1180.3 -463 1138.3 -463Q1107.3 -463 1088.3 -446Q1069.3 -429 1056.3 -385Q1048.3 -355 1032.3 -339.5Q1016.3 -324 995.3 -324Q974.3 -324 957.3 -337.5Q940.3 -351 940.3 -373Q940.3 -392 954.8 -419.5Q969.3 -447 1013.8 -470Q1058.3 -493 1138.3 -493Q1193.3 -493 1234.3 -477.5Q1275.3 -462 1296.3 -437Q1313.3 -416 1318.8 -393Q1324.3 -370 1324.3 -336Q1324.3 -273 1323.3 -236L1322.3 -116Q1322.3 -47 1362.3 -47Q1392.3 -47 1412.3 -81Q1415.3 -86 1419.3 -86Q1422.3 -86 1424.8 -84Q1427.3 -82 1427.3 -78ZM1223.3 -89Q1221.3 -109 1221.3 -121L1222.3 -243Q1121.3 -219 1073.3 -186Q1025.3 -153 1025.3 -103Q1025.3 -75 1045.8 -56.5Q1066.3 -38 1105.3 -38Q1135.3 -38 1166.8 -51Q1198.3 -64 1223.3 -89ZM2021.6 -25Q2028.6 -25 2028.6 -12Q2028.6 0 2021.6 0L1777.6 0Q1770.6 0 1770.6 -12Q1770.6 -25 1777.6 -25L1790.6 -25Q1818.6 -25 1834.1 -34Q1849.6 -43 1849.6 -71L1849.6 -251L1848.6 -327Q1844.6 -445 1757.6 -445Q1721.6 -445 1689.1 -423Q1656.6 -401 1632.6 -359L1631.6 -71Q1631.6 -43 1647.6 -34Q1663.6 -25 1692.6 -25L1703.6 -25Q1710.6 -25 1710.6 -12Q1710.6 0 1703.6 0L1460.6 0Q1452.6 0 1452.6 -12Q1452.6 -25 1460.6 -25L1472.6 -25Q1500.6 -25 1516.6 -34Q1532.6 -43 1532.6 -71L1530.6 -378Q1530.6 -409 1515.1 -418.5Q1499.6 -428 1462.6 -431Q1453.6 -432 1453.6 -447Q1453.6 -453 1458.6 -455Q1470.6 -459 1632.6 -493L1632.6 -404Q1695.6 -493 1785.6 -493Q1865.6 -493 1906.6 -448.5Q1947.6 -404 1950.6 -341Q1951.6 -320 1951.6 -256Q1951.6 -176 1949.6 -71Q1949.6 -43 1965.1 -34Q1980.6 -25 2009.6 -25L2021.6 -25ZM2109.9 -674Q2109.9 -703 2129.9 -723Q2149.9 -743 2178.9 -743Q2207.9 -743 2227.9 -723Q2247.9 -703 2247.9 -674Q2247.9 -646 2227.9 -625.5Q2207.9 -605 2178.9 -605Q2149.9 -605 2129.9 -625Q2109.9 -645 2109.9 -674ZM1944.9 167Q1944.9 150 1955.4 139Q1965.9 128 1979.9 128Q1998.9 128 2019.9 144Q2027.9 151 2049.9 175Q2060.9 187 2069.4 193Q2077.9 199 2086.9 199Q2113.9 199 2124.9 156Q2135.9 113 2135.9 23L2133.9 -378Q2133.9 -409 2118.4 -418.5Q2102.9 -428 2065.9 -431Q2056.9 -431 2056.9 -444Q2056.9 -453 2062.9 -455Q2073.9 -459 2139.9 -473.5Q2205.9 -488 2235.9 -493L2235.9 -195L2235.9 16Q2235.9 97 2204.4 146.5Q2172.9 196 2128.9 216.5Q2084.9 237 2044.9 237Q2006.9 237 1975.9 216Q1944.9 195 1944.9 167Z"/></svg>
       <div class="hanj-splash__bar"><span></span></div>
     </div>
   </div>

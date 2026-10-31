@@ -150,7 +150,8 @@ class _HanjFilterSheetState extends State<HanjFilterSheet> {
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     ),
                     child: Text('Apply Filters',
-                        style: AppTheme.sans(fontSize: 14, color: Colors.white, weight: FontWeight.w600)),
+                        // Sumi on coral, 5.64:1 (Hanko's rule; white was 3.35:1).
+                        style: AppTheme.sans(fontSize: 14, color: AppTheme.textInverse, weight: FontWeight.w600)),
                   ),
                 ),
               ),
@@ -192,7 +193,9 @@ class _FilterChip extends StatelessWidget {
           label,
           style: AppTheme.sans(
             fontSize: 13,
-            color: selected ? Colors.white : AppTheme.textSecondary,
+            // A chosen chip is sumi on coral, 5.64:1: Hanko's rule for
+            // anything on coral, as on Apply Filters (white was 3.35:1).
+            color: selected ? AppTheme.textInverse : AppTheme.textSecondary,
             weight: selected ? FontWeight.w600 : FontWeight.normal,
           ),
         ),
