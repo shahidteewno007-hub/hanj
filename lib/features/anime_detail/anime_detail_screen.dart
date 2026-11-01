@@ -86,6 +86,13 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
   // listens, so scrolling never rebuilds the screen.
   final ScrollController _scroll = ScrollController();
 
+  // Bumped by _staffChanged when the staff answer, its loading flags or the
+  // next episode change. Only what shows them listens: the bar's tint, the
+  // header and the tab content (question 115). A whole-screen setState there
+  // rebuilt 583 widgets in one frame on the phone when the answer arrived,
+  // the app bar's and the tab bar's among them, which show none of it.
+  final ValueNotifier<int> _staffVersion = ValueNotifier<int>(0);
+
   @override
   void initState() {
     super.initState();
@@ -148,6 +155,7 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
     _countdownTimer?.cancel();
     _timeUntilAiring.dispose();
     _scroll.dispose();
+    _staffVersion.dispose();
     super.dispose();
   }
 
@@ -256,8 +264,21 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
     } catch (_) { return null; }
   }
 
+  /// Applies a change to the staff answer's state and rebuilds only what
+  /// shows it (question 115). With the classic header back on, whose hero
+  /// shows the gallery and the characters, the whole screen rebuilds, as it
+  /// always did.
+  void _staffChanged(VoidCallback change) {
+    if (_classicDetail) {
+      setState(change);
+      return;
+    }
+    change();
+    _staffVersion.value++;
+  }
+
   Future<void> _loadStaffData() async {
-    if (mounted) setState(() { _isLoadingStaff = true; _isLoadingRelated = true; });
+    if (mounted) _staffChanged(() { _isLoadingStaff = true; _isLoadingRelated = true; });
     try {
       final data = await _aniListService.getAnimeStaff(_anime.id);
       if (mounted) {
@@ -276,7 +297,7 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
         if (gallery.isEmpty && widget.anime.imageUrl != null) {
           gallery.add(widget.anime.imageUrl!);
         }
-        setState(() {
+        _staffChanged(() {
           _staffData = data;
           _isLoadingStaff = false;
           _characterImages = imgs;
@@ -296,13 +317,13 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
         }
       }
     } catch (_) {
-      if (mounted) setState(() { _isLoadingStaff = false; _isLoadingRelated = false; });
+      if (mounted) _staffChanged(() { _isLoadingStaff = false; _isLoadingRelated = false; });
     }
   }
 
   /// The next episode's live countdown, from the staff response.
   void _startCountdown(DateTime dt, int? episode) {
-    setState(() {
+    _staffChanged(() {
       _nextAiringAt   = dt;
       _nextEpisodeNum = episode;
     });
@@ -783,47 +804,53 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
                   height: math.max(52.0, 32 + MediaQuery.textScalerOf(context).scale(13) * 1.5),
                 ),
               ),
-            // Tab content — swipeable via horizontal drag
+            // Tab content — swipeable via horizontal drag. It rebuilds with
+            // the staff answer on its own (question 115), from here down, as
+            // the whole screen's setState did: a tab fading out keeps what
+            // it showed.
             SliverToBoxAdapter(
-              child: GestureDetector(
-                onHorizontalDragEnd: (details) {
-                  if (details.primaryVelocity == null) return;
-                  if (details.primaryVelocity! < -200 && _selectedTab < 3) {
-                    setState(() { _swipeDirection = 1; _selectedTab++; });
-                  } else if (details.primaryVelocity! > 200 && _selectedTab > 0) {
-                    setState(() { _swipeDirection = -1; _selectedTab--; });
-                  }
-                },
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 220),
-                  transitionBuilder: (child, animation) {
-                    final offset = Tween<Offset>(
-                      begin: Offset(_swipeDirection * 0.18, 0),
-                      end: Offset.zero,
-                    ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOut));
-                    return SlideTransition(
-                      position: offset,
-                      child: FadeTransition(opacity: animation, child: child),
-                    );
+              child: ListenableBuilder(
+                listenable: _staffVersion,
+                builder: (_, _) => GestureDetector(
+                  onHorizontalDragEnd: (details) {
+                    if (details.primaryVelocity == null) return;
+                    if (details.primaryVelocity! < -200 && _selectedTab < 3) {
+                      setState(() { _swipeDirection = 1; _selectedTab++; });
+                    } else if (details.primaryVelocity! > 200 && _selectedTab > 0) {
+                      setState(() { _swipeDirection = -1; _selectedTab--; });
+                    }
                   },
-                  child: KeyedSubtree(
-                    key: ValueKey(_selectedTab),
-                    child: ConstrainedBox(
-                      constraints: BoxConstraints(
-                          minHeight: screenHeight * 0.4),
-                      child: _TabContent(
-                        selectedIndex: _selectedTab,
-                        anime: anime,
-                        staffData: _staffData,
-                        isLoadingStaff: _isLoadingStaff,
-                        cleanDescription: _cleanDescription,
-                        currentEpisode: _currentEpisode,
-                        relatedAnime: _relatedAnime,
-                        isLoadingRelated: _isLoadingRelated,
-                        nextAiringAt: _nextAiringAt,
-                        nextEpisodeNum: _nextEpisodeNum,
-                        timeUntilAiring: _timeUntilAiring,
-                        characterImages: _characterImages,
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 220),
+                    transitionBuilder: (child, animation) {
+                      final offset = Tween<Offset>(
+                        begin: Offset(_swipeDirection * 0.18, 0),
+                        end: Offset.zero,
+                      ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOut));
+                      return SlideTransition(
+                        position: offset,
+                        child: FadeTransition(opacity: animation, child: child),
+                      );
+                    },
+                    child: KeyedSubtree(
+                      key: ValueKey(_selectedTab),
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(
+                            minHeight: screenHeight * 0.4),
+                        child: _TabContent(
+                          selectedIndex: _selectedTab,
+                          anime: anime,
+                          staffData: _staffData,
+                          isLoadingStaff: _isLoadingStaff,
+                          cleanDescription: _cleanDescription,
+                          currentEpisode: _currentEpisode,
+                          relatedAnime: _relatedAnime,
+                          isLoadingRelated: _isLoadingRelated,
+                          nextAiringAt: _nextAiringAt,
+                          nextEpisodeNum: _nextEpisodeNum,
+                          timeUntilAiring: _timeUntilAiring,
+                          characterImages: _characterImages,
+                        ),
                       ),
                     ),
                   ),
@@ -1077,9 +1104,6 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
     // The URL the previous screen showed: decoded already, so the print is
     // there in the first frame.
     final cover = widget.anime.imageUrl ?? anime.imageUrl;
-    final tint = AppTheme.hankoCoverTint(_coverColor);
-    final studio = _studioName;
-    final director = _director;
     return [
       SliverAppBar(
         pinned: true,
@@ -1107,57 +1131,70 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
           ),
           const SizedBox(width: 4),
         ],
-        flexibleSpace: _HankoBar(
-          scroll: _scroll,
-          tint: tint,
-          geometry: HankoDetailHeader.geometryFor(MediaQuery.sizeOf(context).width),
-          title: title,
+        // The bar and the header below take the cover's tint, the studio
+        // and the rest from the staff answer, and rebuild with it on their
+        // own (question 115).
+        flexibleSpace: ListenableBuilder(
+          listenable: _staffVersion,
+          builder: (_, _) => _HankoBar(
+            scroll: _scroll,
+            tint: AppTheme.hankoCoverTint(_coverColor),
+            geometry: HankoDetailHeader.geometryFor(MediaQuery.sizeOf(context).width),
+            title: title,
+          ),
         ),
       ),
       SliverToBoxAdapter(
-        child: HankoDetailHeader(
-          title: title,
-          nativeTitle: _nativeTitle,
-          coverUrl: cover,
-          sharpCoverUrl: _sharpCover,
-          coverColor: _coverColor,
-          // The studio and director links (H3 k): the pages Detail already
-          // opened from its Information block and its Cast tab.
-          studio: studio,
-          onStudio: studio == null
-              ? null
-              : () => Navigator.push(context,
-                  MaterialPageRoute(builder: (_) => StudioDetailScreen(studioName: studio))),
-          director: director?.name,
-          onDirector: director == null
-              ? null
-              : () => Navigator.push(context, MaterialPageRoute(
-                  builder: (_) => StaffDetailScreen(staffId: director.id, staffName: director.name))),
-          format: anime.format,
-          season: anime.season,
-          seasonYear: anime.seasonYear,
-          episodes: anime.episodes,
-          duration: _staffData?['duration'] as int?,
-          airing: anime.status == 'RELEASING',
-          entryLoaded: _entryLoaded,
-          status: _currentStatus,
-          rating: _userRating,
-          ratedAt: _ratedAt,
-          currentEpisode: _currentEpisode,
-          nextEpisode: _nextEpisodeNum,
-          nextAiringAt: _nextAiringAt,
-          // A MyAnimeList import AniList hasn't replaced still carries MAL's
-          // mean (the import stores mean × 10), so it gets no "AniList" crowd.
-          averageScore: _isMalImport && identical(anime, widget.anime) ? null : anime.averageScore,
-          scoreDistribution: _scoreDistribution,
-          busy: _isLoading,
-          onRate: _rate,
-          onStatus: _showAddToListSheet,
-          onBump: _bump,
-          onCover: cover == null
-              ? null
-              : () => _openGallery(context,
-                  _isMalImport || _galleryImages.isEmpty ? [cover] : _galleryImages, 0),
+        child: ListenableBuilder(
+          listenable: _staffVersion,
+          builder: (_, _) {
+            final studio = _studioName;
+            final director = _director;
+            return HankoDetailHeader(
+              title: title,
+              nativeTitle: _nativeTitle,
+              coverUrl: cover,
+              sharpCoverUrl: _sharpCover,
+              coverColor: _coverColor,
+              // The studio and director links (H3 k): the pages Detail already
+              // opened from its Information block and its Cast tab.
+              studio: studio,
+              onStudio: studio == null
+                  ? null
+                  : () => Navigator.push(context,
+                      MaterialPageRoute(builder: (_) => StudioDetailScreen(studioName: studio))),
+              director: director?.name,
+              onDirector: director == null
+                  ? null
+                  : () => Navigator.push(context, MaterialPageRoute(
+                      builder: (_) => StaffDetailScreen(staffId: director.id, staffName: director.name))),
+              format: anime.format,
+              season: anime.season,
+              seasonYear: anime.seasonYear,
+              episodes: anime.episodes,
+              duration: _staffData?['duration'] as int?,
+              airing: anime.status == 'RELEASING',
+              entryLoaded: _entryLoaded,
+              status: _currentStatus,
+              rating: _userRating,
+              ratedAt: _ratedAt,
+              currentEpisode: _currentEpisode,
+              nextEpisode: _nextEpisodeNum,
+              nextAiringAt: _nextAiringAt,
+              // A MyAnimeList import AniList hasn't replaced still carries MAL's
+              // mean (the import stores mean × 10), so it gets no "AniList" crowd.
+              averageScore: _isMalImport && identical(anime, widget.anime) ? null : anime.averageScore,
+              scoreDistribution: _scoreDistribution,
+              busy: _isLoading,
+              onRate: _rate,
+              onStatus: _showAddToListSheet,
+              onBump: _bump,
+              onCover: cover == null
+                  ? null
+                  : () => _openGallery(context,
+                      _isMalImport || _galleryImages.isEmpty ? [cover] : _galleryImages, 0),
+            );
+          },
         ),
       ),
       const SliverToBoxAdapter(child: SizedBox(height: 16)),
@@ -2615,6 +2652,11 @@ class _OverviewTab extends StatelessWidget {
         ? (staffData!['studios']['nodes'] as List)[0]['name'] as String?
         : null;
 
+    // The sections carry keys (question 115), so the list matches them by
+    // key, not by place. The countdown card arrives with the staff answer
+    // at the top, and Where to watch above the discussion row; unkeyed,
+    // every section after them met a different widget at its old place and
+    // was built again from nothing, text layout and all.
     return ListView(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
@@ -2631,13 +2673,13 @@ class _OverviewTab extends StatelessWidget {
           const SizedBox(height: 24),
         ],
 
-        const AnilistSavedNote(padding: EdgeInsets.only(bottom: 12)),
+        const AnilistSavedNote(key: ValueKey('saved note'), padding: EdgeInsets.only(bottom: 12)),
 
         // Synopsis. Hanko: a Mincho head, no coral bar and no tracked-caps
         // eyebrow under it.
         if (anime.description != null) ...[
-          const _HankoSectionHead(title: 'Synopsis', aside: null),
-          _SynopsisText(text: cleanDescription(anime.description!)),
+          const _HankoSectionHead(key: ValueKey('synopsis head'), title: 'Synopsis', aside: null),
+          _SynopsisText(key: const ValueKey('synopsis'), text: cleanDescription(anime.description!)),
           const SizedBox(height: 28),
         ],
 
@@ -2656,9 +2698,9 @@ class _OverviewTab extends StatelessWidget {
         // Genres, once, as one line (H3 i): today's header showed three as
         // chips and this tab all of them again.
         if (anime.genres.isNotEmpty) ...[
-          Text('Genres', style: AppTheme.hankoSans(fontSize: AppTheme.hankoLabelSize, color: AppTheme.hankoStone)),
+          Text('Genres', key: const ValueKey('genres head'), style: AppTheme.hankoSans(fontSize: AppTheme.hankoLabelSize, color: AppTheme.hankoStone)),
           const SizedBox(height: 6),
-          Text(anime.genres.join(', '), style: AppTheme.hankoSans(height: 1.5)),
+          Text(anime.genres.join(', '), key: const ValueKey('genres'), style: AppTheme.hankoSans(height: 1.5)),
           const SizedBox(height: 28),
         ],
 
@@ -2703,8 +2745,8 @@ class _OverviewTab extends StatelessWidget {
 
         // Trailer, under a Mincho head like Overview's other sections.
         if (anime.trailerUrl != null) ...[
-          const _HankoSectionHead(title: 'Trailer', aside: null),
-          TrailerButton(trailerUrl: anime.trailerUrl!),
+          const _HankoSectionHead(key: ValueKey('trailer head'), title: 'Trailer', aside: null),
+          TrailerButton(key: const ValueKey('trailer'), trailerUrl: anime.trailerUrl!),
           const SizedBox(height: 28),
         ],
 
@@ -2713,14 +2755,15 @@ class _OverviewTab extends StatelessWidget {
         // search links, and only for shows with a trailer. The links carry no
         // region, so nothing here promises it streams where you are.
         if (_streams.isNotEmpty) ...[
-          const _HankoSectionHead(title: 'Where to watch', aside: 'Official links on AniList'),
-          _HankoWatchLinks(links: _streams),
+          const _HankoSectionHead(key: ValueKey('watch head'), title: 'Where to watch', aside: 'Official links on AniList'),
+          _HankoWatchLinks(key: const ValueKey('watch links'), links: _streams),
           const SizedBox(height: 28),
         ],
 
         // ── Discussion ──────────────────────────────────────
         // A plain 48 dp row in Hanko: no card, no coral arrow.
         InkWell(
+          key: const ValueKey('discussion'),
           onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => EpisodeDiscussionScreen(anime: anime, episodeNumber: 0))),
           splashFactory: NoSplash.splashFactory,
           highlightColor: AppTheme.hankoPressWash,
@@ -2744,7 +2787,7 @@ class _OverviewTab extends StatelessWidget {
 
 /// A section's head in Hanko: Shippori Mincho 16, with a note on the right.
 class _HankoSectionHead extends StatelessWidget {
-  const _HankoSectionHead({required this.title, required this.aside});
+  const _HankoSectionHead({super.key, required this.title, required this.aside});
 
   final String title;
   final String? aside;
@@ -2778,7 +2821,7 @@ class _HankoSectionHead extends StatelessWidget {
 /// The streaming links as plain rows, two to a line: Hanko keeps pills for
 /// controls. Each opens outside the app.
 class _HankoWatchLinks extends StatelessWidget {
-  const _HankoWatchLinks({required this.links});
+  const _HankoWatchLinks({super.key, required this.links});
 
   final List<({String site, String url})> links;
 
@@ -3374,7 +3417,7 @@ class _InfoRow extends StatelessWidget {
 
 class _SynopsisText extends StatefulWidget {
   final String text;
-  const _SynopsisText({required this.text});
+  const _SynopsisText({super.key, required this.text});
 
   @override
   State<_SynopsisText> createState() => _SynopsisTextState();
@@ -3744,23 +3787,54 @@ class _NextEpisodeCountdownState extends State<_NextEpisodeCountdown> {
   /// The 24-hour clock, as Home's: "13:00".
   String _timeStr(DateTime dt) => '${_pad(dt.hour)}:${_pad(dt.minute)}';
 
-  @override
-  Widget build(BuildContext context) {
-    // Only this card rebuilds on each tick. Previously the parent screen called
-    // setState every second, rebuilding the whole 2,190-line detail screen.
-    return ValueListenableBuilder<Duration>(
-      valueListenable: widget.timeUntil,
-      builder: (context, timeUntil, _) => _buildCard(context, timeUntil),
-    );
-  }
-
-  Widget _buildCard(BuildContext context, Duration timeUntil) {
+  /// The clock's digits, drawn over a copy of themselves in zeros that is
+  /// laid out but never painted (question 115). The copy gives the clock its
+  /// size, which tabular figures keep the same whatever the digits (Jost's
+  /// are all 0.6 em), so the digits get tight constraints, which make them
+  /// their own relayout boundary, and a RepaintBoundary of their own. A new
+  /// second then lays out and repaints the digits alone: before, the clock's
+  /// layout ran up to the screen's scroll view, which repainted the whole
+  /// page every second (about 2 ms of layout and 6–8 ms of paint per tick
+  /// on the phone).
+  Widget _clock(Duration timeUntil) {
     final d = timeUntil.inDays;
     final h = timeUntil.inHours % 24;
     final m = timeUntil.inMinutes % 60;
     final s = timeUntil.inSeconds % 60;
-    final isImminent = timeUntil.inHours < 1;
+    Widget units(String Function(int) digits) => Row(
+          children: [
+            if (d > 0) ...[
+              _CountUnit(digits(d), 'D'),
+              const SizedBox(width: 6),
+            ],
+            _CountUnit(digits(h), 'H'),
+            const SizedBox(width: 6),
+            _CountUnit(digits(m), 'M'),
+            if (d == 0) ...[
+              const SizedBox(width: 6),
+              _CountUnit(digits(s), 'S'),
+            ],
+          ],
+        );
+    return Stack(
+      children: [
+        Opacity(opacity: 0, child: units((n) => '0' * _pad(n).length)),
+        Positioned.fill(child: RepaintBoundary(child: units(_pad))),
+      ],
+    );
+  }
 
+  @override
+  Widget build(BuildContext context) {
+    // The card builds once, and again when the bell changes. On a tick only
+    // its two parts that show the time can rebuild, and only when what they
+    // show changes (question 115): the clock once a minute while it shows
+    // days and once a second when it shows seconds, the date line when its
+    // words or colour turn. The whole card used to rebuild every second.
+    return _buildCard(context);
+  }
+
+  Widget _buildCard(BuildContext context) {
     Future<void> toggle() async {
       final newVal = !_reminderOn;
       setState(() => _reminderOn = newVal);
@@ -3827,37 +3901,48 @@ class _NextEpisodeCountdownState extends State<_NextEpisodeCountdown> {
               const Spacer(),
               // Notification bell: a square that is filled when on, 48 dp
               // to touch, its state in its name for screen readers. It is
-              // its own semantics node with the same tap as the gesture
-              // (question 104; Coming up's bell since 0111ffc). Folded into
-              // the card, the bell's name and state made the whole card one
-              // switch with no tap, so a screen reader couldn't set the
-              // reminder.
+              // its own semantics node (question 104; Coming up's bell since
+              // 0111ffc). Folded into the card, the bell's name and state
+              // made the whole card one switch with no tap, so a screen
+              // reader couldn't set the reminder. The InkWell's tap and focus
+              // are inside that node (question 119, as Profile's rows in
+              // 878a397): a tap given on the node over excluded semantics
+              // reached a screen reader, but the keyboard couldn't reach the
+              // bell. The transparent Material is the InkWell's own ink
+              // layer: ink is drawn under a Material's children, and the
+              // nearest Material was the Scaffold's, under the card's fill,
+              // which would have hidden the bell's focus and press washes.
               Semantics(
                 container: true,
                 button: true,
                 toggled: _reminderOn,
                 label: 'Remind me when episode ${widget.episode} airs',
-                onTap: toggle,
-                excludeSemantics: true,
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: toggle,
-                  child: SizedBox.square(
-                    dimension: AppTheme.hankoTouch,
-                    child: Center(
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 250),
-                        curve: Curves.easeOut,
-                        width: 36, height: 36,
-                        decoration: BoxDecoration(
-                          color: _reminderOn ? AppTheme.hankoWashi : Colors.transparent,
-                          borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
-                          border: _reminderOn ? null : Border.all(color: AppTheme.hankoEdge),
-                        ),
-                        child: Icon(
-                          _reminderOn ? Icons.notifications_sharp : Icons.notifications_none_outlined,
-                          color: _reminderOn ? AppTheme.hankoSumi : AppTheme.hankoWashi,
-                          size: 18,
+                child: Material(
+                  type: MaterialType.transparency,
+                  child: InkWell(
+                    onTap: toggle,
+                    borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+                    splashFactory: NoSplash.splashFactory,
+                    highlightColor: AppTheme.hankoPressWash,
+                    child: ExcludeSemantics(
+                      child: SizedBox.square(
+                        dimension: AppTheme.hankoTouch,
+                        child: Center(
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 250),
+                            curve: Curves.easeOut,
+                            width: 36, height: 36,
+                            decoration: BoxDecoration(
+                              color: _reminderOn ? AppTheme.hankoWashi : Colors.transparent,
+                              borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+                              border: _reminderOn ? null : Border.all(color: AppTheme.hankoEdge),
+                            ),
+                            child: Icon(
+                              _reminderOn ? Icons.notifications_sharp : Icons.notifications_none_outlined,
+                              color: _reminderOn ? AppTheme.hankoSumi : AppTheme.hankoWashi,
+                              size: 18,
+                            ),
+                          ),
                         ),
                       ),
                     ),
@@ -3878,49 +3963,103 @@ class _NextEpisodeCountdownState extends State<_NextEpisodeCountdown> {
                 style: AppTheme.hankoSerif(fontSize: 22),
               ),
               const Spacer(),
-              // Countdown clock
-              if (!timeUntil.isNegative)
-                Row(
-                  children: [
-                    if (d > 0) ...[
-                      _CountUnit(_pad(d), 'D'),
-                      const SizedBox(width: 6),
-                    ],
-                    _CountUnit(_pad(h), 'H'),
-                    const SizedBox(width: 6),
-                    _CountUnit(_pad(m), 'M'),
-                    if (d == 0) ...[
-                      const SizedBox(width: 6),
-                      _CountUnit(_pad(s), 'S'),
-                    ],
-                  ],
-                ),
+              // Countdown clock (see _clock), none before the first tick
+              // when the time has already passed.
+              _CountdownPart(
+                timeUntil: widget.timeUntil,
+                shown: (t) => t.isNegative
+                    ? null
+                    : (
+                        t.inDays > 0 ? t.inDays : null,
+                        t.inHours % 24,
+                        t.inMinutes % 60,
+                        t.inDays == 0 ? t.inSeconds % 60 : null,
+                      ),
+                builder: (context, t) =>
+                    t.isNegative ? const SizedBox.shrink() : _clock(t),
+              ),
             ],
           ),
 
           const SizedBox(height: 6),
 
-          // Friendly date string
-          Row(
-            children: [
-              Icon(
-                Icons.schedule_sharp,
-                size: 14,
-                color: isImminent ? AppTheme.hankoWashi : AppTheme.hankoStone,
-              ),
-              const SizedBox(width: 6),
-              Text(
-                _friendlyDate(),
-                style: AppTheme.hankoSans(
-                    fontSize: AppTheme.hankoLabelSize,
-                    color: isImminent ? AppTheme.hankoWashi : AppTheme.hankoStone),
-              ),
-            ],
+          // Friendly date string, in washi within the hour
+          _CountdownPart(
+            timeUntil: widget.timeUntil,
+            shown: (t) => (_friendlyDate(), t.inHours < 1),
+            builder: (context, t) {
+              final isImminent = t.inHours < 1;
+              return Row(
+                children: [
+                  Icon(
+                    Icons.schedule_sharp,
+                    size: 14,
+                    color: isImminent ? AppTheme.hankoWashi : AppTheme.hankoStone,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    _friendlyDate(),
+                    style: AppTheme.hankoSans(
+                        fontSize: AppTheme.hankoLabelSize,
+                        color: isImminent ? AppTheme.hankoWashi : AppTheme.hankoStone),
+                  ),
+                ],
+              );
+            },
           ),
         ],
       ),
     );
   }
+}
+
+/// A part of the countdown card that shows the time. It listens to the
+/// ticks itself and rebuilds only when [shown], what it picks out of the
+/// time left, changes (question 115).
+class _CountdownPart extends StatefulWidget {
+  const _CountdownPart({required this.timeUntil, required this.shown, required this.builder});
+
+  final ValueListenable<Duration> timeUntil;
+  final Object? Function(Duration timeUntil) shown;
+  final Widget Function(BuildContext context, Duration timeUntil) builder;
+
+  @override
+  State<_CountdownPart> createState() => _CountdownPartState();
+}
+
+class _CountdownPartState extends State<_CountdownPart> {
+  Object? _shown;
+
+  @override
+  void initState() {
+    super.initState();
+    _shown = widget.shown(widget.timeUntil.value);
+    widget.timeUntil.addListener(_tick);
+  }
+
+  @override
+  void didUpdateWidget(_CountdownPart oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.timeUntil != widget.timeUntil) {
+      oldWidget.timeUntil.removeListener(_tick);
+      widget.timeUntil.addListener(_tick);
+    }
+    _shown = widget.shown(widget.timeUntil.value);
+  }
+
+  @override
+  void dispose() {
+    widget.timeUntil.removeListener(_tick);
+    super.dispose();
+  }
+
+  void _tick() {
+    final shown = widget.shown(widget.timeUntil.value);
+    if (shown != _shown) setState(() => _shown = shown);
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.builder(context, widget.timeUntil.value);
 }
 
 class _CountUnit extends StatelessWidget {
