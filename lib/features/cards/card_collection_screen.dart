@@ -173,6 +173,7 @@ class _CardCollectionScreenState extends State<CardCollectionScreen>
   @override
   void initState() {
     super.initState();
+    hc.HanjCard.preloadFonts(); // before the first face (collection open)
     _tabCtrl = TabController(length: _filters.length, vsync: this);
     _tabCtrl.addListener(() {
       if (!_tabCtrl.indexIsChanging) {

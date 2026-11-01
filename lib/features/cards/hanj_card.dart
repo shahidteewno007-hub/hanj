@@ -98,6 +98,17 @@ class HanjCard extends StatelessWidget {
   static const double kWidth  = 200.0;
   static const double kHeight = 300.0;
 
+  /// Starts loading the faces' Space Mono, regular and bold, before the
+  /// first face is built. Nothing else in the app uses it, so on the first
+  /// open of the collection in a session it only began loading as the grid
+  /// was built: the faces were laid out in a fallback font, then every
+  /// paragraph on screen was laid out again as each weight arrived. Called
+  /// as the collection opens, the fonts arrive while its cards are fetched.
+  static void preloadFonts() {
+    GoogleFonts.spaceMono();
+    GoogleFonts.spaceMono(fontWeight: FontWeight.w700);
+  }
+
   const HanjCard({
     super.key,
     required this.card,
