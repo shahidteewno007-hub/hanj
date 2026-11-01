@@ -1070,13 +1070,18 @@ class _SaveButtonState extends State<_SaveButton> {
   Future<void> _save() async {
     setState(() => _saving = true);
     try {
+      // A card that isn't there, or that doesn't encode, is a failed save
+      // (question 129): each throws into the catch below, which says so,
+      // and the button comes back. They used to return from inside the try,
+      // past the reset after the catch, so the button stayed at "Saving…"
+      // and ignored taps.
       final boundary = widget.repaintKey.currentContext
           ?.findRenderObject() as RenderRepaintBoundary?;
-      if (boundary == null) return;
+      if (boundary == null) throw StateError('No card to render.');
 
       final image = await boundary.toImage(pixelRatio: 3.0);
       final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
-      if (byteData == null) return;
+      if (byteData == null) throw StateError('The card did not encode.');
 
       final bytes = byteData.buffer.asUint8List();
 

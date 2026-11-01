@@ -1222,13 +1222,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     // The sentence is Shippori, which draws the typewriter apostrophe as a
     // straight tick, so "You’ve" takes the typographic one (as the failure
-    // line below, question 109).
+    // line below, question 109). "and watched" is joined by a no-break
+    // space too (question 125): with each count glued to its word, at 2.0x
+    // "watched" sat alone on a line before "318 episodes".
     final sentence = titles == 0
         ? 'Nothing logged yet.'
         : episodes == 0
             ? 'You’ve logged ${count(titles, 'title', 'titles')}.'
-            : 'You’ve logged ${count(titles, 'title', 'titles')} and '
-                'watched ${count(episodes, 'episode', 'episodes')}.';
+            : 'You’ve logged ${count(titles, 'title', 'titles')} '
+                'and\u00A0watched ${count(episodes, 'episode', 'episodes')}.';
     // Each number keeps its word (question 89): a no-break space joins
     // them, so a line never ends on a number whose word went on to the
     // next line ("1 / dropped.").

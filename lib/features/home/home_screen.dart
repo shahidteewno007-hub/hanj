@@ -1359,12 +1359,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
     // The list couldn't be read: say so, naming no cause the app can't
     // verify (ANILIST-OFFLINE-0908-REPORT.md), instead of greeting someone
-    // with a list as if it were empty.
+    // with a list as if it were empty. The line takes the typographic
+    // apostrophe (question 126): Shippori draws the typewriter one as a
+    // straight tick, as Profile's failure line found (question 109).
     if (_listFailed) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text("Couldn't load your list just now.", style: style),
+          Text("Couldn’t load your list just now.", style: style),
           const SizedBox(height: 12),
           _TextTile(label: 'Retry', onTap: _loadData),
         ],
@@ -1428,58 +1430,63 @@ class _HomeScreenState extends State<HomeScreen> {
     // numerals at 22 px, as the mockup's .seal--in. Its box follows the
     // text size setting; HankoSeal shrinks the numerals to fit.
     final seal = Size(scaler.scale(32), scaler.scale(28));
-    // excludeSemantics drops the InkWell's own tap action with the rest of
-    // the subtree, so the node carries onTap itself.
+    // Its own semantics node (container), named by the sentence and its
+    // seal, with the InkWell's tap and focus inside it (question 119, as
+    // Profile's rows since dafb7c5). A tap given to the node over excluded
+    // semantics let a screen reader press it but left out the InkWell's
+    // focus, so on the web the node couldn't take focus. The sentence and
+    // the seal are left out of the tree, since the label says them.
     return Semantics(
+      container: true,
       button: true,
       label: '${compose(wholeTitle: false).replaceAll(' ', ' ').trim()} '
           '$score',
-      onTap: () => _openEntry(entry),
       onTapHint: 'open ${rawTitle.trim()}',
-      excludeSemantics: true,
       child: InkWell(
         onTap: () => _openEntry(entry),
         splashFactory: NoSplash.splashFactory,
         highlightColor: AppTheme.hankoPressWash,
         hoverColor: AppTheme.hankoPressWash,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: AppTheme.hankoTouch),
-          child: LayoutBuilder(builder: (context, constraints) {
-            // Q54: a short title kept whole can leave the word before it
-            // alone on a line. At 1.3x "On Monday you / finished / Cowboy
-            // Bebop, all ..." left "finished" by itself. So the first of
-            // these that leaves no word alone wins: the title whole; the
-            // title whole with "you" kept by its verb; the title free to
-            // break. A long title may always break, as before.
-            final candidates = rawTitle.length <= 18
-                ? [
-                    compose(wholeTitle: true),
-                    compose(wholeTitle: true, bindVerb: true),
-                    compose(wholeTitle: false),
-                  ]
-                : [compose(wholeTitle: false)];
-            final sentence = candidates.firstWhere(
-                (s) => !_leavesAWordAlone(
-                    s, style, scaler, seal, constraints.maxWidth),
-                orElse: () => candidates.first);
-            return Text.rich(
-              TextSpan(
-                style: style,
-                children: [
-                  TextSpan(text: sentence),
-                  WidgetSpan(
-                    alignment: PlaceholderAlignment.middle,
-                    child: HankoSeal.score(
-                      rating,
-                      size: seal.height,
-                      width: seal.width,
-                      fontSize: 14,
+        child: ExcludeSemantics(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: AppTheme.hankoTouch),
+            child: LayoutBuilder(builder: (context, constraints) {
+              // Q54: a short title kept whole can leave the word before it
+              // alone on a line. At 1.3x "On Monday you / finished / Cowboy
+              // Bebop, all ..." left "finished" by itself. So the first of
+              // these that leaves no word alone wins: the title whole; the
+              // title whole with "you" kept by its verb; the title free to
+              // break. A long title may always break, as before.
+              final candidates = rawTitle.length <= 18
+                  ? [
+                      compose(wholeTitle: true),
+                      compose(wholeTitle: true, bindVerb: true),
+                      compose(wholeTitle: false),
+                    ]
+                  : [compose(wholeTitle: false)];
+              final sentence = candidates.firstWhere(
+                  (s) => !_leavesAWordAlone(
+                      s, style, scaler, seal, constraints.maxWidth),
+                  orElse: () => candidates.first);
+              return Text.rich(
+                TextSpan(
+                  style: style,
+                  children: [
+                    TextSpan(text: sentence),
+                    WidgetSpan(
+                      alignment: PlaceholderAlignment.middle,
+                      child: HankoSeal.score(
+                        rating,
+                        size: seal.height,
+                        width: seal.width,
+                        fontSize: 14,
+                      ),
                     ),
-                  ),
-                ],
-              ),
-            );
-          }),
+                  ],
+                ),
+              );
+            }),
+          ),
         ),
       ),
     );
@@ -2031,77 +2038,80 @@ class _TonightCardState extends State<_TonightCard>
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
-              // excludeSemantics drops the InkWell's own tap action with the
-              // rest of the subtree, so the node carries onTap itself.
+              // One semantics node (container) with the InkWell's tap and
+              // focus inside it, as the lede (question 119; see
+              // _HomeScreenState._buildLede). Its cover and words are left
+              // out of the tree, since the label says them.
               child: Semantics(
+                container: true,
                 button: true,
                 label: [
                   title,
                   if (facts.isNotEmpty) facts,
                   if (scoreText != null) 'AniList $scoreText',
                 ].join(', '),
-                onTap: _openShow,
-                excludeSemantics: true,
                 child: InkWell(
                   onTap: _openShow,
                   splashFactory: NoSplash.splashFactory,
                   highlightColor: AppTheme.hankoPressWash,
                   hoverColor: AppTheme.hankoPressWash,
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _HankoCover(
-                          url: anime.imageUrl, width: 72, height: 102),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _FadeTitle(
-                              title,
-                              maxLines: 2,
-                              style: AppTheme.hankoSerif(
-                                  fontSize: AppTheme.hankoFeaturedSize,
-                                  height: 1.15),
-                            ),
-                            if (facts.isNotEmpty) ...[
-                              const SizedBox(height: 6),
-                              Text(
-                                facts,
-                                style: AppTheme.hankoSans(
-                                    fontSize: AppTheme.hankoMetaSize,
-                                    color: AppTheme.hankoStone,
-                                    height: 1.4),
+                  child: ExcludeSemantics(
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _HankoCover(
+                            url: anime.imageUrl, width: 72, height: 102),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _FadeTitle(
+                                title,
+                                maxLines: 2,
+                                style: AppTheme.hankoSerif(
+                                    fontSize: AppTheme.hankoFeaturedSize,
+                                    height: 1.15),
                               ),
-                            ],
-                            if (scoreText != null) ...[
-                              const SizedBox(height: 4),
-                              Text.rich(
-                                TextSpan(
-                                  text: 'AniList ',
+                              if (facts.isNotEmpty) ...[
+                                const SizedBox(height: 6),
+                                Text(
+                                  facts,
                                   style: AppTheme.hankoSans(
                                       fontSize: AppTheme.hankoMetaSize,
                                       color: AppTheme.hankoStone,
                                       height: 1.4),
-                                  children: [
-                                    TextSpan(
-                                      text: scoreText,
-                                      style: AppTheme.hankoSans(
-                                        fontSize: AppTheme.hankoMetaSize,
-                                        weight: FontWeight.w500,
-                                        color: AppTheme.hankoAi,
-                                        height: 1.4,
-                                        tabular: true,
-                                      ),
-                                    ),
-                                  ],
                                 ),
-                              ),
+                              ],
+                              if (scoreText != null) ...[
+                                const SizedBox(height: 4),
+                                Text.rich(
+                                  TextSpan(
+                                    text: 'AniList ',
+                                    style: AppTheme.hankoSans(
+                                        fontSize: AppTheme.hankoMetaSize,
+                                        color: AppTheme.hankoStone,
+                                        height: 1.4),
+                                    children: [
+                                      TextSpan(
+                                        text: scoreText,
+                                        style: AppTheme.hankoSans(
+                                          fontSize: AppTheme.hankoMetaSize,
+                                          weight: FontWeight.w500,
+                                          color: AppTheme.hankoAi,
+                                          height: 1.4,
+                                          tabular: true,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
                             ],
-                          ],
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -2169,49 +2179,52 @@ class _WatchlistPick extends StatelessWidget {
               style: AppTheme.hankoSerif(height: 1.3)),
         ),
         const SizedBox(height: 12),
-        // excludeSemantics drops the InkWell's own tap action with the rest
-        // of the subtree, so the node carries onTap itself.
+        // One semantics node (container) with the InkWell's tap and focus
+        // inside it, as the lede (question 119; see
+        // _HomeScreenState._buildLede). Its cover and words are left out of
+        // the tree, since the label says them.
         Semantics(
+          container: true,
           button: true,
           label: fact == null ? title : '$title, $fact',
-          onTap: onOpen,
-          excludeSemantics: true,
           child: InkWell(
             onTap: onOpen,
             splashFactory: NoSplash.splashFactory,
             highlightColor: AppTheme.hankoPressWash,
             hoverColor: AppTheme.hankoPressWash,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _HankoCover(
-                    url: entry['imageUrl'] as String?, width: 72, height: 102),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _FadeTitle(
-                        title,
-                        maxLines: 2,
-                        style: AppTheme.hankoSerif(
-                            fontSize: AppTheme.hankoFeaturedSize,
-                            height: 1.15),
-                      ),
-                      if (fact != null) ...[
-                        const SizedBox(height: 6),
-                        Text(
-                          fact,
-                          style: AppTheme.hankoSans(
-                              fontSize: AppTheme.hankoMetaSize,
-                              color: AppTheme.hankoStone,
-                              height: 1.4),
+            child: ExcludeSemantics(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _HankoCover(
+                      url: entry['imageUrl'] as String?, width: 72, height: 102),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _FadeTitle(
+                          title,
+                          maxLines: 2,
+                          style: AppTheme.hankoSerif(
+                              fontSize: AppTheme.hankoFeaturedSize,
+                              height: 1.15),
                         ),
+                        if (fact != null) ...[
+                          const SizedBox(height: 6),
+                          Text(
+                            fact,
+                            style: AppTheme.hankoSans(
+                                fontSize: AppTheme.hankoMetaSize,
+                                color: AppTheme.hankoStone,
+                                height: 1.4),
+                          ),
+                        ],
                       ],
-                    ],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -2431,14 +2444,14 @@ class _PlusOneTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // excludeSemantics drops the InkWell's own tap action with the rest of
-    // the subtree, so the node carries onTap itself.
+    // One semantics node (container) with the InkWell's tap and focus
+    // inside it, as the lede (question 119; see _HomeScreenState._buildLede).
+    // "+1" is left out of the tree, since the label says what it does.
     return Semantics(
+      container: true,
       button: true,
       enabled: onTap != null,
       label: 'Mark episode $nextEpisode watched',
-      onTap: onTap,
-      excludeSemantics: true,
       child: Material(
         color: AppTheme.hankoSumi3,
         shape: RoundedRectangleBorder(
@@ -2452,14 +2465,16 @@ class _PlusOneTile extends StatelessWidget {
           highlightColor: AppTheme.hankoPressWash,
           hoverColor: AppTheme.hankoPressWash,
           borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
-          child: SizedBox(
-            width: AppTheme.hankoTouch,
-            height: AppTheme.hankoTouch,
-            child: Center(
-              child: Text(
-                '+1',
-                style: AppTheme.hankoSans(
-                    fontSize: 15, weight: FontWeight.w600, height: 1),
+          child: ExcludeSemantics(
+            child: SizedBox(
+              width: AppTheme.hankoTouch,
+              height: AppTheme.hankoTouch,
+              child: Center(
+                child: Text(
+                  '+1',
+                  style: AppTheme.hankoSans(
+                      fontSize: 15, weight: FontWeight.w600, height: 1),
+                ),
               ),
             ),
           ),
@@ -2898,36 +2913,38 @@ class _StripItem extends StatelessWidget {
     final title = anime.titleEnglish ?? anime.title;
     void openShow() => open(
         MaterialPageRoute(builder: (_) => AnimeDetailScreen(anime: anime)));
-    // excludeSemantics drops the InkWell's own tap action with the rest of
-    // the subtree, so the node carries onTap itself.
+    // One semantics node (container) with the InkWell's tap and focus
+    // inside it, as the lede (question 119; see _HomeScreenState._buildLede).
+    // Its cover and title are left out of the tree, since the label says it.
     return Semantics(
+      container: true,
       button: true,
       label: title,
-      onTap: openShow,
-      excludeSemantics: true,
       child: InkWell(
         onTap: openShow,
         splashFactory: NoSplash.splashFactory,
         highlightColor: AppTheme.hankoPressWash,
         hoverColor: AppTheme.hankoPressWash,
-        child: SizedBox(
-          width: width,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _HankoCover(
-                  url: anime.imageUrl, width: width, height: width * 102 / 72),
-              const SizedBox(height: 6),
-              Text(
-                title,
-                style: AppTheme.hankoSans(
-                    fontSize: AppTheme.hankoLabelSize,
-                    weight: FontWeight.w500,
-                    height: 1.25),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
+        child: ExcludeSemantics(
+          child: SizedBox(
+            width: width,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _HankoCover(
+                    url: anime.imageUrl, width: width, height: width * 102 / 72),
+                const SizedBox(height: 6),
+                Text(
+                  title,
+                  style: AppTheme.hankoSans(
+                      fontSize: AppTheme.hankoLabelSize,
+                      weight: FontWeight.w500,
+                      height: 1.25),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -3070,57 +3087,60 @@ class _ChartRow extends StatelessWidget {
     final score = anime.averageScore;
     final scoreText = score == null ? null : (score / 10).toStringAsFixed(1);
     final scaler = MediaQuery.textScalerOf(context);
-    // excludeSemantics drops the InkWell's own tap action with the rest of
-    // the subtree, so the node carries onTap itself.
+    // One semantics node (container) with the InkWell's tap and focus
+    // inside it, as the lede (question 119; see _HomeScreenState._buildLede).
+    // Its rank, cover, title and score are left out of the tree, since the
+    // label says them.
     return Semantics(
+      container: true,
       button: true,
       label: '$rank. $title${scoreText == null ? '' : ', AniList $scoreText'}',
-      onTap: onOpen,
-      excludeSemantics: true,
       child: InkWell(
         onTap: onOpen,
         splashFactory: NoSplash.splashFactory,
         highlightColor: AppTheme.hankoPressWash,
         hoverColor: AppTheme.hankoPressWash,
-        child: SizedBox(
-          height: height,
-          child: Row(
-            children: [
-              SizedBox(
-                width: scaler.scale(18),
-                child: Text(
-                  '$rank',
-                  textAlign: TextAlign.right,
-                  style: AppTheme.hankoSerif(
-                      fontSize: 17, color: AppTheme.hankoStone, height: 1),
-                ),
-              ),
-              const SizedBox(width: 12),
-              _HankoCover(url: anime.imageUrl, width: 34, height: 48),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  title,
-                  maxLines: 1,
-                  softWrap: false,
-                  overflow: TextOverflow.fade,
-                  style: AppTheme.hankoSerif(
-                      fontSize: AppTheme.hankoListTitleSize, height: 1.25),
-                ),
-              ),
-              if (scoreText != null) ...[
-                const SizedBox(width: 12),
-                Text(
-                  scoreText,
-                  style: AppTheme.hankoSans(
-                    fontSize: AppTheme.hankoBodySize,
-                    weight: FontWeight.w500,
-                    color: AppTheme.hankoAi,
-                    tabular: true,
+        child: ExcludeSemantics(
+          child: SizedBox(
+            height: height,
+            child: Row(
+              children: [
+                SizedBox(
+                  width: scaler.scale(18),
+                  child: Text(
+                    '$rank',
+                    textAlign: TextAlign.right,
+                    style: AppTheme.hankoSerif(
+                        fontSize: 17, color: AppTheme.hankoStone, height: 1),
                   ),
                 ),
+                const SizedBox(width: 12),
+                _HankoCover(url: anime.imageUrl, width: 34, height: 48),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    title,
+                    maxLines: 1,
+                    softWrap: false,
+                    overflow: TextOverflow.fade,
+                    style: AppTheme.hankoSerif(
+                        fontSize: AppTheme.hankoListTitleSize, height: 1.25),
+                  ),
+                ),
+                if (scoreText != null) ...[
+                  const SizedBox(width: 12),
+                  Text(
+                    scoreText,
+                    style: AppTheme.hankoSans(
+                      fontSize: AppTheme.hankoBodySize,
+                      weight: FontWeight.w500,
+                      color: AppTheme.hankoAi,
+                      tabular: true,
+                    ),
+                  ),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),
@@ -3289,6 +3309,12 @@ class _ComingUpSectionState extends State<_ComingUpSection> {
   /// a screen reader reaches it apart from the row it sits in. Folded into
   /// the row, the bell's name and state joined the row's node, whose tap
   /// opens the show, so a screen reader couldn't set the reminder.
+  ///
+  /// The tap and focus are an InkWell's inside that node (question 119, as
+  /// the lede): a GestureDetector's tap given to the node over excluded
+  /// semantics had no focus, so the bell couldn't take focus on the web, and
+  /// Enter or Space couldn't set it. The InkWell has Hanko's press wash and
+  /// the theme's focus wash over the 48 dp target.
   Widget _bell(BuildContext context, String animeId, String title,
       int episode, bool isOn) {
     Future<void> toggle() async {
@@ -3325,14 +3351,16 @@ class _ComingUpSectionState extends State<_ComingUpSection> {
       } catch (_) {
         if (!context.mounted) return;
         widget.onToggleReminder(animeId, isOn);
-        // In place of "Reminder set" if it's still showing.
+        // In place of "Reminder set" if it's still showing. Home's failure
+        // copy takes the typographic apostrophe, as its list line does
+        // (question 126).
         ScaffoldMessenger.of(context)
           ..hideCurrentSnackBar()
           ..showSnackBar(
             SnackBar(
               content: Text(newVal
-                  ? "Couldn't set the reminder. Try again."
-                  : "Couldn't remove the reminder. Try again."),
+                  ? "Couldn’t set the reminder. Try again."
+                  : "Couldn’t remove the reminder. Try again."),
               backgroundColor: AppTheme.surfaceLight,
               behavior: SnackBarBehavior.floating,
               margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
@@ -3349,30 +3377,33 @@ class _ComingUpSectionState extends State<_ComingUpSection> {
       button: true,
       toggled: isOn,
       label: 'Remind me when episode $episode of $title airs',
-      onTap: toggle,
-      excludeSemantics: true,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
+      child: InkWell(
         onTap: toggle,
-        child: SizedBox.square(
-          dimension: AppTheme.hankoTouch,
-          child: Center(
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 250),
-              curve: Curves.easeOut,
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: isOn ? AppTheme.hankoWashi : Colors.transparent,
-                borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
-                border: isOn ? null : Border.all(color: AppTheme.hankoEdge),
-              ),
-              child: Icon(
-                isOn
-                    ? Icons.notifications_sharp
-                    : Icons.notifications_none_outlined,
-                color: isOn ? AppTheme.hankoSumi : AppTheme.hankoWashi,
-                size: 18,
+        splashFactory: NoSplash.splashFactory,
+        highlightColor: AppTheme.hankoPressWash,
+        hoverColor: AppTheme.hankoPressWash,
+        borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+        child: ExcludeSemantics(
+          child: SizedBox.square(
+            dimension: AppTheme.hankoTouch,
+            child: Center(
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 250),
+                curve: Curves.easeOut,
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: isOn ? AppTheme.hankoWashi : Colors.transparent,
+                  borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+                  border: isOn ? null : Border.all(color: AppTheme.hankoEdge),
+                ),
+                child: Icon(
+                  isOn
+                      ? Icons.notifications_sharp
+                      : Icons.notifications_none_outlined,
+                  color: isOn ? AppTheme.hankoSumi : AppTheme.hankoWashi,
+                  size: 18,
+                ),
               ),
             ),
           ),
