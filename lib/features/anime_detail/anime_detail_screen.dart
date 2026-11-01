@@ -3787,23 +3787,54 @@ class _NextEpisodeCountdownState extends State<_NextEpisodeCountdown> {
   /// The 24-hour clock, as Home's: "13:00".
   String _timeStr(DateTime dt) => '${_pad(dt.hour)}:${_pad(dt.minute)}';
 
-  @override
-  Widget build(BuildContext context) {
-    // Only this card rebuilds on each tick. Previously the parent screen called
-    // setState every second, rebuilding the whole 2,190-line detail screen.
-    return ValueListenableBuilder<Duration>(
-      valueListenable: widget.timeUntil,
-      builder: (context, timeUntil, _) => _buildCard(context, timeUntil),
-    );
-  }
-
-  Widget _buildCard(BuildContext context, Duration timeUntil) {
+  /// The clock's digits, drawn over a copy of themselves in zeros that is
+  /// laid out but never painted (question 115). The copy gives the clock its
+  /// size, which tabular figures keep the same whatever the digits (Jost's
+  /// are all 0.6 em), so the digits get tight constraints, which make them
+  /// their own relayout boundary, and a RepaintBoundary of their own. A new
+  /// second then lays out and repaints the digits alone: before, the clock's
+  /// layout ran up to the screen's scroll view, which repainted the whole
+  /// page every second (about 2 ms of layout and 6–8 ms of paint per tick
+  /// on the phone).
+  Widget _clock(Duration timeUntil) {
     final d = timeUntil.inDays;
     final h = timeUntil.inHours % 24;
     final m = timeUntil.inMinutes % 60;
     final s = timeUntil.inSeconds % 60;
-    final isImminent = timeUntil.inHours < 1;
+    Widget units(String Function(int) digits) => Row(
+          children: [
+            if (d > 0) ...[
+              _CountUnit(digits(d), 'D'),
+              const SizedBox(width: 6),
+            ],
+            _CountUnit(digits(h), 'H'),
+            const SizedBox(width: 6),
+            _CountUnit(digits(m), 'M'),
+            if (d == 0) ...[
+              const SizedBox(width: 6),
+              _CountUnit(digits(s), 'S'),
+            ],
+          ],
+        );
+    return Stack(
+      children: [
+        Opacity(opacity: 0, child: units((n) => '0' * _pad(n).length)),
+        Positioned.fill(child: RepaintBoundary(child: units(_pad))),
+      ],
+    );
+  }
 
+  @override
+  Widget build(BuildContext context) {
+    // The card builds once, and again when the bell changes. On a tick only
+    // its two parts that show the time can rebuild, and only when what they
+    // show changes (question 115): the clock once a minute while it shows
+    // days and once a second when it shows seconds, the date line when its
+    // words or colour turn. The whole card used to rebuild every second.
+    return _buildCard(context);
+  }
+
+  Widget _buildCard(BuildContext context) {
     Future<void> toggle() async {
       final newVal = !_reminderOn;
       setState(() => _reminderOn = newVal);
@@ -3932,49 +3963,103 @@ class _NextEpisodeCountdownState extends State<_NextEpisodeCountdown> {
                 style: AppTheme.hankoSerif(fontSize: 22),
               ),
               const Spacer(),
-              // Countdown clock
-              if (!timeUntil.isNegative)
-                Row(
-                  children: [
-                    if (d > 0) ...[
-                      _CountUnit(_pad(d), 'D'),
-                      const SizedBox(width: 6),
-                    ],
-                    _CountUnit(_pad(h), 'H'),
-                    const SizedBox(width: 6),
-                    _CountUnit(_pad(m), 'M'),
-                    if (d == 0) ...[
-                      const SizedBox(width: 6),
-                      _CountUnit(_pad(s), 'S'),
-                    ],
-                  ],
-                ),
+              // Countdown clock (see _clock), none before the first tick
+              // when the time has already passed.
+              _CountdownPart(
+                timeUntil: widget.timeUntil,
+                shown: (t) => t.isNegative
+                    ? null
+                    : (
+                        t.inDays > 0 ? t.inDays : null,
+                        t.inHours % 24,
+                        t.inMinutes % 60,
+                        t.inDays == 0 ? t.inSeconds % 60 : null,
+                      ),
+                builder: (context, t) =>
+                    t.isNegative ? const SizedBox.shrink() : _clock(t),
+              ),
             ],
           ),
 
           const SizedBox(height: 6),
 
-          // Friendly date string
-          Row(
-            children: [
-              Icon(
-                Icons.schedule_sharp,
-                size: 14,
-                color: isImminent ? AppTheme.hankoWashi : AppTheme.hankoStone,
-              ),
-              const SizedBox(width: 6),
-              Text(
-                _friendlyDate(),
-                style: AppTheme.hankoSans(
-                    fontSize: AppTheme.hankoLabelSize,
-                    color: isImminent ? AppTheme.hankoWashi : AppTheme.hankoStone),
-              ),
-            ],
+          // Friendly date string, in washi within the hour
+          _CountdownPart(
+            timeUntil: widget.timeUntil,
+            shown: (t) => (_friendlyDate(), t.inHours < 1),
+            builder: (context, t) {
+              final isImminent = t.inHours < 1;
+              return Row(
+                children: [
+                  Icon(
+                    Icons.schedule_sharp,
+                    size: 14,
+                    color: isImminent ? AppTheme.hankoWashi : AppTheme.hankoStone,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    _friendlyDate(),
+                    style: AppTheme.hankoSans(
+                        fontSize: AppTheme.hankoLabelSize,
+                        color: isImminent ? AppTheme.hankoWashi : AppTheme.hankoStone),
+                  ),
+                ],
+              );
+            },
           ),
         ],
       ),
     );
   }
+}
+
+/// A part of the countdown card that shows the time. It listens to the
+/// ticks itself and rebuilds only when [shown], what it picks out of the
+/// time left, changes (question 115).
+class _CountdownPart extends StatefulWidget {
+  const _CountdownPart({required this.timeUntil, required this.shown, required this.builder});
+
+  final ValueListenable<Duration> timeUntil;
+  final Object? Function(Duration timeUntil) shown;
+  final Widget Function(BuildContext context, Duration timeUntil) builder;
+
+  @override
+  State<_CountdownPart> createState() => _CountdownPartState();
+}
+
+class _CountdownPartState extends State<_CountdownPart> {
+  Object? _shown;
+
+  @override
+  void initState() {
+    super.initState();
+    _shown = widget.shown(widget.timeUntil.value);
+    widget.timeUntil.addListener(_tick);
+  }
+
+  @override
+  void didUpdateWidget(_CountdownPart oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.timeUntil != widget.timeUntil) {
+      oldWidget.timeUntil.removeListener(_tick);
+      widget.timeUntil.addListener(_tick);
+    }
+    _shown = widget.shown(widget.timeUntil.value);
+  }
+
+  @override
+  void dispose() {
+    widget.timeUntil.removeListener(_tick);
+    super.dispose();
+  }
+
+  void _tick() {
+    final shown = widget.shown(widget.timeUntil.value);
+    if (shown != _shown) setState(() => _shown = shown);
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.builder(context, widget.timeUntil.value);
 }
 
 class _CountUnit extends StatelessWidget {
