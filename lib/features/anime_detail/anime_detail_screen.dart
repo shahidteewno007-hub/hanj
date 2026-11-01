@@ -3827,37 +3827,48 @@ class _NextEpisodeCountdownState extends State<_NextEpisodeCountdown> {
               const Spacer(),
               // Notification bell: a square that is filled when on, 48 dp
               // to touch, its state in its name for screen readers. It is
-              // its own semantics node with the same tap as the gesture
-              // (question 104; Coming up's bell since 0111ffc). Folded into
-              // the card, the bell's name and state made the whole card one
-              // switch with no tap, so a screen reader couldn't set the
-              // reminder.
+              // its own semantics node (question 104; Coming up's bell since
+              // 0111ffc). Folded into the card, the bell's name and state
+              // made the whole card one switch with no tap, so a screen
+              // reader couldn't set the reminder. The InkWell's tap and focus
+              // are inside that node (question 119, as Profile's rows in
+              // 878a397): a tap given on the node over excluded semantics
+              // reached a screen reader, but the keyboard couldn't reach the
+              // bell. The transparent Material is the InkWell's own ink
+              // layer: ink is drawn under a Material's children, and the
+              // nearest Material was the Scaffold's, under the card's fill,
+              // which would have hidden the bell's focus and press washes.
               Semantics(
                 container: true,
                 button: true,
                 toggled: _reminderOn,
                 label: 'Remind me when episode ${widget.episode} airs',
-                onTap: toggle,
-                excludeSemantics: true,
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: toggle,
-                  child: SizedBox.square(
-                    dimension: AppTheme.hankoTouch,
-                    child: Center(
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 250),
-                        curve: Curves.easeOut,
-                        width: 36, height: 36,
-                        decoration: BoxDecoration(
-                          color: _reminderOn ? AppTheme.hankoWashi : Colors.transparent,
-                          borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
-                          border: _reminderOn ? null : Border.all(color: AppTheme.hankoEdge),
-                        ),
-                        child: Icon(
-                          _reminderOn ? Icons.notifications_sharp : Icons.notifications_none_outlined,
-                          color: _reminderOn ? AppTheme.hankoSumi : AppTheme.hankoWashi,
-                          size: 18,
+                child: Material(
+                  type: MaterialType.transparency,
+                  child: InkWell(
+                    onTap: toggle,
+                    borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+                    splashFactory: NoSplash.splashFactory,
+                    highlightColor: AppTheme.hankoPressWash,
+                    child: ExcludeSemantics(
+                      child: SizedBox.square(
+                        dimension: AppTheme.hankoTouch,
+                        child: Center(
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 250),
+                            curve: Curves.easeOut,
+                            width: 36, height: 36,
+                            decoration: BoxDecoration(
+                              color: _reminderOn ? AppTheme.hankoWashi : Colors.transparent,
+                              borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+                              border: _reminderOn ? null : Border.all(color: AppTheme.hankoEdge),
+                            ),
+                            child: Icon(
+                              _reminderOn ? Icons.notifications_sharp : Icons.notifications_none_outlined,
+                              color: _reminderOn ? AppTheme.hankoSumi : AppTheme.hankoWashi,
+                              size: 18,
+                            ),
+                          ),
                         ),
                       ),
                     ),
