@@ -1246,14 +1246,21 @@ class _DotGridPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()..color = dotColor..style = PaintingStyle.fill;
+    // Every dot in one call. There are about 280 on a grid card, common or
+    // locked, and each was a draw call of its own on every frame the card
+    // was on screen (Impeller keeps no raster cache). Round points 1.6 px
+    // across are the same 0.8 px dots.
     const spacing = 12.0;
     const radius  = 0.8;
-    for (double x = 0; x < size.width; x += spacing) {
-      for (double y = 0; y < size.height; y += spacing) {
-        canvas.drawCircle(Offset(x, y), radius, paint);
-      }
-    }
+    final paint = Paint()
+      ..color = dotColor
+      ..strokeWidth = radius * 2
+      ..strokeCap = StrokeCap.round;
+    final dots = <Offset>[
+      for (double x = 0; x < size.width; x += spacing)
+        for (double y = 0; y < size.height; y += spacing) Offset(x, y),
+    ];
+    canvas.drawPoints(ui.PointMode.points, dots, paint);
   }
 
   @override bool shouldRepaint(_DotGridPainter old) => false;
