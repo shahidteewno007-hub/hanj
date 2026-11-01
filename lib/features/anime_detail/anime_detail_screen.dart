@@ -86,6 +86,13 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
   // listens, so scrolling never rebuilds the screen.
   final ScrollController _scroll = ScrollController();
 
+  // Bumped by _staffChanged when the staff answer, its loading flags or the
+  // next episode change. Only what shows them listens: the bar's tint, the
+  // header and the tab content (question 115). A whole-screen setState there
+  // rebuilt 583 widgets in one frame on the phone when the answer arrived,
+  // the app bar's and the tab bar's among them, which show none of it.
+  final ValueNotifier<int> _staffVersion = ValueNotifier<int>(0);
+
   @override
   void initState() {
     super.initState();
@@ -148,6 +155,7 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
     _countdownTimer?.cancel();
     _timeUntilAiring.dispose();
     _scroll.dispose();
+    _staffVersion.dispose();
     super.dispose();
   }
 
@@ -256,8 +264,21 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
     } catch (_) { return null; }
   }
 
+  /// Applies a change to the staff answer's state and rebuilds only what
+  /// shows it (question 115). With the classic header back on, whose hero
+  /// shows the gallery and the characters, the whole screen rebuilds, as it
+  /// always did.
+  void _staffChanged(VoidCallback change) {
+    if (_classicDetail) {
+      setState(change);
+      return;
+    }
+    change();
+    _staffVersion.value++;
+  }
+
   Future<void> _loadStaffData() async {
-    if (mounted) setState(() { _isLoadingStaff = true; _isLoadingRelated = true; });
+    if (mounted) _staffChanged(() { _isLoadingStaff = true; _isLoadingRelated = true; });
     try {
       final data = await _aniListService.getAnimeStaff(_anime.id);
       if (mounted) {
@@ -276,7 +297,7 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
         if (gallery.isEmpty && widget.anime.imageUrl != null) {
           gallery.add(widget.anime.imageUrl!);
         }
-        setState(() {
+        _staffChanged(() {
           _staffData = data;
           _isLoadingStaff = false;
           _characterImages = imgs;
@@ -296,13 +317,13 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
         }
       }
     } catch (_) {
-      if (mounted) setState(() { _isLoadingStaff = false; _isLoadingRelated = false; });
+      if (mounted) _staffChanged(() { _isLoadingStaff = false; _isLoadingRelated = false; });
     }
   }
 
   /// The next episode's live countdown, from the staff response.
   void _startCountdown(DateTime dt, int? episode) {
-    setState(() {
+    _staffChanged(() {
       _nextAiringAt   = dt;
       _nextEpisodeNum = episode;
     });
@@ -783,47 +804,53 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
                   height: math.max(52.0, 32 + MediaQuery.textScalerOf(context).scale(13) * 1.5),
                 ),
               ),
-            // Tab content — swipeable via horizontal drag
+            // Tab content — swipeable via horizontal drag. It rebuilds with
+            // the staff answer on its own (question 115), from here down, as
+            // the whole screen's setState did: a tab fading out keeps what
+            // it showed.
             SliverToBoxAdapter(
-              child: GestureDetector(
-                onHorizontalDragEnd: (details) {
-                  if (details.primaryVelocity == null) return;
-                  if (details.primaryVelocity! < -200 && _selectedTab < 3) {
-                    setState(() { _swipeDirection = 1; _selectedTab++; });
-                  } else if (details.primaryVelocity! > 200 && _selectedTab > 0) {
-                    setState(() { _swipeDirection = -1; _selectedTab--; });
-                  }
-                },
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 220),
-                  transitionBuilder: (child, animation) {
-                    final offset = Tween<Offset>(
-                      begin: Offset(_swipeDirection * 0.18, 0),
-                      end: Offset.zero,
-                    ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOut));
-                    return SlideTransition(
-                      position: offset,
-                      child: FadeTransition(opacity: animation, child: child),
-                    );
+              child: ListenableBuilder(
+                listenable: _staffVersion,
+                builder: (_, _) => GestureDetector(
+                  onHorizontalDragEnd: (details) {
+                    if (details.primaryVelocity == null) return;
+                    if (details.primaryVelocity! < -200 && _selectedTab < 3) {
+                      setState(() { _swipeDirection = 1; _selectedTab++; });
+                    } else if (details.primaryVelocity! > 200 && _selectedTab > 0) {
+                      setState(() { _swipeDirection = -1; _selectedTab--; });
+                    }
                   },
-                  child: KeyedSubtree(
-                    key: ValueKey(_selectedTab),
-                    child: ConstrainedBox(
-                      constraints: BoxConstraints(
-                          minHeight: screenHeight * 0.4),
-                      child: _TabContent(
-                        selectedIndex: _selectedTab,
-                        anime: anime,
-                        staffData: _staffData,
-                        isLoadingStaff: _isLoadingStaff,
-                        cleanDescription: _cleanDescription,
-                        currentEpisode: _currentEpisode,
-                        relatedAnime: _relatedAnime,
-                        isLoadingRelated: _isLoadingRelated,
-                        nextAiringAt: _nextAiringAt,
-                        nextEpisodeNum: _nextEpisodeNum,
-                        timeUntilAiring: _timeUntilAiring,
-                        characterImages: _characterImages,
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 220),
+                    transitionBuilder: (child, animation) {
+                      final offset = Tween<Offset>(
+                        begin: Offset(_swipeDirection * 0.18, 0),
+                        end: Offset.zero,
+                      ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOut));
+                      return SlideTransition(
+                        position: offset,
+                        child: FadeTransition(opacity: animation, child: child),
+                      );
+                    },
+                    child: KeyedSubtree(
+                      key: ValueKey(_selectedTab),
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(
+                            minHeight: screenHeight * 0.4),
+                        child: _TabContent(
+                          selectedIndex: _selectedTab,
+                          anime: anime,
+                          staffData: _staffData,
+                          isLoadingStaff: _isLoadingStaff,
+                          cleanDescription: _cleanDescription,
+                          currentEpisode: _currentEpisode,
+                          relatedAnime: _relatedAnime,
+                          isLoadingRelated: _isLoadingRelated,
+                          nextAiringAt: _nextAiringAt,
+                          nextEpisodeNum: _nextEpisodeNum,
+                          timeUntilAiring: _timeUntilAiring,
+                          characterImages: _characterImages,
+                        ),
                       ),
                     ),
                   ),
@@ -1077,9 +1104,6 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
     // The URL the previous screen showed: decoded already, so the print is
     // there in the first frame.
     final cover = widget.anime.imageUrl ?? anime.imageUrl;
-    final tint = AppTheme.hankoCoverTint(_coverColor);
-    final studio = _studioName;
-    final director = _director;
     return [
       SliverAppBar(
         pinned: true,
@@ -1107,57 +1131,70 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
           ),
           const SizedBox(width: 4),
         ],
-        flexibleSpace: _HankoBar(
-          scroll: _scroll,
-          tint: tint,
-          geometry: HankoDetailHeader.geometryFor(MediaQuery.sizeOf(context).width),
-          title: title,
+        // The bar and the header below take the cover's tint, the studio
+        // and the rest from the staff answer, and rebuild with it on their
+        // own (question 115).
+        flexibleSpace: ListenableBuilder(
+          listenable: _staffVersion,
+          builder: (_, _) => _HankoBar(
+            scroll: _scroll,
+            tint: AppTheme.hankoCoverTint(_coverColor),
+            geometry: HankoDetailHeader.geometryFor(MediaQuery.sizeOf(context).width),
+            title: title,
+          ),
         ),
       ),
       SliverToBoxAdapter(
-        child: HankoDetailHeader(
-          title: title,
-          nativeTitle: _nativeTitle,
-          coverUrl: cover,
-          sharpCoverUrl: _sharpCover,
-          coverColor: _coverColor,
-          // The studio and director links (H3 k): the pages Detail already
-          // opened from its Information block and its Cast tab.
-          studio: studio,
-          onStudio: studio == null
-              ? null
-              : () => Navigator.push(context,
-                  MaterialPageRoute(builder: (_) => StudioDetailScreen(studioName: studio))),
-          director: director?.name,
-          onDirector: director == null
-              ? null
-              : () => Navigator.push(context, MaterialPageRoute(
-                  builder: (_) => StaffDetailScreen(staffId: director.id, staffName: director.name))),
-          format: anime.format,
-          season: anime.season,
-          seasonYear: anime.seasonYear,
-          episodes: anime.episodes,
-          duration: _staffData?['duration'] as int?,
-          airing: anime.status == 'RELEASING',
-          entryLoaded: _entryLoaded,
-          status: _currentStatus,
-          rating: _userRating,
-          ratedAt: _ratedAt,
-          currentEpisode: _currentEpisode,
-          nextEpisode: _nextEpisodeNum,
-          nextAiringAt: _nextAiringAt,
-          // A MyAnimeList import AniList hasn't replaced still carries MAL's
-          // mean (the import stores mean × 10), so it gets no "AniList" crowd.
-          averageScore: _isMalImport && identical(anime, widget.anime) ? null : anime.averageScore,
-          scoreDistribution: _scoreDistribution,
-          busy: _isLoading,
-          onRate: _rate,
-          onStatus: _showAddToListSheet,
-          onBump: _bump,
-          onCover: cover == null
-              ? null
-              : () => _openGallery(context,
-                  _isMalImport || _galleryImages.isEmpty ? [cover] : _galleryImages, 0),
+        child: ListenableBuilder(
+          listenable: _staffVersion,
+          builder: (_, _) {
+            final studio = _studioName;
+            final director = _director;
+            return HankoDetailHeader(
+              title: title,
+              nativeTitle: _nativeTitle,
+              coverUrl: cover,
+              sharpCoverUrl: _sharpCover,
+              coverColor: _coverColor,
+              // The studio and director links (H3 k): the pages Detail already
+              // opened from its Information block and its Cast tab.
+              studio: studio,
+              onStudio: studio == null
+                  ? null
+                  : () => Navigator.push(context,
+                      MaterialPageRoute(builder: (_) => StudioDetailScreen(studioName: studio))),
+              director: director?.name,
+              onDirector: director == null
+                  ? null
+                  : () => Navigator.push(context, MaterialPageRoute(
+                      builder: (_) => StaffDetailScreen(staffId: director.id, staffName: director.name))),
+              format: anime.format,
+              season: anime.season,
+              seasonYear: anime.seasonYear,
+              episodes: anime.episodes,
+              duration: _staffData?['duration'] as int?,
+              airing: anime.status == 'RELEASING',
+              entryLoaded: _entryLoaded,
+              status: _currentStatus,
+              rating: _userRating,
+              ratedAt: _ratedAt,
+              currentEpisode: _currentEpisode,
+              nextEpisode: _nextEpisodeNum,
+              nextAiringAt: _nextAiringAt,
+              // A MyAnimeList import AniList hasn't replaced still carries MAL's
+              // mean (the import stores mean × 10), so it gets no "AniList" crowd.
+              averageScore: _isMalImport && identical(anime, widget.anime) ? null : anime.averageScore,
+              scoreDistribution: _scoreDistribution,
+              busy: _isLoading,
+              onRate: _rate,
+              onStatus: _showAddToListSheet,
+              onBump: _bump,
+              onCover: cover == null
+                  ? null
+                  : () => _openGallery(context,
+                      _isMalImport || _galleryImages.isEmpty ? [cover] : _galleryImages, 0),
+            );
+          },
         ),
       ),
       const SliverToBoxAdapter(child: SizedBox(height: 16)),
