@@ -103,8 +103,8 @@ deploys stay off-limits.
 
 ```bash
 flutter run -d chrome              # the normal dev loop
-flutter analyze                    # baseline 2026-10-18, 0 errors: main 181 (48 warnings, 133 infos),
-                                   #   fix/loki-lock 179 (48 warnings, 131 infos)
+flutter analyze                    # baseline 2026-11-01, 0 errors: main c5f6622 187 (59 warnings,
+                                   #   128 infos); fix/loki-lock was 179 (48, 131) on 2026-10-18
 flutter test                       # 3 files, 16 tests; flutter test test/<file>.dart for one
 flutter build web                  # must be clean before calling a change done
 ```
@@ -280,14 +280,53 @@ position under them is **unresolved**. The contact AniList names is `contact@ani
 
 ### Design system
 
-Palette — background `#0D0B09`, coral `#E8624A`, ivory `#F3EEE7`. Defined in
-`lib/core/theme/app_theme.dart`.
+**The look is Hanko**, on `main` since 2026-11-01 (merge `c5f6622`), approved by Shahid stage
+by stage. Tokens and type live in `lib/core/theme/app_theme.dart`.
 
-Type roles — **Playfair Display** for headings, **DM Sans** for body, **Space Grotesk** for
-numerals and mono. These three are the app's identity: they're on the store listing and in
-the shareable cards people post. **Do not propose replacing them, adding a fourth family, or
-substituting anything "cleaner".** Improving typography here means improving how these three
+Palette — sumi `#121110` background (`hankoSumi`; `#1B1917` and `#24211E` for sheets and
+tiles), washi `#EEE7DA` text (`hankoWashi`), stone `#A39C90` for secondary text, ai (indigo)
+`#8A99BE` for the crowd's numbers. Coral `#E8624A` (`AppTheme.primary`) is the seal, and
+**coral means the user's own verdicts, nothing else**. New work doesn't use it for "press
+here" buttons, selected tabs or decoration (the selected tab is washi). Screens not yet
+converted still do; see below.
+
+Type roles, always through `AppTheme`'s helpers:
+
+- headings — **Shippori Mincho 600**, `AppTheme.serif()`. A bundled 72 KB Latin-only cut
+  (`assets/fonts/ShipporiMinchoLatin-SemiBold.ttf`, SIL OFL 1.1, licence beside it) with one
+  weight and no italic, so every weight and style is set upright 600. It has **no CJK glyphs
+  on purpose**: native titles appear only on Detail's title slip, in the phone's own font.
+- body — **Jost** 400–600, `AppTheme.sans()`. No other weight is ever downloaded.
+- numerals, labels and mono — **Jost with tabular figures**, `AppTheme.mono()`.
+
+`AppTheme.shipporiMincho()`, `.jost()` and `.jostTabular()` take GoogleFonts' named
+parameters, so moving a call site to Hanko changes only its name. These faces are the app's
+identity now. **Do not propose replacing them, adding a family, or substituting anything
+"cleaner"**, outside the exception below. Improving typography here means improving how they
 are used.
+
+Two places keep earlier faces, and neither is licence to add one elsewhere. `lib/cadre/` (the
+self-contained card battler) wasn't in Hanko's scope and still calls DM Sans, Playfair Display
+and Space Grotesk directly. **Space Mono** stays confined to `hanj_card.dart`, as before.
+
+Components — `lib/widgets/hanko_*.dart`: `HankoSeal` (the user's rating), `HankoReel` (cover
+rows), `HankoTitleSlip` (Detail's title, with the native title), `HankoSealRegister` (the
+crowd's ratings; it replaced the bar charts) and `HankoRatingRuler` (rating input).
+`lib/hanko_dev.dart` is a dev-only specimen (`flutter run -t lib/hanko_dev.dart`),
+unreferenced **by design** — not an orphan.
+
+A custom control's tap **and** keyboard focus must live in the node a screen reader lands on:
+`Semantics(container: true, button: true, label: …)` around the `InkWell`, with the visual
+content inside it under `ExcludeSemantics`. `excludeSemantics: true` on the outer node drops
+the InkWell's tap and focus.
+
+Not yet converted: My List, Discover, Pulse and Search, and the card sheet's chips, still have
+pre-Hanko components (rounded cards and pills, coloured chips, ★ ratings) under Hanko's type.
+Converting them is a design stage of its own, and it needs Shahid's approval like any other.
+The store listing's screenshots, and the share images people posted before the merge, show
+the earlier look. The design record, with every approval in Shahid's words and the open
+questions, is `DESIGN.md` on branch `claude/hanj-ui-designer-subagent-927762`. It is not on
+`main`.
 
 **Exception for design-concept work (Shahid, 2026-10-26).** The existing palette, typography
 and component styling stay the default, but they may be questioned. If one of them is
@@ -296,18 +335,17 @@ limiting Hanj, explain why and present an alternative, fonts included, as a clea
 already posted. Nothing in the design system or application code changes until Shahid
 explicitly approves a direction. `.claude/agents/hanj-ui-designer.md` quotes the instruction.
 
-> **The drift is resolved — W3, 2026-09.** `AppTheme.sans()` and the `TextTheme` body/title
-> tier resolve to `GoogleFonts.dmSans`. **`GoogleFonts.inter` appears nowhere** in `lib/`,
-> `web/`, `pubspec.yaml` or `android/`, and Noto Serif JP is gone from `tomo_screen.dart` —
-> the four mentions left there are comments explaining why it is *not* used.
+> **Font call sites, 2026-11-01 (`c5f6622`).** `GoogleFonts.*` in `lib/`: Jost 2, both inside
+> `app_theme.dart`'s helpers; DM Sans 67, Space Grotesk 24 and Playfair Display 11, all in
+> `lib/cadre/`; Space Mono 9, all in `hanj_card.dart`. Shippori Mincho isn't a GoogleFonts
+> call: it's the bundled asset, declared under `fonts:` in `pubspec.yaml`. Three older
+> `fontFamily:` literals predate Hanko: `'SpaceGrotesk'` in `discovery_screen.dart` and
+> `soulmatch_screen.dart`, `'monospace'` in `social_screen.dart`.
+> **`GoogleFonts.inter` appears nowhere**, and Noto Serif JP is gone from `tomo_screen.dart`.
 >
-> **Four** families ship now, not six. `GoogleFonts.*` call sites in `lib/`: DM Sans 117,
-> Playfair Display 55, Space Grotesk 44, Space Mono 9. The three type roles above are
-> unchanged; **Space Mono is the one standing exception**, confined to `hanj_card.dart`, and
-> it is not licence to add a fifth.
->
-> Background: `PERF.md` S6-1 and §8c for what the change cost, `WEB.md` §3.1 for what it
-> saved on web. Counts re-verified 2026-09-07 — see `WEB.md` §9.3a.
+> History: before Hanko the roles were Playfair Display, DM Sans and Space Grotesk, settled in
+> W3 (2026-09). `PERF.md` S6-1 and §8c record what that change cost, and `WEB.md` §3.1 and
+> §9.3a what it saved on web.
 
 Also settled: **the six card rarity tiers** — `enum CardRarity { common, rare, epic,
 legendary, seasonal, secret }` in `lib/features/cards/hanj_card.dart`. The collection screen
