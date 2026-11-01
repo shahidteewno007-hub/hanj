@@ -555,8 +555,7 @@ class _LegendaryCard extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                         ),
                       const SizedBox(height: 6),
-                      Text(card.description, style: TextStyle(fontSize: w * 0.045, color: const Color(0xFFCCBB99).withOpacity(0.8), height: 1.45), maxLines: nameOnOneLine ? 3 : 2, overflow: TextOverflow.ellipsis),
-                      const Spacer(),
+                      Expanded(child: _PanelDescription(text: card.description, style: TextStyle(fontSize: w * 0.045, color: const Color(0xFFCCBB99).withOpacity(0.8), height: 1.45), maxLines: nameOnOneLine ? 3 : 2)),
                       // Divider
                       Container(height: 0.5, color: gold.withOpacity(0.25)),
                       const SizedBox(height: 6),
@@ -748,16 +747,16 @@ class _SeasonalCard extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                         ),
                         const SizedBox(height: 6),
-                        Text(
-                          card.description,
-                          style: TextStyle(
-                            fontSize: w * 0.045,
-                            color: const Color(0xFF88AA99).withOpacity(0.85),
-                            height: 1.45),
-                          maxLines: 3,
-                          overflow: TextOverflow.ellipsis,
+                        Expanded(
+                          child: _PanelDescription(
+                            text: card.description,
+                            style: TextStyle(
+                              fontSize: w * 0.045,
+                              color: const Color(0xFF88AA99).withOpacity(0.85),
+                              height: 1.45),
+                            maxLines: 3,
+                          ),
                         ),
-                        const Spacer(),
                         Container(height: 0.5, color: green.withOpacity(0.25)),
                         const SizedBox(height: 6),
                         _Footer(card: card, color: green.withOpacity(0.45)),
@@ -1033,7 +1032,16 @@ class _HanjFeather extends StatelessWidget {
   }
 }
 
-/// Footer row — № XXXX left, RARITY · CATEGORY right
+/// Footer — № XXXX, then RARITY · CATEGORY. It was a Row of two Flexibles,
+/// which held the label to half the row, so every face cut its category
+/// short ("COMMON · …", "LEGENDARY ·…", "WATC…" on the phone), shared images
+/// included. As a Wrap the label still sits 8 px after the number, and takes
+/// a line of its own when the two don't fit side by side, as on every
+/// legendary and seasonal face. The label's line is 7 px (7.5 × 14/15, the
+/// leading split evenly), so a line of its own costs 7 px, not 11; and
+/// because 7 is a whole pixel, beside the number, centred, its baseline stays
+/// where it was. Where a panel can't hold the extra line, its description
+/// gives up its last line (_PanelDescription).
 class _Footer extends StatelessWidget {
   final HanjCardData card;
   final Color color;
@@ -1042,27 +1050,55 @@ class _Footer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
+    return Wrap(
+      spacing: 8,
+      crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        Flexible(
-          child: Text(
-            card.cardNumberFormatted,
-            style: GoogleFonts.spaceMono(fontSize: 7.5, color: color, letterSpacing: 0.5),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
+        Text(
+          card.cardNumberFormatted,
+          style: GoogleFonts.spaceMono(fontSize: 7.5, color: color, letterSpacing: 0.5),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
         ),
-        const SizedBox(width: 8),
-        Flexible(
-          child: Text(
-            rightText ?? '${card.rarityLabel}  ·  ${card.category}',
-            style: GoogleFonts.spaceMono(fontSize: 7.5, color: color, letterSpacing: 0.5),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            textAlign: TextAlign.right,
-          ),
+        Text(
+          rightText ?? '${card.rarityLabel}  ·  ${card.category}',
+          style: GoogleFonts.spaceMono(fontSize: 7.5, color: color, letterSpacing: 0.5, height: 14 / 15)
+              .copyWith(leadingDistribution: TextLeadingDistribution.even),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
         ),
       ],
+    );
+  }
+}
+
+/// A legendary or seasonal panel's description, given the lines the panel
+/// has left, up to [maxLines]. It takes the place of the Spacer that sat
+/// below it, so where everything fits nothing moves. Where it doesn't (a
+/// two-line name with a footer on two lines), the description gives up its
+/// last line, the trade _LegendaryCard already makes for a two-line name.
+/// Measured when the panel is laid out, so it follows the fonts as they load.
+class _PanelDescription extends StatelessWidget {
+  final String text;
+  final TextStyle style;
+  final int maxLines;
+  const _PanelDescription({required this.text, required this.style, required this.maxLines});
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final line = TextPainter(
+          text: TextSpan(text: ' ', style: DefaultTextStyle.of(context).style.merge(style)),
+          textDirection: TextDirection.ltr,
+          textScaler: MediaQuery.textScalerOf(context),
+        )..layout();
+        final lineHeight = line.height;
+        line.dispose();
+        final lines = math.min(maxLines, (constraints.maxHeight / lineHeight + 0.001).floor());
+        if (lines < 1) return const SizedBox.shrink();
+        return Text(text, style: style, maxLines: lines, overflow: TextOverflow.ellipsis);
+      },
     );
   }
 }
