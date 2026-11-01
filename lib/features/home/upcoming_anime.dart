@@ -686,55 +686,61 @@ class _UpcomingAnimeRowState extends State<UpcomingAnimeRow> {
               void open() => Navigator.push(context,
                   MaterialPageRoute(
                       builder: (_) => AnimeDetailScreen(anime: anime)));
-              // excludeSemantics drops the InkWell's own tap action with the
-              // rest of the subtree, so the node carries onTap itself.
+              // Its own semantics node (container), named by the title,
+              // with the InkWell's tap and focus inside it (question 119,
+              // as Profile's rows since dafb7c5). A tap given to the node
+              // over excluded semantics let a screen reader press it but
+              // left out the InkWell's focus, so on the web it couldn't take
+              // focus. The poster and title are left out of the tree, since
+              // the label says it.
               return Semantics(
+                container: true,
                 button: true,
                 label: title,
-                onTap: open,
-                excludeSemantics: true,
                 child: InkWell(
                   onTap: open,
                   splashFactory: NoSplash.splashFactory,
                   highlightColor: AppTheme.hankoPressWash,
                   hoverColor: AppTheme.hankoPressWash,
-                  child: SizedBox(
-                    width: itemWidth,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Poster
-                        ClipRRect(
-                          borderRadius:
-                              BorderRadius.circular(AppTheme.hankoRadius),
-                          child: SizedBox(
-                            width: itemWidth,
-                            height: coverHeight,
-                            child: ColoredBox(
-                              color: AppTheme.hankoSumi3,
-                              child: anime.imageUrl != null
-                                  ? CachedNetworkImage(
-                                      imageUrl: anime.imageUrl!,
-                                      fit: BoxFit.cover,
-                                      errorWidget: (_, _, _) =>
-                                          const SizedBox.expand(),
-                                    )
-                                  : const SizedBox.expand(),
+                  child: ExcludeSemantics(
+                    child: SizedBox(
+                      width: itemWidth,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Poster
+                          ClipRRect(
+                            borderRadius:
+                                BorderRadius.circular(AppTheme.hankoRadius),
+                            child: SizedBox(
+                              width: itemWidth,
+                              height: coverHeight,
+                              child: ColoredBox(
+                                color: AppTheme.hankoSumi3,
+                                child: anime.imageUrl != null
+                                    ? CachedNetworkImage(
+                                        imageUrl: anime.imageUrl!,
+                                        fit: BoxFit.cover,
+                                        errorWidget: (_, _, _) =>
+                                            const SizedBox.expand(),
+                                      )
+                                    : const SizedBox.expand(),
+                              ),
                             ),
                           ),
-                        ),
-                        const SizedBox(height: 6),
-                        // Title
-                        Text(
-                          title,
-                          style: AppTheme.hankoSans(
-                              fontSize: AppTheme.hankoLabelSize,
-                              weight: FontWeight.w500,
-                              height: 1.25),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
+                          const SizedBox(height: 6),
+                          // Title
+                          Text(
+                            title,
+                            style: AppTheme.hankoSans(
+                                fontSize: AppTheme.hankoLabelSize,
+                                weight: FontWeight.w500,
+                                height: 1.25),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
