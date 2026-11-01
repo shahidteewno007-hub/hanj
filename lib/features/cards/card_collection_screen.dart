@@ -580,6 +580,7 @@ class _HanjCardTile extends StatelessWidget {
             isUnlocked: isUnlocked,
             width:      constraints.maxWidth,
             height:     constraints.maxHeight,
+            cachedGlow: true, // the glow's blur, once per rarity (PERF.md S2-2)
           );
         },
       ),
