@@ -2652,6 +2652,11 @@ class _OverviewTab extends StatelessWidget {
         ? (staffData!['studios']['nodes'] as List)[0]['name'] as String?
         : null;
 
+    // The sections carry keys (question 115), so the list matches them by
+    // key, not by place. The countdown card arrives with the staff answer
+    // at the top, and Where to watch above the discussion row; unkeyed,
+    // every section after them met a different widget at its old place and
+    // was built again from nothing, text layout and all.
     return ListView(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
@@ -2668,13 +2673,13 @@ class _OverviewTab extends StatelessWidget {
           const SizedBox(height: 24),
         ],
 
-        const AnilistSavedNote(padding: EdgeInsets.only(bottom: 12)),
+        const AnilistSavedNote(key: ValueKey('saved note'), padding: EdgeInsets.only(bottom: 12)),
 
         // Synopsis. Hanko: a Mincho head, no coral bar and no tracked-caps
         // eyebrow under it.
         if (anime.description != null) ...[
-          const _HankoSectionHead(title: 'Synopsis', aside: null),
-          _SynopsisText(text: cleanDescription(anime.description!)),
+          const _HankoSectionHead(key: ValueKey('synopsis head'), title: 'Synopsis', aside: null),
+          _SynopsisText(key: const ValueKey('synopsis'), text: cleanDescription(anime.description!)),
           const SizedBox(height: 28),
         ],
 
@@ -2693,9 +2698,9 @@ class _OverviewTab extends StatelessWidget {
         // Genres, once, as one line (H3 i): today's header showed three as
         // chips and this tab all of them again.
         if (anime.genres.isNotEmpty) ...[
-          Text('Genres', style: AppTheme.hankoSans(fontSize: AppTheme.hankoLabelSize, color: AppTheme.hankoStone)),
+          Text('Genres', key: const ValueKey('genres head'), style: AppTheme.hankoSans(fontSize: AppTheme.hankoLabelSize, color: AppTheme.hankoStone)),
           const SizedBox(height: 6),
-          Text(anime.genres.join(', '), style: AppTheme.hankoSans(height: 1.5)),
+          Text(anime.genres.join(', '), key: const ValueKey('genres'), style: AppTheme.hankoSans(height: 1.5)),
           const SizedBox(height: 28),
         ],
 
@@ -2740,8 +2745,8 @@ class _OverviewTab extends StatelessWidget {
 
         // Trailer, under a Mincho head like Overview's other sections.
         if (anime.trailerUrl != null) ...[
-          const _HankoSectionHead(title: 'Trailer', aside: null),
-          TrailerButton(trailerUrl: anime.trailerUrl!),
+          const _HankoSectionHead(key: ValueKey('trailer head'), title: 'Trailer', aside: null),
+          TrailerButton(key: const ValueKey('trailer'), trailerUrl: anime.trailerUrl!),
           const SizedBox(height: 28),
         ],
 
@@ -2750,14 +2755,15 @@ class _OverviewTab extends StatelessWidget {
         // search links, and only for shows with a trailer. The links carry no
         // region, so nothing here promises it streams where you are.
         if (_streams.isNotEmpty) ...[
-          const _HankoSectionHead(title: 'Where to watch', aside: 'Official links on AniList'),
-          _HankoWatchLinks(links: _streams),
+          const _HankoSectionHead(key: ValueKey('watch head'), title: 'Where to watch', aside: 'Official links on AniList'),
+          _HankoWatchLinks(key: const ValueKey('watch links'), links: _streams),
           const SizedBox(height: 28),
         ],
 
         // ── Discussion ──────────────────────────────────────
         // A plain 48 dp row in Hanko: no card, no coral arrow.
         InkWell(
+          key: const ValueKey('discussion'),
           onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => EpisodeDiscussionScreen(anime: anime, episodeNumber: 0))),
           splashFactory: NoSplash.splashFactory,
           highlightColor: AppTheme.hankoPressWash,
@@ -2781,7 +2787,7 @@ class _OverviewTab extends StatelessWidget {
 
 /// A section's head in Hanko: Shippori Mincho 16, with a note on the right.
 class _HankoSectionHead extends StatelessWidget {
-  const _HankoSectionHead({required this.title, required this.aside});
+  const _HankoSectionHead({super.key, required this.title, required this.aside});
 
   final String title;
   final String? aside;
@@ -2815,7 +2821,7 @@ class _HankoSectionHead extends StatelessWidget {
 /// The streaming links as plain rows, two to a line: Hanko keeps pills for
 /// controls. Each opens outside the app.
 class _HankoWatchLinks extends StatelessWidget {
-  const _HankoWatchLinks({required this.links});
+  const _HankoWatchLinks({super.key, required this.links});
 
   final List<({String site, String url})> links;
 
@@ -3411,7 +3417,7 @@ class _InfoRow extends StatelessWidget {
 
 class _SynopsisText extends StatefulWidget {
   final String text;
-  const _SynopsisText({required this.text});
+  const _SynopsisText({super.key, required this.text});
 
   @override
   State<_SynopsisText> createState() => _SynopsisTextState();
