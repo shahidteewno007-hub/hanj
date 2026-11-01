@@ -1359,12 +1359,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
     // The list couldn't be read: say so, naming no cause the app can't
     // verify (ANILIST-OFFLINE-0908-REPORT.md), instead of greeting someone
-    // with a list as if it were empty.
+    // with a list as if it were empty. The line takes the typographic
+    // apostrophe (question 126): Shippori draws the typewriter one as a
+    // straight tick, as Profile's failure line found (question 109).
     if (_listFailed) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text("Couldn't load your list just now.", style: style),
+          Text("Couldn’t load your list just now.", style: style),
           const SizedBox(height: 12),
           _TextTile(label: 'Retry', onTap: _loadData),
         ],
@@ -3325,14 +3327,16 @@ class _ComingUpSectionState extends State<_ComingUpSection> {
       } catch (_) {
         if (!context.mounted) return;
         widget.onToggleReminder(animeId, isOn);
-        // In place of "Reminder set" if it's still showing.
+        // In place of "Reminder set" if it's still showing. Home's failure
+        // copy takes the typographic apostrophe, as its list line does
+        // (question 126).
         ScaffoldMessenger.of(context)
           ..hideCurrentSnackBar()
           ..showSnackBar(
             SnackBar(
               content: Text(newVal
-                  ? "Couldn't set the reminder. Try again."
-                  : "Couldn't remove the reminder. Try again."),
+                  ? "Couldn’t set the reminder. Try again."
+                  : "Couldn’t remove the reminder. Try again."),
               backgroundColor: AppTheme.surfaceLight,
               behavior: SnackBarBehavior.floating,
               margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
