@@ -426,6 +426,7 @@ class _PrintRoom extends StatelessWidget {
                             style: AppTheme.hankoSerif(
                                 fontSize: AppTheme.hankoListTitleSize)),
                       ),
+                      const SizedBox(width: 8),
                       HankoSeal.score(8.5, size: 28),
                     ],
                   ),
@@ -454,8 +455,10 @@ class _PrintRoom extends StatelessWidget {
         colour: frieren,
         solidTo: 0.62,
         glow: const Alignment(-0.42, -0.3),
+        // The specimen's column is narrower than a phone, so the print is
+        // 180 wide here (Detail's is 208) and the colophon keeps its width.
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 36),
+          padding: const EdgeInsets.fromLTRB(12, 20, 12, 36),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -464,12 +467,12 @@ class _PrintRoom extends StatelessWidget {
                 children: [
                   HankoPrint(
                     url: null,
-                    width: 208,
-                    height: 296,
+                    width: 180,
+                    height: 256,
                     lift: HankoPrintLift.large,
                     placeholder: frieren,
-                    seal: HankoSeal.score(9.5, size: 56),
-                    sealOverhang: const Offset(12, 14),
+                    seal: HankoSeal.score(9.5, size: 48),
+                    sealOverhang: const Offset(10, 12),
                   ),
                   const SizedBox(width: 16),
                   Expanded(
