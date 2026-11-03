@@ -56,13 +56,15 @@ class StatsScreen extends StatelessWidget {
         builder: (context, snapshot) {
           // A failed read says so, in Profile's words (stage H5), naming no
           // cause the app can't verify. Before, the spinner never stopped.
+          // Shippori draws the typewriter apostrophe as a straight tick, so
+          // the line takes the typographic one, as Profile's (question 109).
           if (snapshot.hasError && !_preHanko) {
             return _hankoColumn(
               context,
               Padding(
                 padding: const EdgeInsets.fromLTRB(
                     AppTheme.hankoGutter, 16, AppTheme.hankoGutter, 0),
-                child: Text('Couldn\'t load your list just now.',
+                child: Text('Couldn’t load your list just now.',
                     style: AppTheme.hankoSerif(fontSize: 17, height: 1.5)),
               ),
             );

@@ -163,9 +163,11 @@ class _ActivityFeedScreenState extends State<ActivityFeedScreen>
         }
 
         // A failed read says so in Profile's words (stage H5), naming no
-        // cause the app can't verify.
+        // cause the app can't verify. The sentence is Shippori, which draws
+        // the typewriter apostrophe as a straight tick, so it takes the
+        // typographic one, as Profile's does (question 109).
         if (snapshot.hasError) {
-          return _note('Couldn\'t load your activity just now.', null);
+          return _note('Couldn’t load your activity just now.', null);
         }
 
         // The same words as before, as Hanko's empty state.
