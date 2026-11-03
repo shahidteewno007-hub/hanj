@@ -6,6 +6,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:intl/intl.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'dart:math' as math;
 
 import '../../core/theme/app_theme.dart';
 import '../../widgets/anilist_saved_note.dart';
@@ -2379,7 +2380,10 @@ class _ContinueCardState extends State<_ContinueCard> {
         children: [
           Padding(
             padding: const EdgeInsets.only(top: 2),
-            child: _HankoCover(url: imageUrl, width: 42, height: 60),
+            child: _HankoCover(
+                url: imageUrl,
+                width: _HankoCover.rowWidth,
+                height: _HankoCover.rowHeight),
           ),
           const SizedBox(width: 14),
           Expanded(
@@ -3003,6 +3007,13 @@ class _HankoCover extends StatelessWidget {
   final double width;
   final double height;
 
+  /// A row's cover, Continue's and Coming up's: 52 × 74 since round seven
+  /// (Shahid, 2026-11-03: "make the posters a bit bigger on home screen"),
+  /// from 42 × 60. AniList's 230 px cover stays sharp up to about 57 dp on
+  /// the CPH2573 (4 px per dp), so it is still crisp.
+  static const double rowWidth = 52;
+  static const double rowHeight = 74;
+
   @override
   Widget build(BuildContext context) {
     final u = url;
@@ -3027,11 +3038,16 @@ class _HankoCover extends StatelessWidget {
 }
 
 /// One show in a Hanko poster strip (hanko.html's .mlt), as This season's
-/// strip draws it (upcoming_anime.dart): a 72 x 102 cover with square 2 px
+/// strip draws it (upcoming_anime.dart): an 88 x 125 cover with square 2 px
 /// corners on sumi 3 while it loads, the title under it in Jost 500 12 on up
 /// to two lines, and the 8% washi press. The column widens as the title's
 /// text grows, so a long word still fits on one line at large text; the
 /// strip's height follows (heightFor). Opens the show through Home's _open.
+///
+/// 88 wide since round seven (Shahid, 2026-11-03: "make the posters a bit
+/// bigger on home screen"), from 72. It still widens past 88 only where 72
+/// grown with the text would: at 1.3x a 72 px column broke "Apothecary"
+/// mid-word, and 72 x 1.3 keeps it whole.
 class _StripItem extends StatelessWidget {
   const _StripItem({required this.anime, required this.open});
 
@@ -3040,7 +3056,7 @@ class _StripItem extends StatelessWidget {
 
   static double _widthFor(TextScaler scaler) {
     final grow = scaler.scale(12) / 12;
-    return grow > 1 ? 72 * grow : 72.0;
+    return math.max(88.0, 72 * grow);
   }
 
   /// The cover, the gap and two lines of title at the reader's text size.
@@ -3203,11 +3219,12 @@ class _QuietLink extends StatelessWidget {
 }
 
 // ── Popular this season: one chart row ───────────────────────
-// Hanko's ranked row (hanko.html, Home): the rank in Shippori, a 34 × 48
-// cover, the title on one line that fades out (Shippori draws "…" as the
-// centred Japanese ellipsis), and AniList's score in indigo, the crowd's
-// colour, so it never reads as your verdict (yours are seals). The score is
-// out of 10 with one decimal, as everywhere else in Hanj.
+// Hanko's ranked row (hanko.html, Home): the rank in Shippori, a 40 × 56
+// cover (34 × 48 before round seven's bigger posters), the title on one
+// line that fades out (Shippori draws "…" as the centred Japanese
+// ellipsis), and AniList's score in indigo, the crowd's colour, so it never
+// reads as your verdict (yours are seals). The score is out of 10 with one
+// decimal, as everywhere else in Hanj.
 class _ChartRow extends StatelessWidget {
   const _ChartRow({
     required this.anime,
@@ -3219,7 +3236,8 @@ class _ChartRow extends StatelessWidget {
   final int rank;
   final VoidCallback onOpen;
 
-  static const double height = 56;
+  /// 8 dp taller than the cover, as it was at 56 for a 48 dp cover.
+  static const double height = 64;
 
   @override
   Widget build(BuildContext context) {
@@ -3255,7 +3273,7 @@ class _ChartRow extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 12),
-                _HankoCover(url: anime.imageUrl, width: 34, height: 48),
+                _HankoCover(url: anime.imageUrl, width: 40, height: 56),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
@@ -3402,7 +3420,9 @@ class _ComingUpSectionState extends State<_ComingUpSection> {
             padding: const EdgeInsets.only(top: 2),
             child: ExcludeSemantics(
               child: _HankoCover(
-                  url: item['imageUrl'] as String?, width: 42, height: 60),
+                  url: item['imageUrl'] as String?,
+                  width: _HankoCover.rowWidth,
+                  height: _HankoCover.rowHeight),
             ),
           ),
           const SizedBox(width: 14),
