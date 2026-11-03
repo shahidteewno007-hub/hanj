@@ -102,10 +102,19 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
   final bool _focusBack =
       FocusManager.instance.highlightMode == FocusHighlightMode.traditional;
 
+  // The Seasons strip (round seven): this show's PREQUEL and SEQUEL chain as
+  // AnilistService walks it. Only the strip listens, so a step of the walk
+  // rebuilds nothing else.
+  final ValueNotifier<SeasonChain?> _seasons = ValueNotifier<SeasonChain?>(null);
+
   @override
   void initState() {
     super.initState();
     _anime = widget.anime;
+    // What this run already knows of the seasons, with no request: a season
+    // opened from the strip shows the strip in its first frame.
+    final id = int.tryParse(widget.anime.id);
+    if (id != null && !_isMalImport) _seasons.value = AnilistService.knownSeasons(id);
     _loadData();
     // Cache the anime for offline viewing later. Only a full entry (D18): a
     // stub from a list row has no synopsis or score, and caching it over a
@@ -165,6 +174,7 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
     _timeUntilAiring.dispose();
     _scroll.dispose();
     _staffVersion.dispose();
+    _seasons.dispose();
     super.dispose();
   }
 
@@ -316,6 +326,11 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
           _relatedAnime = _aniListService.recommendationsFrom(data);
           _isLoadingRelated = false;
         });
+        // The Seasons strip (round seven): the answer carries this show's
+        // relations. The walk starts from them after this frame, so the
+        // strip adds nothing to the frame the answer lands in.
+        AnilistService.noteSeasons(data);
+        _walkSeasonsSoon();
         final next = data?['nextAiringEpisode'];
         final airingAt = next is Map ? next['airingAt'] as int? : null;
         if (airingAt != null) {
@@ -327,7 +342,39 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
       }
     } catch (_) {
       if (mounted) _staffChanged(() { _isLoadingStaff = false; _isLoadingRelated = false; });
+      // The seasons known from before still show.
+      if (mounted) _walkSeasonsSoon();
     }
+  }
+
+  /// Walks this show's seasons after the current frame (round seven).
+  void _walkSeasonsSoon() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _walkSeasons();
+    });
+  }
+
+  /// Walks this show's seasons, step by step, into the Seasons strip; also
+  /// the strip's "Try again". A MyAnimeList import gets none: AniList data
+  /// looked up by its id can belong to another show (§6c, as the print).
+  void _walkSeasons() {
+    final id = int.tryParse(widget.anime.id);
+    if (id == null || _isMalImport) return;
+    unawaited(_aniListService.walkSeasons(
+      id,
+      alive: () => mounted,
+      onChain: (chain) {
+        if (mounted) _seasons.value = chain;
+      },
+    ));
+  }
+
+  /// Opens another season's Detail in place of this one (round seven). The
+  /// strip chooses a season rather than going deeper, so Back still leads
+  /// where this Detail came from.
+  void _openSeason(AnimeSeason season) {
+    Navigator.of(context).pushReplacement(MaterialPageRoute(
+        builder: (_) => AnimeDetailScreen(anime: season.toAnime())));
   }
 
   /// The next episode's live countdown, from the staff response.
@@ -1217,6 +1264,16 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
         ),
       ),
       const SliverToBoxAdapter(child: SizedBox(height: 16)),
+      // The Seasons strip (round seven), between the header and the tabs. It
+      // listens on its own: a step of the walk rebuilds only the strip.
+      SliverToBoxAdapter(
+        child: ValueListenableBuilder<SeasonChain?>(
+          valueListenable: _seasons,
+          builder: (context, chain, _) => chain == null || !_HankoSeasons.shows(chain)
+              ? const SizedBox.shrink()
+              : _HankoSeasons(chain: chain, onOpen: _openSeason, onRetry: _walkSeasons),
+        ),
+      ),
     ];
   }
 }
@@ -2551,6 +2608,474 @@ class _HankoTitle extends StatelessWidget {
   }
 }
 
+// ── Seasons strip (round seven) ──────────────────────────────
+
+/// The show's seasons in order (round seven): its PREQUEL and SEQUEL chain
+/// on AniList, as prints on a shelf. Shahid, 2026-11-03: "We need one anime
+/// to have like seasons on it as well so the episode list we can choose
+/// which season".
+///
+/// Each print is the season's cover with Detail's washi ring, a spine in its
+/// cover's colour below it, and, on the print, "Airing" or "Upcoming". Under
+/// it, the season's name (what its title adds to the titles' shared start)
+/// and its episode count. The season on screen is framed in washi and
+/// doesn't open; any other opens its Detail in place of this one. While the
+/// walk reads further, a quiet slot waits at that end; if a read fails, the
+/// slot offers another try.
+class _HankoSeasons extends StatefulWidget {
+  const _HankoSeasons({required this.chain, required this.onOpen, required this.onRetry});
+
+  final SeasonChain chain;
+  final ValueChanged<AnimeSeason> onOpen;
+  final VoidCallback onRetry;
+
+  static const double _printWidth = 96;
+  static const double _printHeight = 136;
+  static const double _gap = 12;
+
+  /// Shown for two seasons or more; on a film or a special's page, which
+  /// isn't a season itself, for the seasons of its series.
+  static bool shows(SeasonChain chain) {
+    final here = chain.seasons.any((s) => s.id == chain.currentId);
+    return chain.seasons.length >= (here ? 2 : 1);
+  }
+
+  /// The place of the season on screen on the shelf, slots included, or -1.
+  static int _hereAt(SeasonChain chain) {
+    final i = chain.seasons.indexWhere((s) => s.id == chain.currentId);
+    return i < 0 ? -1 : i + (chain.moreBefore ? 1 : 0);
+  }
+
+  /// What each print calls its season: what its title adds to the start the
+  /// titles share ("Season 2", "Final Season Part 2"), so a long title isn't
+  /// cut down to the part every season has. The first, which usually adds
+  /// nothing, is "Season 1" ("1st Season" when the others count that way).
+  /// Titles that share no start are shown whole.
+  static List<String> _names(List<AnimeSeason> seasons) {
+    final shown = [for (final s in seasons) s.titleEnglish ?? s.title];
+    final romaji = [for (final s in seasons) s.title];
+    // English where AniList has it; romaji when a season has no English
+    // title and only the romaji titles share their start.
+    final a = _sharedStart(shown), b = _sharedStart(romaji);
+    final (titles, cut) = b > a ? (romaji, b) : (shown, a);
+    if (seasons.length < 2 || cut < 4) return shown;
+    final rest = [
+      for (final t in titles) t.substring(cut).replaceFirst(RegExp(r'^[\s:\-–—~,.!]+'), '').trim(),
+    ];
+    final ordinal = rest.any((r) => RegExp(r'^\d+(st|nd|rd|th) season', caseSensitive: false).hasMatch(r));
+    return [
+      for (final (i, r) in rest.indexed)
+        r.isNotEmpty ? r : (i == 0 ? (ordinal ? '1st Season' : 'Season 1') : shown[i]),
+    ];
+  }
+
+  /// How long a start the titles share, ending where every title breaks:
+  /// at its end, a space or punctuation, never inside a word.
+  static int _sharedStart(List<String> titles) {
+    if (titles.isEmpty) return 0;
+    final first = titles.first;
+    var n = first.length;
+    for (final t in titles.skip(1)) {
+      var i = 0;
+      while (i < n && i < t.length && t.codeUnitAt(i) == first.codeUnitAt(i)) {
+        i++;
+      }
+      n = i;
+    }
+    bool breaksAt(String t, int i) => i >= t.length || RegExp(r'[\s:\-–—~,.!]').hasMatch(t[i]);
+    while (n > 0 && !titles.every((t) => breaksAt(t, n))) {
+      n--;
+    }
+    return n;
+  }
+
+  /// The line under the name: the episode count; for an airing season with
+  /// no total yet, how many have aired; for one still to come, when.
+  static String _count(AnimeSeason s) {
+    final episodes = s.episodes;
+    if (episodes != null && episodes > 0) return '$episodes ${episodes == 1 ? 'episode' : 'episodes'}';
+    final next = s.nextEpisode;
+    if (s.status == 'RELEASING' && next != null && next > 1) return '${next - 1} so far';
+    final season = s.season;
+    final year = s.year;
+    return [
+      if (season != null && season.isNotEmpty) '${season[0]}${season.substring(1).toLowerCase()}',
+      if (year != null) '$year',
+    ].join(' ');
+  }
+
+  /// "Airing" or "Upcoming", on the print.
+  static String? _tag(AnimeSeason s) => switch (s.status) {
+        'RELEASING' => 'Airing',
+        'NOT_YET_RELEASED' => 'Upcoming',
+        _ => null,
+      };
+
+  /// "3 seasons · 64 episodes", the total only when every count is known;
+  /// "so far" while more may turn up.
+  static String _aside(SeasonChain chain) {
+    final seasons = chain.seasons;
+    final more = (chain.moreBefore || chain.moreAfter) && !chain.failed;
+    final counted = seasons.length == 1 ? '1 season' : '${seasons.length} seasons';
+    if (more) return '$counted so far';
+    if (seasons.any((s) => s.episodes == null || s.episodes! <= 0)) return counted;
+    final total = seasons.fold<int>(0, (n, s) => n + s.episodes!);
+    return '$counted · $total episodes';
+  }
+
+  /// The spine's colour: the cover's own, or the edge when it has none or
+  /// its hue sits by the seal's (Detail's tint guard), so coral stays yours.
+  static Color _spine(String? hex) {
+    if (hex == null || !RegExp(r'^#[0-9a-fA-F]{6}$').hasMatch(hex)) return AppTheme.hankoEdge;
+    final colour = Color(0xFF000000 | int.parse(hex.substring(1), radix: 16));
+    return AppTheme.hankoCoverTint(colour) == null ? AppTheme.hankoEdge : colour;
+  }
+
+  @override
+  State<_HankoSeasons> createState() => _HankoSeasonsState();
+}
+
+class _HankoSeasonsState extends State<_HankoSeasons> {
+  final ScrollController _scroll = ScrollController();
+
+  // Set once you scroll the shelf yourself; from then on it stays put.
+  bool _scrolled = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _place(-1);
+  }
+
+  @override
+  void didUpdateWidget(_HankoSeasons oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final was = _HankoSeasons._hereAt(oldWidget.chain);
+    if (was != _HankoSeasons._hereAt(widget.chain)) _place(was);
+  }
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  /// Keeps the season on screen in view: at first centred, when the shelf
+  /// is wider than the screen; then where it was when seasons arrive before
+  /// it, unless you've scrolled the shelf yourself.
+  void _place(int was) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scroll.hasClients || (_scrolled && was >= 0)) return;
+      final now = _HankoSeasons._hereAt(widget.chain);
+      if (now < 0) return;
+      final position = _scroll.position;
+      const step = _HankoSeasons._printWidth + _HankoSeasons._gap;
+      final target = was < 0
+          ? AppTheme.hankoGutter + now * step + _HankoSeasons._printWidth / 2 - position.viewportDimension / 2
+          : position.pixels + (now - was) * step;
+      final clamped = target.clamp(position.minScrollExtent, position.maxScrollExtent);
+      if (clamped != position.pixels) _scroll.jumpTo(clamped);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final chain = widget.chain;
+    final names = _HankoSeasons._names(chain.seasons);
+    final still = MediaQuery.disableAnimationsOf(context);
+    final scaler = MediaQuery.textScalerOf(context);
+    // Two lines kept for every name, so the counts line up.
+    final nameHeight = 2 * scaler.scale(AppTheme.hankoMetaSize) * 1.25;
+    final tiles = <Widget>[
+      if (chain.moreBefore) _slot(nameHeight, before: true),
+      for (final (i, season) in chain.seasons.indexed)
+        _arrive(
+          key: ValueKey(season.id),
+          order: i,
+          still: still,
+          child: _print(season, names[i], nameHeight, still: still),
+        ),
+      if (chain.moreAfter) _slot(nameHeight, before: false),
+    ];
+    return Padding(
+      padding: const EdgeInsets.only(top: 8, bottom: 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: AppTheme.hankoGutter),
+            child: _HankoSectionHead(title: 'Seasons', aside: _HankoSeasons._aside(chain)),
+          ),
+          // Its own layer: scrolling the shelf, a print arriving or the slot's
+          // spinner repaints the shelf alone, not the page.
+          RepaintBoundary(
+            child: NotificationListener<UserScrollNotification>(
+              onNotification: (_) {
+                _scrolled = true;
+                return false;
+              },
+              child: SingleChildScrollView(
+                controller: _scroll,
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: AppTheme.hankoGutter),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    for (final (i, tile) in tiles.indexed) ...[
+                      if (i > 0) const SizedBox(width: _HankoSeasons._gap),
+                      tile,
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// A print fades and rises into place once, when it first arrives, a few
+  /// at a time from the left; with Remove animations on, it is simply there.
+  Widget _arrive({required Key key, required int order, required bool still, required Widget child}) {
+    const fade = 240;
+    final delay = 45 * math.min<int>(order, 4);
+    return TweenAnimationBuilder<double>(
+      key: key,
+      tween: Tween(begin: still ? 1.0 : 0.0, end: 1.0),
+      duration: Duration(milliseconds: still ? 0 : fade + delay),
+      curve: Interval(delay / (fade + delay), 1, curve: Curves.easeOut),
+      builder: (context, t, child) => Opacity(
+        opacity: t,
+        child: Transform.translate(offset: Offset(0, 8 * (1 - t)), child: child),
+      ),
+      child: child,
+    );
+  }
+
+  Widget _print(AnimeSeason season, String name, double nameHeight, {required bool still}) {
+    final here = season.id == widget.chain.currentId;
+    final count = _HankoSeasons._count(season);
+    final tag = _HankoSeasons._tag(season);
+    final cover = season.coverUrl;
+    final year = season.year;
+    // Read as one line: "Season 2, 12 episodes, 2017, airing".
+    final label = [
+      name,
+      if (count.isNotEmpty) count,
+      if (year != null && !count.contains('$year')) '$year',
+      if (tag != null) tag.toLowerCase(),
+    ].join(', ');
+    final art = Container(
+      width: _HankoSeasons._printWidth,
+      height: _HankoSeasons._printHeight,
+      decoration: BoxDecoration(
+        color: AppTheme.hankoSumi3,
+        borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+        // The print's 1 px washi ring, as Detail's own print.
+        boxShadow: [BoxShadow(color: AppTheme.hankoWashi.withValues(alpha: 0.12), spreadRadius: 1)],
+      ),
+      // The season on screen, framed in washi, as the tab you're on is
+      // underlined in it.
+      foregroundDecoration: here
+          ? BoxDecoration(
+              border: Border.all(color: AppTheme.hankoWashi, width: 2),
+              borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+            )
+          : null,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            if (cover != null)
+              CachedNetworkImage(
+                imageUrl: cover,
+                fit: BoxFit.cover,
+                fadeInDuration: still ? Duration.zero : const Duration(milliseconds: 200),
+                fadeOutDuration: Duration.zero,
+                errorWidget: (_, _, _) => const SizedBox.shrink(),
+              ),
+            if (tag != null)
+              Positioned(
+                left: 6,
+                top: 6,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: AppTheme.hankoSumi.withValues(alpha: 0.85),
+                    borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                    child: Text(
+                      tag,
+                      style: AppTheme.hankoSans(
+                        fontSize: AppTheme.hankoDataSmallSize,
+                        weight: FontWeight.w500,
+                        height: 1.2,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+    final visual = SizedBox(
+      width: _HankoSeasons._printWidth,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          art,
+          // The spine: the cover's own colour, a little apart from it.
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: SizedBox(
+              height: 2,
+              width: double.infinity,
+              child: ColoredBox(color: _HankoSeasons._spine(season.coverColor)),
+            ),
+          ),
+          const SizedBox(height: 7),
+          SizedBox(
+            height: nameHeight,
+            child: Text(
+              name,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: AppTheme.hankoSans(
+                fontSize: AppTheme.hankoMetaSize,
+                weight: here ? FontWeight.w600 : FontWeight.w500,
+                height: 1.25,
+              ),
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            count,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: AppTheme.hankoSans(
+              fontSize: AppTheme.hankoLabelSize,
+              color: AppTheme.hankoStone,
+              height: 1.35,
+            ),
+          ),
+        ],
+      ),
+    );
+    // Its own semantics node (container) with the InkWell's tap and focus
+    // inside it (R5B's pattern). The season on screen is marked selected and
+    // has no tap. The InkWell lies over the print on its own transparent
+    // Material, since ink is drawn under a Material's children and the cover
+    // would hide it.
+    return Semantics(
+      container: true,
+      button: !here,
+      selected: here,
+      label: label,
+      hint: here ? null : 'Opens this season',
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          ExcludeSemantics(child: visual),
+          if (!here)
+            Positioned.fill(
+              child: Material(
+                type: MaterialType.transparency,
+                child: InkWell(
+                  onTap: () => widget.onOpen(season),
+                  borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+                  splashFactory: NoSplash.splashFactory,
+                  highlightColor: AppTheme.hankoPressWash,
+                  hoverColor: AppTheme.hankoPressWash,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// The slot at an end where more seasons may turn up: a quiet spinner
+  /// while the walk reads, or, after a failed read, "Try again".
+  Widget _slot(double nameHeight, {required bool before}) {
+    final failed = widget.chain.failed;
+    final box = Container(
+      width: _HankoSeasons._printWidth,
+      height: _HankoSeasons._printHeight,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: AppTheme.hankoSumi2,
+        borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+        border: Border.all(color: AppTheme.hankoHairline),
+      ),
+      child: failed
+          ? const Icon(Icons.refresh_sharp, size: 20, color: AppTheme.hankoStone)
+          // Its own layer, so its turning repaints only itself.
+          : const RepaintBoundary(
+              child: SizedBox.square(
+                dimension: 16,
+                child: CircularProgressIndicator(strokeWidth: 1.5, color: AppTheme.hankoStone),
+              ),
+            ),
+    );
+    final visual = SizedBox(
+      width: _HankoSeasons._printWidth,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          box,
+          SizedBox(height: 13 + nameHeight),
+          Text(
+            failed ? 'Try again' : 'Looking…',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: failed
+                ? AppTheme.hankoSans(fontSize: AppTheme.hankoLabelSize, weight: FontWeight.w500, height: 1.35)
+                    .copyWith(decoration: TextDecoration.underline, decorationColor: AppTheme.hankoEdge)
+                : AppTheme.hankoSans(fontSize: AppTheme.hankoLabelSize, color: AppTheme.hankoStone, height: 1.35),
+          ),
+        ],
+      ),
+    );
+    final where = before ? 'earlier' : 'later';
+    if (!failed) {
+      return Semantics(
+        key: ValueKey('slot $where'),
+        container: true,
+        label: 'Looking for $where seasons',
+        child: ExcludeSemantics(child: visual),
+      );
+    }
+    return Semantics(
+      key: ValueKey('slot $where'),
+      container: true,
+      button: true,
+      label: '${before ? 'Earlier' : 'Later'} seasons didn’t load. Try again',
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          ExcludeSemantics(child: visual),
+          Positioned.fill(
+            child: Material(
+              type: MaterialType.transparency,
+              child: InkWell(
+                onTap: widget.onRetry,
+                borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+                splashFactory: NoSplash.splashFactory,
+                highlightColor: AppTheme.hankoPressWash,
+                hoverColor: AppTheme.hankoPressWash,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 // ── Hero ─────────────────────────────────────────────────────
 class _HeroPanel extends StatelessWidget {
   final Anime anime;
@@ -3582,8 +4107,8 @@ class _SimpleTabBar extends StatelessWidget {
   // to the last as rows that did nothing; Shahid, 2026-11-03: "not sure why
   // we have this option of episode list doesn't do anything, we can have the
   // number of episodes somewhere on the detail screen remove it". The count
-  // is in the header's facts. Kept, not deleted (CLAUDE.md); true brings it
-  // back as it was.
+  // is in the header's facts and on each season in the Seasons strip. Kept,
+  // not deleted (CLAUDE.md); true brings it back as it was.
   static const bool _showEpisodes = false;
 
   /// The tabs shown, as indices into [_tabs]. They are also _TabContent's
