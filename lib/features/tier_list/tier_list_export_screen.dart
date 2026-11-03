@@ -142,23 +142,30 @@ class _TierListExportScreenState extends State<TierListExportScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(4, 4, 16, 0),
-              child: Row(
-                children: [
-                  IconButton(
-                    tooltip: 'Close',
-                    icon: const Icon(Icons.close_rounded, color: AppTheme.hankoWashi),
-                    onPressed: () => Navigator.of(context).pop(),
+            // As wide as the buttons below, so on a desktop Close sits with
+            // the preview rather than at the window's edge.
+            Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 560),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(4, 4, 16, 0),
+                  child: Row(
+                    children: [
+                      IconButton(
+                        tooltip: 'Close',
+                        icon: const Icon(Icons.close_rounded, color: AppTheme.hankoWashi),
+                        onPressed: () => Navigator.of(context).pop(),
+                      ),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Semantics(
+                          header: true,
+                          child: Text('Share your tier list', style: AppTheme.hankoSerif(fontSize: 20)),
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: Semantics(
-                      header: true,
-                      child: Text('Share your tier list', style: AppTheme.hankoSerif(fontSize: 20)),
-                    ),
-                  ),
-                ],
+                ),
               ),
             ),
             Expanded(

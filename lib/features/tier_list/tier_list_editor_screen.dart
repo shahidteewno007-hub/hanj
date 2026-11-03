@@ -389,7 +389,14 @@ class _TierListEditorScreenState extends State<TierListEditorScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            _topBar(),
+            // As wide as the board, so on a desktop the title and Share sit
+            // over the tiers rather than at the window's far edges.
+            Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 860),
+                child: _topBar(),
+              ),
+            ),
             Expanded(
               child: Stack(
                 children: [
