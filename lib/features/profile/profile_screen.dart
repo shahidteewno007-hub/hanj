@@ -766,55 +766,47 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget _pinnedCard(Map<String, dynamic> card) {
     final name = ((card['name'] ?? card['cardName']) as String?) ?? '';
     // One screen-reader button with a tap and focus, as the favourites'
-    // covers (question 104; see _favourite).
-    return Semantics(
-      container: true,
-      button: true,
+    // covers (question 104; see _favourite), with its focus seen on the
+    // card (question 155; see _CoverButton).
+    return _CoverButton(
       label: name.isEmpty
           ? 'Your pinned Hanj Card'
           : 'Your pinned Hanj Card, $name',
       hint: 'Opens your collection',
-      child: InkWell(
-        onTap: () => Navigator.push(context,
-            MaterialPageRoute(builder: (_) => const CardCollectionScreen())),
-        splashFactory: NoSplash.splashFactory,
-        highlightColor: Colors.transparent,
-        hoverColor: Colors.transparent,
-        focusColor: Colors.transparent,
-        // Square corners: HanjCard is square by design
-        // (_CardShell paints square, HanjCard clips with
-        // ClipRect). This was the only place one got
-        // rounded off.
-        child: ExcludeSemantics(
-          child: ClipRect(
-            child: SizedBox(
-              width:  hc.HanjCard.kWidth  * _pinnedScale,
-              height: hc.HanjCard.kHeight * _pinnedScale,
-              // Render the card at its natural 200x300 and scale the
-              // whole thing down. The card has fixed-pixel internals
-              // (footer text, paddings) that don't shrink on their own,
-              // so sizing it directly overflows at small sizes.
-              // The card is drawn like a picture, so the text-size setting
-              // doesn't reach inside it: at 1.3x its footer wrapped and was
-              // cut off. Its name is in the spoken label above.
-              child: FittedBox(
-                fit: BoxFit.contain,
-                child: MediaQuery.withNoTextScaling(
-                  child: hc.HanjCard(
-                    isUnlocked: true,
-                    card: hc.HanjCardData(
-                      id: (card['id'] as String?) ?? '',
-                      name: name,
-                      description: (card['description'] as String?) ?? '',
-                      rarity: hc.CardRarity.values.firstWhere(
-                        (r) => r.name == ((card['rarity'] as String?) ?? 'common'),
-                        orElse: () => hc.CardRarity.common,
-                      ),
-                      category: ((card['category'] as String?) ?? 'ÆTHER').toUpperCase(),
-                      kanji: (card['kanji'] as String?) ?? '道',
-                      cardNumber: (card['cardNumber'] as int?) ?? 0,
-                    ),
+      onTap: () => Navigator.push(context,
+          MaterialPageRoute(builder: (_) => const CardCollectionScreen())),
+      // Square corners: HanjCard is square by design
+      // (_CardShell paints square, HanjCard clips with
+      // ClipRect). This was the only place one got
+      // rounded off.
+      radius: 0,
+      child: ClipRect(
+        child: SizedBox(
+          width:  hc.HanjCard.kWidth  * _pinnedScale,
+          height: hc.HanjCard.kHeight * _pinnedScale,
+          // Render the card at its natural 200x300 and scale the
+          // whole thing down. The card has fixed-pixel internals
+          // (footer text, paddings) that don't shrink on their own,
+          // so sizing it directly overflows at small sizes.
+          // The card is drawn like a picture, so the text-size setting
+          // doesn't reach inside it: at 1.3x its footer wrapped and was
+          // cut off. Its name is in the spoken label above.
+          child: FittedBox(
+            fit: BoxFit.contain,
+            child: MediaQuery.withNoTextScaling(
+              child: hc.HanjCard(
+                isUnlocked: true,
+                card: hc.HanjCardData(
+                  id: (card['id'] as String?) ?? '',
+                  name: name,
+                  description: (card['description'] as String?) ?? '',
+                  rarity: hc.CardRarity.values.firstWhere(
+                    (r) => r.name == ((card['rarity'] as String?) ?? 'common'),
+                    orElse: () => hc.CardRarity.common,
                   ),
+                  category: ((card['category'] as String?) ?? 'ÆTHER').toUpperCase(),
+                  kanji: (card['kanji'] as String?) ?? '道',
+                  cardNumber: (card['cardNumber'] as int?) ?? 0,
                 ),
               ),
             ),
@@ -885,25 +877,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
   /// tap and focus inside it, so a screen reader can press it and, on the
   /// web, it can take focus. A label over excluded semantics made a node
   /// with neither. The cover is left out of the tree, since the label names
-  /// the show, and the ink is clear: it would only sit under the art.
+  /// the show. Its ink lies over the art, so focus shows (question 155;
+  /// see _CoverButton).
   Widget _favourite(Map<String, dynamic> entry, double width, double height) {
     final title = entry['title'] as String? ?? 'Unknown';
     final rating = HankoSeal.formatScore((entry['userRating'] as num).toDouble());
-    return Semantics(
-      container: true,
-      button: true,
+    return _CoverButton(
       label: 'Favourite: $title, your rating $rating',
-      child: InkWell(
-        onTap: () => _openEntry(entry),
-        splashFactory: NoSplash.splashFactory,
-        highlightColor: Colors.transparent,
-        hoverColor: Colors.transparent,
-        focusColor: Colors.transparent,
-        child: ExcludeSemantics(
-          child: _Cover(
-              url: entry['imageUrl'] as String?, width: width, height: height),
-        ),
-      ),
+      onTap: () => _openEntry(entry),
+      child: _Cover(
+          url: entry['imageUrl'] as String?, width: width, height: height),
     );
   }
 
@@ -1105,24 +1088,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
             for (var i = 0; i < count && i < 3; i++) ...[
               if (i > 0) const SizedBox(width: 8),
               // One screen-reader button with a tap and focus, as the
-              // favourites' covers (question 104; see _favourite).
-              Semantics(
-                container: true,
-                button: true,
+              // favourites' covers (question 104; see _favourite), with
+              // its focus seen on the art (question 155).
+              _CoverButton(
                 label: (shelf.entries[i]['title'] as String?) ?? 'Unknown',
-                child: InkWell(
-                  onTap: () => _openEntry(shelf.entries[i]),
-                  splashFactory: NoSplash.splashFactory,
-                  highlightColor: Colors.transparent,
-                  hoverColor: Colors.transparent,
-                  focusColor: Colors.transparent,
-                  child: ExcludeSemantics(
-                    child: _Cover(
-                      url: shelf.entries[i]['imageUrl'] as String?,
-                      width: 64,
-                      height: 90,
-                    ),
-                  ),
+                onTap: () => _openEntry(shelf.entries[i]),
+                child: _Cover(
+                  url: shelf.entries[i]['imageUrl'] as String?,
+                  width: 64,
+                  height: 90,
                 ),
               ),
             ],
@@ -1607,6 +1581,107 @@ class _Cover extends StatelessWidget {
                   errorWidget: (_, _, _) => const SizedBox.expand(),
                 ),
         ),
+      ),
+    );
+  }
+}
+
+/// Art that opens something: a favourite's or a shelf's cover, or the
+/// pinned card. One screen-reader button (question 104), named by [label],
+/// with the InkWell's tap and focus in its node and the art left out of the
+/// tree.
+///
+/// The InkWell used to wrap the art, so its ink was painted on the Material
+/// below it, under an opaque picture, and keyboard focus on a cover could
+/// not be seen (question 155). Now the ink lies over the art, on a
+/// transparent Material: focus shows the theme's focus wash on the art and,
+/// for a keyboard, a 1 px washi ring 3 px outside it, as the rating ruler
+/// rings its own (a finger's tap draws none). Press and hover take Hanko's
+/// 8% wash, which the art used to hide too.
+class _CoverButton extends StatefulWidget {
+  const _CoverButton({
+    required this.label,
+    required this.onTap,
+    required this.child,
+    this.hint,
+    this.radius = AppTheme.hankoRadius,
+  });
+
+  final String label;
+  final String? hint;
+  final VoidCallback onTap;
+  final Widget child;
+
+  /// The art's corner radius, so the ink and the ring follow its shape: a
+  /// cover's 2 px, or 0 for a Hanj Card, which is square.
+  final double radius;
+
+  @override
+  State<_CoverButton> createState() => _CoverButtonState();
+}
+
+class _CoverButtonState extends State<_CoverButton> {
+  bool _focused = false;
+
+  @override
+  void initState() {
+    super.initState();
+    FocusManager.instance.addHighlightModeListener(_onHighlightMode);
+  }
+
+  @override
+  void dispose() {
+    FocusManager.instance.removeHighlightModeListener(_onHighlightMode);
+    super.dispose();
+  }
+
+  // A switch between keyboard and touch shows or hides the ring at once.
+  void _onHighlightMode(FocusHighlightMode _) {
+    if (_focused && mounted) setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ring = _focused &&
+        FocusManager.instance.highlightMode == FocusHighlightMode.traditional;
+    return Semantics(
+      container: true,
+      button: true,
+      label: widget.label,
+      hint: widget.hint,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          ExcludeSemantics(child: widget.child),
+          Positioned.fill(
+            child: Material(
+              type: MaterialType.transparency,
+              child: InkWell(
+                onTap: widget.onTap,
+                onFocusChange: (focused) => setState(() => _focused = focused),
+                splashFactory: NoSplash.splashFactory,
+                highlightColor: AppTheme.hankoPressWash,
+                hoverColor: AppTheme.hankoPressWash,
+                borderRadius: BorderRadius.circular(widget.radius),
+              ),
+            ),
+          ),
+          if (ring)
+            Positioned(
+              left: -3,
+              top: -3,
+              right: -3,
+              bottom: -3,
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    border: Border.all(color: AppTheme.hankoWashi),
+                    borderRadius: BorderRadius.circular(widget.radius + 3),
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
