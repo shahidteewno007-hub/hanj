@@ -824,43 +824,41 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
 
             // ── From your watchlist tonight (item d) ─────────
-            // One show from your own watchlist, a new one each day. Tonight's
-            // Drop, the season pick for everyone, keeps the slot only when
-            // the watchlist holds nothing the pick can land on (empty, or
-            // only old MyAnimeList imports: question 114, see _pickable).
+            // Since round seven, the newest show on your watchlist (see
+            // _watchlistPick), drawn as Home's feature band (_PickBand).
+            // Tonight's Drop, the season pick for everyone, keeps the slot
+            // only when the watchlist holds nothing the pick can show (empty,
+            // or only entries with no title or cover: see _pickable). The
+            // band runs edge to edge; its words keep the gutter.
             if (_pickable.isNotEmpty)
               SliverToBoxAdapter(
                 key: const ValueKey('home-watchlist-pick'),
                 child: _recordColumn(Padding(
-                  padding: const EdgeInsets.fromLTRB(
-                      AppTheme.hankoGutter, 24, AppTheme.hankoGutter, 0),
+                  padding: const EdgeInsets.only(top: 4),
                   child: Builder(builder: (context) {
                     final pick = _watchlistPick();
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _WatchlistPick(
-                          entry: pick,
-                          onOpen: () => _openEntry(pick),
-                        ),
-                        // Up next folds in here (question 45): the rest of
-                        // your watchlist is one tap away, on My List's
-                        // watchlist filter. Only when there is more than the
-                        // pick, as Continue's "See all" shows only when there
-                        // are more rows than Home has room for.
-                        if (_planToWatch.length > 1)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 6),
-                            child: _QuietLink(
+                    return _WatchlistPick(
+                      entry: pick,
+                      // Said only when it is true: the pick is the newest
+                      // of two or more, with no newer entry passed over.
+                      newest: _planToWatch.length > 1 &&
+                          identical(pick, _planToWatch.first),
+                      onOpen: () => _openEntry(pick),
+                      // Up next folds in here (question 45): the rest of
+                      // your watchlist is one tap away, on My List's
+                      // watchlist filter. Only when there is more than the
+                      // pick, as Continue's "See all" shows only when there
+                      // are more rows than Home has room for.
+                      footer: _planToWatch.length > 1
+                          ? _QuietLink(
                               label:
                                   'See your watchlist (${_planToWatch.length})',
                               onTap: () => _open(MaterialPageRoute(
                                   builder: (_) => const MyListScreen(
                                       initialStatus: 'PLAN_TO_WATCH',
                                       showBackButton: true))),
-                            ),
-                          ),
-                      ],
+                            )
+                          : null,
                     );
                   }),
                 )),
@@ -870,8 +868,7 @@ class _HomeScreenState extends State<HomeScreen> {
               SliverToBoxAdapter(
                 key: const ValueKey('home-anime-of-day'),
                 child: _recordColumn(Padding(
-                  padding: const EdgeInsets.fromLTRB(
-                      AppTheme.hankoGutter, 24, AppTheme.hankoGutter, 0),
+                  padding: const EdgeInsets.only(top: 4),
                   child: _TonightCard(anime: _animeOfDay!, open: _open),
                 )),
               ),
@@ -1323,25 +1320,28 @@ class _HomeScreenState extends State<HomeScreen> {
         onError: (_, _) {});
   }
 
-  /// The watchlist entries the pick can land on (question 114): not
-  /// MyAnimeList imports from before the D21 fix. They are keyed by their
-  /// MyAnimeList id, which AniList reads as another show or none, so one
-  /// opens nearly empty, and a show to start tonight should open. The
-  /// entries are left as they are: the watchlist link counts them, and My
-  /// List shows them.
+  /// The watchlist entries the pick can show, newest first: any with a
+  /// title and a cover to show (round seven). Question 114 also kept old
+  /// MyAnimeList imports out, since one opens nearly empty; Shahid's request
+  /// on 2026-11-03 is the newest addition, whichever it is, so now only an
+  /// entry with nothing to show is passed over. The entries are left as
+  /// they are: the watchlist link counts them all, and My List shows them.
   List<Map<String, dynamic>> get _pickable =>
-      [for (final e in _planToWatch) if (!_isMalImport(e)) e];
+      [for (final e in _planToWatch) if (_canShow(e)) e];
 
-  /// Tonight's watchlist pick: the day of the year, modulo the number of
-  /// entries it can land on (newest first), the rotation Tonight's Drop has
-  /// always used, applied to your own list. The same pick all day, a new one
-  /// tomorrow.
-  Map<String, dynamic> _watchlistPick() {
-    final pickable = _pickable;
-    final now = DateTime.now();
-    final dayOfYear = now.difference(DateTime(now.year, 1, 1)).inDays;
-    return pickable[dayOfYear % pickable.length];
-  }
+  static bool _canShow(Map<String, dynamic> entry) =>
+      ((entry['title'] as String?) ?? '').trim().isNotEmpty &&
+      ((entry['imageUrl'] as String?) ?? '').trim().isNotEmpty;
+
+  /// Tonight's watchlist pick: the newest entry it can show (round seven;
+  /// Shahid, 2026-11-03: "it should also show the most recent anime added to
+  /// watch list so when I open the app I'm seeing what I have planned to
+  /// watch"). _planToWatch is newest first by addedAt, which every status
+  /// change rewrites, so it is when the show last went onto the watchlist;
+  /// an imported show's is the day of the import. Until round seven the
+  /// pick was the day of the year modulo the list, a different entry each
+  /// day, so it was seldom the one you had just planned.
+  Map<String, dynamic> _watchlistPick() => _pickable.first;
 
   void _openEntry(Map<String, dynamic> data) {
     final anime = Anime(
@@ -2008,11 +2008,13 @@ class _TonightCardState extends State<_TonightCard>
 
   @override
   Widget build(BuildContext context) {
-    // Since Hanko (stage H4, item d) Tonight's Drop shows only when your
-    // watchlist is empty, drawn like the watchlist pick: no text on the art,
-    // the crowd's score in indigo, and the bookmark as an outlined 48 dp
-    // tile. The "Continue" pill went: it did what tapping the card does,
-    // and said "Continue" about a show you haven't started.
+    // Since Hanko (stage H4, item d) Tonight's Drop shows only when the
+    // watchlist has nothing the pick can show. Since round seven it is
+    // drawn as the pick is, on Home's feature band (_PickBand): no text on
+    // the art, the crowd's score in indigo, and the bookmark as an outlined
+    // 48 dp tile beside the band's button. The "Continue" pill went in H4:
+    // it did what tapping the card does, and said "Continue" about a show
+    // you haven't started.
     final anime = widget.anime;
     final title = anime.titleEnglish ?? anime.title;
     final score = anime.averageScore;
@@ -2027,212 +2029,451 @@ class _TonightCardState extends State<_TonightCard>
         anime.episodes == 1 ? '1 episode' : '${anime.episodes} episodes',
     ].join(' · ');
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Semantics(
-          header: true,
-          // The typographic apostrophe: Shippori draws the typewriter one
-          // as a straight tick (questions 109 and 154).
-          child: Text('Tonight’s drop',
-              style: AppTheme.hankoSerif(height: 1.3)),
+    return _PickBand(
+      // The typographic apostrophe: Shippori draws the typewriter one as a
+      // straight tick (questions 109 and 154).
+      heading: 'Tonight’s drop',
+      imageUrl: anime.imageUrl,
+      title: title,
+      facts: facts.isEmpty ? null : facts,
+      score: scoreText,
+      // Where it comes from, which the slot never said: Home's season
+      // chart, a new place down it each day (_loadChart).
+      note: 'From this season’s chart',
+      onOpen: _openShow,
+      trailing: ScaleTransition(
+        scale: _bookmarkScale,
+        child: IconButton(
+          onPressed: _onBookmarkTap,
+          tooltip: isSaved ? 'On your list' : 'Add to your list',
+          icon: Icon(icon, size: 20, color: AppTheme.hankoWashi),
+          style: const ButtonStyle(
+            backgroundColor: WidgetStatePropertyAll(AppTheme.hankoSumi3),
+            overlayColor: WidgetStatePropertyAll(AppTheme.hankoPressWash),
+            splashFactory: NoSplash.splashFactory,
+            side: WidgetStatePropertyAll(BorderSide(color: AppTheme.hankoEdge)),
+            shape: WidgetStatePropertyAll(RoundedRectangleBorder(
+              borderRadius:
+                  BorderRadius.all(Radius.circular(AppTheme.hankoRadius)),
+            )),
+            fixedSize: WidgetStatePropertyAll(
+                Size(AppTheme.hankoTouch, AppTheme.hankoTouch)),
+            padding: WidgetStatePropertyAll(EdgeInsets.zero),
+          ),
         ),
-        const SizedBox(height: 12),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              // One semantics node (container) with the InkWell's tap and
-              // focus inside it, as the lede (question 119; see
-              // _HomeScreenState._buildLede). Its cover and words are left
-              // out of the tree, since the label says them.
-              child: Semantics(
-                container: true,
-                button: true,
-                label: [
-                  title,
-                  if (facts.isNotEmpty) facts,
-                  if (scoreText != null) 'AniList $scoreText',
-                ].join(', '),
-                child: InkWell(
-                  onTap: _openShow,
-                  splashFactory: NoSplash.splashFactory,
-                  highlightColor: AppTheme.hankoPressWash,
-                  hoverColor: AppTheme.hankoPressWash,
-                  child: ExcludeSemantics(
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _HankoCover(
-                            url: anime.imageUrl, width: 72, height: 102),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              _FadeTitle(
-                                title,
-                                maxLines: 2,
-                                style: AppTheme.hankoSerif(
-                                    fontSize: AppTheme.hankoFeaturedSize,
-                                    height: 1.15),
-                              ),
-                              if (facts.isNotEmpty) ...[
-                                const SizedBox(height: 6),
-                                Text(
-                                  facts,
-                                  style: AppTheme.hankoSans(
-                                      fontSize: AppTheme.hankoMetaSize,
-                                      color: AppTheme.hankoStone,
-                                      height: 1.4),
-                                ),
-                              ],
-                              if (scoreText != null) ...[
-                                const SizedBox(height: 4),
-                                Text.rich(
-                                  TextSpan(
-                                    text: 'AniList ',
-                                    style: AppTheme.hankoSans(
-                                        fontSize: AppTheme.hankoMetaSize,
-                                        color: AppTheme.hankoStone,
-                                        height: 1.4),
-                                    children: [
-                                      TextSpan(
-                                        text: scoreText,
-                                        style: AppTheme.hankoSans(
-                                          fontSize: AppTheme.hankoMetaSize,
-                                          weight: FontWeight.w500,
-                                          color: AppTheme.hankoAi,
-                                          height: 1.4,
-                                          tabular: true,
+      ),
+    );
+  }
+}
+
+/// From your watchlist tonight (Hanko stage H4, item d; round seven): the
+/// newest show on your own watchlist (_HomeScreenState._watchlistPick), in
+/// the slot Tonight's Drop (the same season pick for everyone) used to
+/// hold, drawn on Home's feature band (_PickBand). It shows what the entry
+/// holds: its first genre, its episode count, and AniList's score as it was
+/// when the show was added, left out for an old MyAnimeList import, whose
+/// stored score is MyAnimeList's (Detail leaves it out too). "On your
+/// watchlist since March" still waits for a date the list can vouch for
+/// (question 27); "Newest on your watchlist" is said only when it is true.
+/// The whole pick is one button that opens the show.
+class _WatchlistPick extends StatelessWidget {
+  const _WatchlistPick({
+    required this.entry,
+    required this.newest,
+    required this.onOpen,
+    this.footer,
+  });
+
+  final Map<String, dynamic> entry;
+
+  /// The pick is the watchlist's newest entry, of two or more.
+  final bool newest;
+  final VoidCallback onOpen;
+
+  /// The watchlist link, under the pick.
+  final Widget? footer;
+
+  @override
+  Widget build(BuildContext context) {
+    final title = (entry['title'] as String? ?? '').trim();
+    final episodes = entry['episodes'] as int?;
+    final genres = [
+      ...?(entry['genres'] as List<dynamic>?)?.whereType<String>(),
+    ];
+    final facts = [
+      if (genres.isNotEmpty) genres.first,
+      if (episodes != null) episodes == 1 ? '1 episode' : '$episodes episodes',
+    ].join(' · ');
+    final score = _HomeScreenState._isMalImport(entry)
+        ? null
+        : entry['averageScore'] as num?;
+    return _PickBand(
+      heading: 'From your watchlist tonight',
+      imageUrl: entry['imageUrl'] as String?,
+      title: title,
+      facts: facts.isEmpty ? null : facts,
+      score: score == null ? null : (score / 10).toStringAsFixed(1),
+      note: newest ? 'Newest on your watchlist' : null,
+      onOpen: onOpen,
+      footer: footer,
+    );
+  }
+}
+
+/// Home's feature band (round seven): one show given room under a heading,
+/// for tonight's watchlist pick and for Tonight's drop. Shahid, 2026-11-03:
+/// "mostly everything is bland and just letters with black background".
+/// Behind it, the show's own cover as a wash of its colours (_ArtWash); on
+/// it, the cover as a print (_PickPrint), and beside the print the title in
+/// Shippori, the facts, AniList's score in indigo (the crowd's colour), and
+/// a note at the print's foot. Print and words are one button; a [trailing]
+/// control (Tonight's drop's bookmark) sits beside it and a [footer] (the
+/// watchlist link) under it, each its own button. The band runs the width
+/// of its column, and its words keep the gutter.
+class _PickBand extends StatelessWidget {
+  const _PickBand({
+    required this.heading,
+    required this.imageUrl,
+    required this.title,
+    required this.onOpen,
+    this.facts,
+    this.score,
+    this.note,
+    this.trailing,
+    this.footer,
+  });
+
+  final String heading;
+  final String? imageUrl;
+  final String title;
+  final VoidCallback onOpen;
+  final String? facts;
+
+  /// AniList's score out of 10, one decimal.
+  final String? score;
+  final String? note;
+  final Widget? trailing;
+  final Widget? footer;
+
+  /// The print: 96 × 136, from the old pick's 72 × 102.
+  static const double printWidth = 96;
+  static const double printHeight = 136;
+
+  @override
+  Widget build(BuildContext context) {
+    // On the wash, quiet words are stone-hi, Hanko's colour for them on a
+    // cover's tint; _ArtWash keeps at least 88% sumi under the words.
+    final meta = AppTheme.hankoSans(
+        fontSize: AppTheme.hankoMetaSize,
+        color: AppTheme.hankoStoneHi,
+        height: 1.4);
+    final facts = this.facts;
+    final score = this.score;
+    final note = this.note;
+    final trailing = this.trailing;
+    final footer = this.footer;
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: _ArtWash(
+            url: imageUrl,
+            // Where the words start: the gutter, the print and its gap.
+            wordsFrom: AppTheme.hankoGutter + printWidth + 16,
+            base: AppTheme.hankoSumi,
+          ),
+        ),
+        Padding(
+          padding: EdgeInsets.fromLTRB(AppTheme.hankoGutter, 20,
+              AppTheme.hankoGutter, footer == null ? 22 : 2),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Semantics(
+                header: true,
+                child: Text(heading, style: AppTheme.hankoSerif(height: 1.3)),
+              ),
+              const SizedBox(height: 14),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    // One semantics node (container) with the InkWell's tap
+                    // and focus inside it, as the lede (question 119; see
+                    // _HomeScreenState._buildLede); the print and words are
+                    // left out of the tree, since the label says them. The
+                    // InkWell paints on a transparent Material of its own:
+                    // ink is drawn under a Material's children, so on the
+                    // page's Material the wash would hide the press and
+                    // focus washes.
+                    child: Semantics(
+                      container: true,
+                      button: true,
+                      label: [
+                        title,
+                        ?facts,
+                        if (score != null) 'AniList $score',
+                        ?note,
+                      ].join(', '),
+                      child: Material(
+                        type: MaterialType.transparency,
+                        child: InkWell(
+                          onTap: onOpen,
+                          splashFactory: NoSplash.splashFactory,
+                          highlightColor: AppTheme.hankoPressWash,
+                          hoverColor: AppTheme.hankoPressWash,
+                          child: ExcludeSemantics(
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _PickPrint(url: imageUrl),
+                                const SizedBox(width: 16),
+                                Expanded(
+                                  // At least the print's height, so the note
+                                  // sits at its foot, as Detail's caption.
+                                  child: ConstrainedBox(
+                                    constraints: const BoxConstraints(
+                                        minHeight: printHeight),
+                                    child: Column(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            _FadeTitle(
+                                              title,
+                                              maxLines: 3,
+                                              style: AppTheme.hankoSerif(
+                                                  fontSize: AppTheme
+                                                      .hankoFeaturedSize,
+                                                  height: 1.15),
+                                            ),
+                                            if (facts != null) ...[
+                                              const SizedBox(height: 6),
+                                              Text(facts, style: meta),
+                                            ],
+                                            if (score != null) ...[
+                                              const SizedBox(height: 2),
+                                              Text.rich(
+                                                TextSpan(
+                                                  text: 'AniList ',
+                                                  style: meta,
+                                                  children: [
+                                                    TextSpan(
+                                                      text: score,
+                                                      style: AppTheme.hankoSans(
+                                                        fontSize: AppTheme
+                                                            .hankoMetaSize,
+                                                        weight:
+                                                            FontWeight.w500,
+                                                        color:
+                                                            AppTheme.hankoAi,
+                                                        height: 1.4,
+                                                        tabular: true,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            ],
+                                          ],
                                         ),
-                                      ),
-                                    ],
+                                        if (note != null)
+                                          Padding(
+                                            padding:
+                                                const EdgeInsets.only(top: 10),
+                                            child: Text(
+                                              note,
+                                              style: AppTheme.hankoSans(
+                                                  fontSize:
+                                                      AppTheme.hankoLabelSize,
+                                                  weight: FontWeight.w500,
+                                                  color: AppTheme.hankoStoneHi,
+                                                  height: 1.3),
+                                            ),
+                                          ),
+                                      ],
+                                    ),
                                   ),
                                 ),
                               ],
-                            ],
+                            ),
                           ),
                         ),
-                      ],
+                      ),
                     ),
                   ),
-                ),
+                  if (trailing != null) ...[
+                    const SizedBox(width: 12),
+                    trailing,
+                  ],
+                ],
               ),
-            ),
-            const SizedBox(width: 12),
-            ScaleTransition(
-              scale: _bookmarkScale,
-              child: IconButton(
-                onPressed: _onBookmarkTap,
-                tooltip: isSaved ? 'On your list' : 'Add to your list',
-                icon: Icon(icon, size: 20, color: AppTheme.hankoWashi),
-                style: const ButtonStyle(
-                  backgroundColor:
-                      WidgetStatePropertyAll(AppTheme.hankoSumi3),
-                  overlayColor:
-                      WidgetStatePropertyAll(AppTheme.hankoPressWash),
-                  splashFactory: NoSplash.splashFactory,
-                  side: WidgetStatePropertyAll(
-                      BorderSide(color: AppTheme.hankoEdge)),
-                  shape: WidgetStatePropertyAll(RoundedRectangleBorder(
-                    borderRadius:
-                        BorderRadius.all(Radius.circular(AppTheme.hankoRadius)),
-                  )),
-                  fixedSize: WidgetStatePropertyAll(
-                      Size(AppTheme.hankoTouch, AppTheme.hankoTouch)),
-                  padding: WidgetStatePropertyAll(EdgeInsets.zero),
-                ),
-              ),
-            ),
-          ],
+              if (footer != null)
+                Padding(padding: const EdgeInsets.only(top: 6), child: footer),
+            ],
+          ),
         ),
       ],
     );
   }
 }
 
-/// From your watchlist tonight (Hanko stage H4, item d): one show from your
-/// own watchlist, a different one each day, in the slot Tonight's Drop (the
-/// same trending pick for everyone) used to hold. It shows only what the
-/// entry holds, its episode count: "On your watchlist since March" waits
-/// for a date the list can vouch for (question 27), and the year and
-/// "AniList recommends it" line in the mockup aren't data Home has. The
-/// whole pick is one button that opens the show.
-class _WatchlistPick extends StatelessWidget {
-  const _WatchlistPick({required this.entry, required this.onOpen});
+/// The feature band's print (round seven): 96 × 136 with Hanko's square
+/// 2 px corners, a 1 px washi ring at 12% so a dark cover keeps its edge on
+/// the wash (as Detail's print), and a shadow under it for depth. At this
+/// size the 230 px cover an entry keeps would be soft on the CPH2573
+/// (384 px), so for an AniList cover the 460 px one (AniList's extraLarge:
+/// the same file under cover/large/ rather than cover/medium/) fades in
+/// over it, as Detail's sharp cover does; if that one fails, the stored one
+/// stays. The stored one is decoded at full size, as _HankoCover's, so
+/// Detail opens on the same image.
+class _PickPrint extends StatelessWidget {
+  const _PickPrint({required this.url});
 
-  final Map<String, dynamic> entry;
-  final VoidCallback onOpen;
+  final String? url;
+
+  static const String _cover = 'https://s4.anilist.co/file/anilistcdn/media/anime/cover/';
+
+  /// AniList's 460 px cover for a stored 230 px one, or null.
+  static String? sharpOf(String? url) =>
+      url != null && url.startsWith('${_cover}medium/')
+          ? '${_cover}large/${url.substring('${_cover}medium/'.length)}'
+          : null;
 
   @override
   Widget build(BuildContext context) {
-    final title = entry['title'] as String? ?? 'Unknown';
-    final episodes = entry['episodes'] as int?;
-    final fact = episodes == null
-        ? null
-        : episodes == 1
-            ? '1 episode'
-            : '$episodes episodes';
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Semantics(
-          header: true,
-          child: Text('From your watchlist tonight',
-              style: AppTheme.hankoSerif(height: 1.3)),
-        ),
-        const SizedBox(height: 12),
-        // One semantics node (container) with the InkWell's tap and focus
-        // inside it, as the lede (question 119; see
-        // _HomeScreenState._buildLede). Its cover and words are left out of
-        // the tree, since the label says them.
-        Semantics(
-          container: true,
-          button: true,
-          label: fact == null ? title : '$title, $fact',
-          child: InkWell(
-            onTap: onOpen,
-            splashFactory: NoSplash.splashFactory,
-            highlightColor: AppTheme.hankoPressWash,
-            hoverColor: AppTheme.hankoPressWash,
-            child: ExcludeSemantics(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
+    final base = url;
+    final sharp = sharpOf(base);
+    Widget none(BuildContext _, String _, Object _) => const SizedBox.shrink();
+    return Container(
+      width: _PickBand.printWidth,
+      height: _PickBand.printHeight,
+      decoration: BoxDecoration(
+        color: AppTheme.hankoSumi3,
+        borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+        boxShadow: [
+          const BoxShadow(
+              color: Color(0x8C000000), blurRadius: 18, offset: Offset(0, 8)),
+          BoxShadow(
+              color: AppTheme.hankoWashi.withValues(alpha: 0.12),
+              spreadRadius: 1),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+        child: base == null || base.isEmpty
+            ? const SizedBox.expand()
+            : Stack(
+                fit: StackFit.expand,
                 children: [
-                  _HankoCover(
-                      url: entry['imageUrl'] as String?, width: 72, height: 102),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _FadeTitle(
-                          title,
-                          maxLines: 2,
-                          style: AppTheme.hankoSerif(
-                              fontSize: AppTheme.hankoFeaturedSize,
-                              height: 1.15),
-                        ),
-                        if (fact != null) ...[
-                          const SizedBox(height: 6),
-                          Text(
-                            fact,
-                            style: AppTheme.hankoSans(
-                                fontSize: AppTheme.hankoMetaSize,
-                                color: AppTheme.hankoStone,
-                                height: 1.4),
-                          ),
-                        ],
-                      ],
-                    ),
+                  CachedNetworkImage(
+                    imageUrl: base,
+                    fit: BoxFit.cover,
+                    fadeInDuration: Duration.zero,
+                    fadeOutDuration: Duration.zero,
+                    errorWidget: none,
                   ),
+                  if (sharp != null)
+                    CachedNetworkImage(
+                      imageUrl: sharp,
+                      fit: BoxFit.cover,
+                      fadeInDuration: MediaQuery.disableAnimationsOf(context)
+                          ? Duration.zero
+                          : const Duration(milliseconds: 250),
+                      fadeOutDuration: Duration.zero,
+                      placeholder: (_, _) => const SizedBox.shrink(),
+                      errorWidget: none,
+                    ),
                 ],
               ),
+      ),
+    );
+  }
+}
+
+/// A cover's own colours as a field (round seven): the cover decoded 24 px
+/// wide and stretched across the field, so it reads as a soft wash of the
+/// art with no blur filter (blur is the app's most expensive raster effect,
+/// PERF.md S2-2). Under sumi: 64% by the print, so its colours glow round
+/// it, and from [wordsFrom] at least 88%, which keeps washi, stone-hi and
+/// the crowd's ai at AA on it whatever the cover (ai over white art under
+/// 88% sumi is 4.7:1). It fades into [base] at the top and the bottom.
+/// Decoration only: nothing in it reaches the semantics tree.
+class _ArtWash extends StatelessWidget {
+  const _ArtWash({
+    required this.url,
+    required this.wordsFrom,
+    required this.base,
+  });
+
+  final String? url;
+
+  /// Where the words begin, from the left edge.
+  final double wordsFrom;
+
+  /// The colour the field sits on and fades into: the page's or a sheet's.
+  final Color base;
+
+  @override
+  Widget build(BuildContext context) {
+    final u = url;
+    if (u == null || u.isEmpty) return const SizedBox.shrink();
+    // On the web the cached provider decodes through the browser at full
+    // size whatever size is asked; Flutter's own NetworkImage decodes at the
+    // size ResizeImage asks for, from the browser's cache.
+    final ImageProvider art =
+        kIsWeb ? NetworkImage(u) : CachedNetworkImageProvider(u);
+    return ExcludeSemantics(
+      child: LayoutBuilder(builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        final dark = (wordsFrom / width).clamp(0.0, 1.0);
+        final lit = ((wordsFrom - 28) / width).clamp(0.0, dark);
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            Image(
+              image: ResizeImage(art, width: 24),
+              fit: BoxFit.cover,
+              filterQuality: FilterQuality.high,
+              gaplessPlayback: true,
+              excludeFromSemantics: true,
+              errorBuilder: (_, _, _) => const SizedBox.shrink(),
             ),
-          ),
-        ),
-      ],
+            DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    base.withValues(alpha: 0.64),
+                    base.withValues(alpha: 0.64),
+                    base.withValues(alpha: 0.88),
+                    base.withValues(alpha: 0.9),
+                  ],
+                  stops: [0, lit, dark, 1],
+                ),
+              ),
+            ),
+            DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    base,
+                    base.withValues(alpha: 0),
+                    base.withValues(alpha: 0),
+                    base,
+                  ],
+                  stops: const [0, 0.22, 0.78, 1],
+                ),
+              ),
+            ),
+          ],
+        );
+      }),
     );
   }
 }
