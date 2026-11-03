@@ -281,15 +281,18 @@ class _TierListHomeScreenState extends State<TierListHomeScreen> {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       padding: const EdgeInsets.symmetric(horizontal: AppTheme.hankoGutter - 4),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          for (final t in templates)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              child: _TemplateCard(template: t, width: narrow ? 212 : 236, onTap: () => _start(t)),
-            ),
-        ],
+      // One height for the whole shelf, the tallest card's.
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (final t in templates)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: _TemplateCard(template: t, width: narrow ? 212 : 236, onTap: () => _start(t)),
+              ),
+          ],
+        ),
       ),
     );
   }

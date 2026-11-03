@@ -380,7 +380,7 @@ class _TierListEditorScreenState extends State<TierListEditorScreen> {
     final plateW = tierPlateWidth(
       context,
       [for (final t in _list.tiers) t.label.trim().isEmpty ? 'Name' : t.label],
-      max: wide ? 150 : 108,
+      max: wide ? 150 : 120,
     );
     final tint = _coverTint();
 
@@ -423,7 +423,7 @@ class _TierListEditorScreenState extends State<TierListEditorScreen> {
                           _header(),
                           const SizedBox(height: 14),
                           for (final t in _list.tiers) ...[
-                            _tierRow(t, plateW, tokenW),
+                            KeyedSubtree(key: ValueKey('tier-${t.id}'), child: _tierRow(t, plateW, tokenW)),
                             const SizedBox(height: 2),
                           ],
                           const SizedBox(height: 10),
