@@ -56,13 +56,15 @@ class StatsScreen extends StatelessWidget {
         builder: (context, snapshot) {
           // A failed read says so, in Profile's words (stage H5), naming no
           // cause the app can't verify. Before, the spinner never stopped.
+          // Shippori draws the typewriter apostrophe as a straight tick, so
+          // the line takes the typographic one, as Profile's (question 109).
           if (snapshot.hasError && !_preHanko) {
             return _hankoColumn(
               context,
               Padding(
                 padding: const EdgeInsets.fromLTRB(
                     AppTheme.hankoGutter, 16, AppTheme.hankoGutter, 0),
-                child: Text('Couldn\'t load your list just now.',
+                child: Text('Couldn’t load your list just now.',
                     style: AppTheme.hankoSerif(fontSize: 17, height: 1.5)),
               ),
             );
@@ -1096,16 +1098,31 @@ class _HankoStats extends StatelessWidget {
     );
   }
 
-  /// What you added by month: Monthly Activity's chart, the same last six
-  /// months that have entries, by `addedAt`. The aside names the span, and
-  /// a line under the chart says what puts a title in a month: addedAt is
-  /// rewritten whenever a show is given a status (addAnimeToList), so each
-  /// title counts once, in the month it was added or last moved.
+  /// What you added by month: Monthly Activity's chart, by `addedAt`. The
+  /// span is the six calendar months up to the newest month you added
+  /// something in, starting no earlier than your first, and every month in
+  /// it is drawn, an empty one at 0 (question 133). It used to draw the last
+  /// six months that had entries, so "May to October" left out July without
+  /// saying so. The aside names the span, and a line under the chart says
+  /// what puts a title in a month: addedAt is rewritten whenever a show is
+  /// given a status (addAnimeToList), so each title counts once, in the
+  /// month it was added or last moved.
   Widget _months(TextStyle quiet) {
-    final sorted = monthlyAdded.entries.toList()
-      ..sort((a, b) => a.key.compareTo(b.key));
-    final shown =
-        sorted.length > 6 ? sorted.sublist(sorted.length - 6) : sorted;
+    final keys = monthlyAdded.keys.toList()..sort();
+    DateTime monthOf(String key) {
+      final parts = key.split('-');
+      return DateTime(int.parse(parts[0]), int.parse(parts[1]));
+    }
+
+    final first = monthOf(keys.first), last = monthOf(keys.last);
+    final shown = <MapEntry<String, int>>[];
+    for (var back = 5; back >= 0; back--) {
+      // DateTime rolls a month below 1 back into the year before.
+      final m = DateTime(last.year, last.month - back);
+      if (m.isBefore(first)) continue;
+      final key = '${m.year}-${m.month.toString().padLeft(2, '0')}';
+      shown.add(MapEntry(key, monthlyAdded[key] ?? 0));
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -1364,6 +1381,9 @@ class _HankoMonthChart extends StatelessWidget {
       height: 1.2,
       tabular: true,
     );
+    // A month with nothing added (question 133) has no bar; its 0 is in
+    // stone, so the gap reads as a quiet month rather than a missing one.
+    final zeroStyle = countStyle.copyWith(color: AppTheme.hankoStone);
     // Room under the bars for the month and its count: 6 px, then two lines
     // that grow with the text size.
     final reserved = 8 +
@@ -1415,7 +1435,10 @@ class _HankoMonthChart extends StatelessWidget {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(_month(months[i]), style: monthStyle),
-                            Text('${months[i].value}', style: countStyle),
+                            Text('${months[i].value}',
+                                style: months[i].value == 0
+                                    ? zeroStyle
+                                    : countStyle),
                           ],
                         ),
                       );

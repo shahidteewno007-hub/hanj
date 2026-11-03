@@ -462,13 +462,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             builder: (_) => const RankingCardsScreen())),
                       ),
                       const SizedBox(height: _rowGap),
+                      // Tier lists take Cadre's place among what you make
+                      // and collect (Shahid, 2026-11-03). The screen and its
+                      // /tierlist route are the tier-list feature's own.
                       _EntryRow(
-                        icon: Icons.local_fire_department_sharp,
-                        title: 'Cadre',
-                        line: 'Draft a deck from any cast and clash',
-                        onTap: () => Navigator.push(context, MaterialPageRoute(
-                            builder: (_) => const CadreLobbyScreen())),
+                        icon: Icons.table_rows_sharp,
+                        title: 'Tier lists',
+                        line: 'Rank characters from god tier down',
+                        onTap: () =>
+                            Navigator.pushNamed(context, '/tierlist'),
                       ),
+                      if (_cadreRow) ...[
+                        const SizedBox(height: _rowGap),
+                        _EntryRow(
+                          icon: Icons.local_fire_department_sharp,
+                          title: 'Cadre',
+                          line: 'Draft a deck from any cast and clash',
+                          onTap: () => Navigator.push(context, MaterialPageRoute(
+                              builder: (_) => const CadreLobbyScreen())),
+                        ),
+                      ],
                       const SizedBox(height: _groupGap),
                       _EntryRow(
                         icon: Icons.people_sharp,
@@ -540,6 +553,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
   /// width, and that row names your pinned card in words. The card's code
   /// is kept below (_pinnedCard), switched off here.
   static const bool _pinnedCardInHeader = false;
+
+  /// Cadre's row, "Draft a deck from any cast and clash", stood where the
+  /// Tier lists row is until Shahid's call of 2026-11-03: "Maybe add a new
+  /// feature instead of cadre where you make your tier list". The row is
+  /// kept here, switched off, and Cadre itself (lib/cadre/ and its /cadre
+  /// route) is untouched.
+  static const bool _cadreRow = false;
 
   /// Space between the rows below the hairline: 4 between rows in a group,
   /// as H5 set it, and 16 between groups, so the groups read without
@@ -766,55 +786,47 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget _pinnedCard(Map<String, dynamic> card) {
     final name = ((card['name'] ?? card['cardName']) as String?) ?? '';
     // One screen-reader button with a tap and focus, as the favourites'
-    // covers (question 104; see _favourite).
-    return Semantics(
-      container: true,
-      button: true,
+    // covers (question 104; see _favourite), with its focus seen on the
+    // card (question 155; see _CoverButton).
+    return _CoverButton(
       label: name.isEmpty
           ? 'Your pinned Hanj Card'
           : 'Your pinned Hanj Card, $name',
       hint: 'Opens your collection',
-      child: InkWell(
-        onTap: () => Navigator.push(context,
-            MaterialPageRoute(builder: (_) => const CardCollectionScreen())),
-        splashFactory: NoSplash.splashFactory,
-        highlightColor: Colors.transparent,
-        hoverColor: Colors.transparent,
-        focusColor: Colors.transparent,
-        // Square corners: HanjCard is square by design
-        // (_CardShell paints square, HanjCard clips with
-        // ClipRect). This was the only place one got
-        // rounded off.
-        child: ExcludeSemantics(
-          child: ClipRect(
-            child: SizedBox(
-              width:  hc.HanjCard.kWidth  * _pinnedScale,
-              height: hc.HanjCard.kHeight * _pinnedScale,
-              // Render the card at its natural 200x300 and scale the
-              // whole thing down. The card has fixed-pixel internals
-              // (footer text, paddings) that don't shrink on their own,
-              // so sizing it directly overflows at small sizes.
-              // The card is drawn like a picture, so the text-size setting
-              // doesn't reach inside it: at 1.3x its footer wrapped and was
-              // cut off. Its name is in the spoken label above.
-              child: FittedBox(
-                fit: BoxFit.contain,
-                child: MediaQuery.withNoTextScaling(
-                  child: hc.HanjCard(
-                    isUnlocked: true,
-                    card: hc.HanjCardData(
-                      id: (card['id'] as String?) ?? '',
-                      name: name,
-                      description: (card['description'] as String?) ?? '',
-                      rarity: hc.CardRarity.values.firstWhere(
-                        (r) => r.name == ((card['rarity'] as String?) ?? 'common'),
-                        orElse: () => hc.CardRarity.common,
-                      ),
-                      category: ((card['category'] as String?) ?? 'ÆTHER').toUpperCase(),
-                      kanji: (card['kanji'] as String?) ?? '道',
-                      cardNumber: (card['cardNumber'] as int?) ?? 0,
-                    ),
+      onTap: () => Navigator.push(context,
+          MaterialPageRoute(builder: (_) => const CardCollectionScreen())),
+      // Square corners: HanjCard is square by design
+      // (_CardShell paints square, HanjCard clips with
+      // ClipRect). This was the only place one got
+      // rounded off.
+      radius: 0,
+      child: ClipRect(
+        child: SizedBox(
+          width:  hc.HanjCard.kWidth  * _pinnedScale,
+          height: hc.HanjCard.kHeight * _pinnedScale,
+          // Render the card at its natural 200x300 and scale the
+          // whole thing down. The card has fixed-pixel internals
+          // (footer text, paddings) that don't shrink on their own,
+          // so sizing it directly overflows at small sizes.
+          // The card is drawn like a picture, so the text-size setting
+          // doesn't reach inside it: at 1.3x its footer wrapped and was
+          // cut off. Its name is in the spoken label above.
+          child: FittedBox(
+            fit: BoxFit.contain,
+            child: MediaQuery.withNoTextScaling(
+              child: hc.HanjCard(
+                isUnlocked: true,
+                card: hc.HanjCardData(
+                  id: (card['id'] as String?) ?? '',
+                  name: name,
+                  description: (card['description'] as String?) ?? '',
+                  rarity: hc.CardRarity.values.firstWhere(
+                    (r) => r.name == ((card['rarity'] as String?) ?? 'common'),
+                    orElse: () => hc.CardRarity.common,
                   ),
+                  category: ((card['category'] as String?) ?? 'ÆTHER').toUpperCase(),
+                  kanji: (card['kanji'] as String?) ?? '道',
+                  cardNumber: (card['cardNumber'] as int?) ?? 0,
                 ),
               ),
             ),
@@ -885,25 +897,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
   /// tap and focus inside it, so a screen reader can press it and, on the
   /// web, it can take focus. A label over excluded semantics made a node
   /// with neither. The cover is left out of the tree, since the label names
-  /// the show, and the ink is clear: it would only sit under the art.
+  /// the show. Its ink lies over the art, so focus shows (question 155;
+  /// see _CoverButton).
   Widget _favourite(Map<String, dynamic> entry, double width, double height) {
     final title = entry['title'] as String? ?? 'Unknown';
     final rating = HankoSeal.formatScore((entry['userRating'] as num).toDouble());
-    return Semantics(
-      container: true,
-      button: true,
+    return _CoverButton(
       label: 'Favourite: $title, your rating $rating',
-      child: InkWell(
-        onTap: () => _openEntry(entry),
-        splashFactory: NoSplash.splashFactory,
-        highlightColor: Colors.transparent,
-        hoverColor: Colors.transparent,
-        focusColor: Colors.transparent,
-        child: ExcludeSemantics(
-          child: _Cover(
-              url: entry['imageUrl'] as String?, width: width, height: height),
-        ),
-      ),
+      onTap: () => _openEntry(entry),
+      child: _Cover(
+          url: entry['imageUrl'] as String?, width: width, height: height),
     );
   }
 
@@ -1023,16 +1026,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   /// Shelves (Hanko stage H5, item g): your list entries grouped by their
-  /// tags, the field the uncalled tags API writes (firestore_service.dart's
+  /// tags, the field the tags API writes (firestore_service.dart's
   /// updateTags), read from the list Profile already has, so it costs no
-  /// request. Stage H7 builds the shelves themselves; nothing writes a tag
-  /// yet, so today this section never shows, and it promises nothing in
-  /// the meantime. Once a shelf exists it appears here as hanko.html draws
-  /// it, under the privacy line the repo rules call for: list entries are
-  /// readable by any signed-in user (firestore.rules, animeList).
+  /// request. Shelving an anime arrives in round seven's Home; until a list
+  /// has a tag this section doesn't show, and it promises nothing in the
+  /// meantime. It sits under the privacy line the repo rules call for: list
+  /// entries are readable by any signed-in user (firestore.rules,
+  /// animeList).
   ///
-  /// Biggest shelf first, then by name; three shelves at most, each with
-  /// its first three covers and how many more.
+  /// Biggest shelf first, then by name; three shelves at most, each drawn
+  /// as a reel of all its covers on a ledge (_shelfReel), then how many
+  /// more shelves there are.
   Widget _buildShelves(List<_Shelf> shelves) {
     final quiet = AppTheme.hankoSans(
       fontSize: AppTheme.hankoLabelSize,
@@ -1040,14 +1044,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
       height: 1.35,
     );
     final more = shelves.length - 3;
+    // The words keep the gutter on both sides; a reel runs on to the
+    // column's right edge.
+    Widget gutter(Widget child) => Padding(
+          padding: const EdgeInsets.symmetric(horizontal: AppTheme.hankoGutter),
+          child: child,
+        );
     return Padding(
-      padding: const EdgeInsets.fromLTRB(
-          AppTheme.hankoGutter, 26, AppTheme.hankoGutter, 0),
+      padding: const EdgeInsets.only(top: 26),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const _SectionHead('Shelves', bottom: 8),
-          Row(
+          gutter(const _SectionHead('Shelves', bottom: 8)),
+          gutter(Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Padding(
@@ -1061,22 +1070,130 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     style: quiet),
               ),
             ],
-          ),
+          )),
           const SizedBox(height: 14),
           for (var i = 0; i < shelves.length && i < 3; i++) ...[
-            if (i > 0) const SizedBox(height: 18),
-            _shelf(shelves[i], quiet),
+            if (i > 0) const SizedBox(height: _shelvesAsReels ? 22 : 18),
+            _shelvesAsReels
+                ? _shelfReel(shelves[i], quiet)
+                : gutter(_shelf(shelves[i], quiet)),
           ],
           if (more > 0) ...[
             const SizedBox(height: 14),
-            Text(more == 1 ? 'and 1 more shelf' : 'and $more more shelves',
-                style: quiet),
+            gutter(Text(
+                more == 1 ? 'and 1 more shelf' : 'and $more more shelves',
+                style: quiet)),
           ],
         ],
       ),
     );
   }
 
+  /// Shelves as reels on a ledge (round seven: Shahid asked for richer
+  /// designs than "letters with black background"). H5's shelf, three
+  /// 64 x 90 posters and "and N more" as hanko.html drew it, is kept as
+  /// _shelf, switched off here.
+  static const bool _shelvesAsReels = true;
+
+  /// A shelf as a reel: its name and how many titles it holds, then every
+  /// cover on it, newest first, 78 x 110 at the covers' own 230 : 325,
+  /// standing side by side on a ledge (an edge-colour lip on a sumi 3
+  /// board, with a soft shade under it). The reel scrolls sideways and runs
+  /// on to the column's right edge, so a long shelf shows that it goes on;
+  /// the ledge stays put while the covers slide along it. Each cover opens
+  /// its show and shows keyboard focus, as Favourites' do (_CoverButton).
+  /// No blur and no new reads: the covers are the list's own.
+  Widget _shelfReel(_Shelf shelf, TextStyle quiet) {
+    const coverWidth = 78.0, coverHeight = 110.0;
+    // Room around the covers for the focus ring, 3 px outside the art,
+    // which the reel's clip would otherwise cut.
+    const ringRoom = 4.0;
+    const lip = 1.0, board = 4.0, shade = 6.0;
+    final count = shelf.entries.length;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding:
+              const EdgeInsets.symmetric(horizontal: AppTheme.hankoGutter),
+          child: SizedBox(
+            width: double.infinity,
+            child: Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.end,
+              spacing: 12,
+              runSpacing: 2,
+              children: [
+                Text(shelf.name,
+                    style: AppTheme.hankoSerif(
+                        fontSize: AppTheme.hankoListTitleSize, height: 1.25)),
+                Text(count == 1 ? '1 title' : '$count titles', style: quiet),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 10 - ringRoom),
+        SizedBox(
+          height: ringRoom + coverHeight + lip + board + shade,
+          child: Stack(
+            children: [
+              // The ledge, from the gutter to the column's edge.
+              const Positioned(
+                left: AppTheme.hankoGutter,
+                right: 0,
+                top: ringRoom + coverHeight,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    ColoredBox(
+                      color: AppTheme.hankoEdge,
+                      child: SizedBox(height: lip),
+                    ),
+                    ColoredBox(
+                      color: AppTheme.hankoSumi3,
+                      child: SizedBox(height: board),
+                    ),
+                    DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [Color(0x66000000), Color(0x00000000)],
+                        ),
+                      ),
+                      child: SizedBox(height: shade),
+                    ),
+                  ],
+                ),
+              ),
+              ListView.separated(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.fromLTRB(
+                    AppTheme.hankoGutter, ringRoom, AppTheme.hankoGutter, 0),
+                itemCount: count,
+                separatorBuilder: (_, _) => const SizedBox(width: 10),
+                itemBuilder: (context, i) => Align(
+                  alignment: Alignment.topCenter,
+                  child: _CoverButton(
+                    label: (shelf.entries[i]['title'] as String?) ?? 'Unknown',
+                    onTap: () => _openEntry(shelf.entries[i]),
+                    child: _Cover(
+                      url: shelf.entries[i]['imageUrl'] as String?,
+                      width: coverWidth,
+                      height: coverHeight,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// H5's shelf (hanko.html): the name and count, then the first three
+  /// covers at 64 x 90 and "and N more". Switched off by _shelvesAsReels.
   Widget _shelf(_Shelf shelf, TextStyle quiet) {
     final count = shelf.entries.length;
     final rest = count - 3;
@@ -1105,24 +1222,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
             for (var i = 0; i < count && i < 3; i++) ...[
               if (i > 0) const SizedBox(width: 8),
               // One screen-reader button with a tap and focus, as the
-              // favourites' covers (question 104; see _favourite).
-              Semantics(
-                container: true,
-                button: true,
+              // favourites' covers (question 104; see _favourite), with
+              // its focus seen on the art (question 155).
+              _CoverButton(
                 label: (shelf.entries[i]['title'] as String?) ?? 'Unknown',
-                child: InkWell(
-                  onTap: () => _openEntry(shelf.entries[i]),
-                  splashFactory: NoSplash.splashFactory,
-                  highlightColor: Colors.transparent,
-                  hoverColor: Colors.transparent,
-                  focusColor: Colors.transparent,
-                  child: ExcludeSemantics(
-                    child: _Cover(
-                      url: shelf.entries[i]['imageUrl'] as String?,
-                      width: 64,
-                      height: 90,
-                    ),
-                  ),
+                onTap: () => _openEntry(shelf.entries[i]),
+                child: _Cover(
+                  url: shelf.entries[i]['imageUrl'] as String?,
+                  width: 64,
+                  height: 90,
                 ),
               ),
             ],
@@ -1612,6 +1720,107 @@ class _Cover extends StatelessWidget {
   }
 }
 
+/// Art that opens something: a favourite's or a shelf's cover, or the
+/// pinned card. One screen-reader button (question 104), named by [label],
+/// with the InkWell's tap and focus in its node and the art left out of the
+/// tree.
+///
+/// The InkWell used to wrap the art, so its ink was painted on the Material
+/// below it, under an opaque picture, and keyboard focus on a cover could
+/// not be seen (question 155). Now the ink lies over the art, on a
+/// transparent Material: focus shows the theme's focus wash on the art and,
+/// for a keyboard, a 1 px washi ring 3 px outside it, as the rating ruler
+/// rings its own (a finger's tap draws none). Press and hover take Hanko's
+/// 8% wash, which the art used to hide too.
+class _CoverButton extends StatefulWidget {
+  const _CoverButton({
+    required this.label,
+    required this.onTap,
+    required this.child,
+    this.hint,
+    this.radius = AppTheme.hankoRadius,
+  });
+
+  final String label;
+  final String? hint;
+  final VoidCallback onTap;
+  final Widget child;
+
+  /// The art's corner radius, so the ink and the ring follow its shape: a
+  /// cover's 2 px, or 0 for a Hanj Card, which is square.
+  final double radius;
+
+  @override
+  State<_CoverButton> createState() => _CoverButtonState();
+}
+
+class _CoverButtonState extends State<_CoverButton> {
+  bool _focused = false;
+
+  @override
+  void initState() {
+    super.initState();
+    FocusManager.instance.addHighlightModeListener(_onHighlightMode);
+  }
+
+  @override
+  void dispose() {
+    FocusManager.instance.removeHighlightModeListener(_onHighlightMode);
+    super.dispose();
+  }
+
+  // A switch between keyboard and touch shows or hides the ring at once.
+  void _onHighlightMode(FocusHighlightMode _) {
+    if (_focused && mounted) setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ring = _focused &&
+        FocusManager.instance.highlightMode == FocusHighlightMode.traditional;
+    return Semantics(
+      container: true,
+      button: true,
+      label: widget.label,
+      hint: widget.hint,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          ExcludeSemantics(child: widget.child),
+          Positioned.fill(
+            child: Material(
+              type: MaterialType.transparency,
+              child: InkWell(
+                onTap: widget.onTap,
+                onFocusChange: (focused) => setState(() => _focused = focused),
+                splashFactory: NoSplash.splashFactory,
+                highlightColor: AppTheme.hankoPressWash,
+                hoverColor: AppTheme.hankoPressWash,
+                borderRadius: BorderRadius.circular(widget.radius),
+              ),
+            ),
+          ),
+          if (ring)
+            Positioned(
+              left: -3,
+              top: -3,
+              right: -3,
+              bottom: -3,
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    border: Border.all(color: AppTheme.hankoWashi),
+                    borderRadius: BorderRadius.circular(widget.radius + 3),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 /// A way on from Profile (Hanj Cards, Cadre and, since question 55, the
 /// identity tools from the ⋮ menu) as a quiet Hanko row: an icon in stone,
 /// the name in Jost 15 500 washi, a line in Jost 13 stone and a chevron.
@@ -1826,8 +2035,8 @@ class _DiaryItem {
 
 /// A diary row (hanko.html's .pdia): the day and the weekday (or the year,
 /// before this one) in Jost, the cover at 30 x 42, the title in Shippori 15
-/// on one line fading at its end, what the date means under it, and your
-/// seal when the show is rated. The date column grows with the text size.
+/// on one line fading at its end, what the date means under it, and, on a
+/// "Rated" row, your seal. The date column grows with the text size.
 class _DiaryRow extends StatelessWidget {
   const _DiaryRow({required this.item, this.onTap});
 
@@ -1847,14 +2056,17 @@ class _DiaryRow extends StatelessWidget {
   ];
 
   /// "Updated · now watching, 7 of 28": lastWatched can't say what the
-  /// update was, so the row says what the show is now.
+  /// update was, so the row says what the show is now. Each number keeps
+  /// its words (question 131, question 110's rule): no-break spaces join
+  /// "1 watched" and "7 of 28", so a line never ends on the number and
+  /// leaves "watched" alone on the next.
   static String _updatedLine(Map<String, dynamic> e) {
     final current = (e['currentEpisode'] as num?)?.toInt() ?? 0;
     final total = (e['episodes'] as num?)?.toInt();
     final String? now = switch (e['status']) {
       'WATCHING' => total != null && total > 0
-          ? 'watching, $current of $total'
-          : 'watching, $current watched',
+          ? 'watching, $current\u00A0of\u00A0$total'
+          : 'watching, $current\u00A0watched',
       'COMPLETED' => 'completed',
       'PLAN_TO_WATCH' => 'on your watchlist',
       'DROPPED' => 'dropped',
@@ -1876,7 +2088,12 @@ class _DiaryRow extends StatelessWidget {
         : item.rated
             ? 'Rated'
             : _updatedLine(entry);
-    final rating = entry != null && entry['userRating'] is num
+    // Only a "Rated" row carries your seal (question 132). A list entry
+    // keeps one rating, the latest (updateRating overwrites userRating and
+    // ratedAt, and the activity log records no ratings), so an "Updated"
+    // row can't know what your rating was on its day: a 29 Oct row showed
+    // the 8.5 sealed on 30 Oct. It shows no seal rather than a later one.
+    final rating = entry != null && item.rated && entry['userRating'] is num
         ? (entry['userRating'] as num).toDouble()
         : null;
     final spoken = [

@@ -262,7 +262,13 @@ class _ShareCanvas extends StatelessWidget {
       width: 340,
       height: 604,
       decoration: const BoxDecoration(color: _kBg),
+      // The content column is centred on the canvas (question 146). The
+      // Stack laid it at its top-left, and the column is only as wide as
+      // its widest line (the card, 230 px), so every shared image sat
+      // 55 px left of centre. It is the canvas's full height either way, so
+      // nothing moves up or down.
       child: Stack(
+        alignment: Alignment.center,
         children: [
           // Rarity-tinted radial glow behind the card
           Positioned.fill(
