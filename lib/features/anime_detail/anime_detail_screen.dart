@@ -2784,8 +2784,23 @@ class _HankoSeasonsState extends State<_HankoSeasons> {
     final names = _HankoSeasons._names(chain.seasons);
     final still = MediaQuery.disableAnimationsOf(context);
     final scaler = MediaQuery.textScalerOf(context);
-    // Two lines kept for every name, so the counts line up.
-    final nameHeight = 2 * scaler.scale(AppTheme.hankoMetaSize) * 1.25;
+    // Every name gets the lines the longest needs, one or two, so the counts
+    // line up without a gap under one-line names.
+    final nameStyle = AppTheme.hankoSans(
+        fontSize: AppTheme.hankoMetaSize, weight: FontWeight.w600, height: 1.25);
+    var nameLines = 1;
+    for (final name in names) {
+      final painter = TextPainter(
+        text: TextSpan(text: name, style: nameStyle),
+        textScaler: scaler,
+        textDirection: TextDirection.ltr,
+        maxLines: 2,
+      )..layout(maxWidth: _HankoSeasons._printWidth);
+      nameLines = math.max(nameLines, painter.computeLineMetrics().length);
+      painter.dispose();
+      if (nameLines == 2) break;
+    }
+    final nameHeight = nameLines * scaler.scale(AppTheme.hankoMetaSize) * 1.25;
     final tiles = <Widget>[
       if (chain.moreBefore) _slot(nameHeight, before: true),
       for (final (i, season) in chain.seasons.indexed)
