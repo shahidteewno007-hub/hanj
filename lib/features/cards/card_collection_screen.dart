@@ -1128,12 +1128,25 @@ class _PinCardButtonState extends State<_PinCardButton> {
     // If a card is already pinned, ask to replace it
     if (_pinned.isNotEmpty) {
       final existingName = (_pinned.first['name'] as String?) ?? 'current card';
+      // In Hanko's language, as the sheet it rises over (question 130's
+      // cards pass): the sheets' sumi 2 and 6 px corners, the card's
+      // rarity colour as its edge, a Shippori head, typographic quotes, and
+      // "Pin it" in washi 600 where it was coral (coral marks only your
+      // own verdicts). Both answers press with Hanko's wash, no ripple.
+      const answer = ButtonStyle(
+        overlayColor: WidgetStatePropertyAll(AppTheme.hankoPressWash),
+        splashFactory: NoSplash.splashFactory,
+        minimumSize: WidgetStatePropertyAll(Size(64, AppTheme.hankoTouch)),
+        shape: WidgetStatePropertyAll(RoundedRectangleBorder(
+          borderRadius: BorderRadius.all(Radius.circular(AppTheme.hankoRadius)),
+        )),
+      );
       final confirm = await showDialog<bool>(
         context: context,
         builder: (_) => AlertDialog(
-          backgroundColor: const Color(0xFF0F0C09),
+          backgroundColor: AppTheme.hankoSumi2,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(AppTheme.hankoSheetRadius),
             side: BorderSide(
               color: CardRarity.values
                   .firstWhere((r) => r.name == widget.rarity,
@@ -1144,25 +1157,28 @@ class _PinCardButtonState extends State<_PinCardButton> {
           ),
           title: Text(
             'Replace card?',
-            style: AppTheme.serif(fontSize: 18, weight: FontWeight.w700),
+            style: AppTheme.hankoSerif(fontSize: 18, height: 1.3),
           ),
           content: Text(
-            'Replace "$existingName" with "${widget.cardName}" on your profile?',
-            style: AppTheme.sans(fontSize: 14, color: AppTheme.textSecondary),
+            'Replace “$existingName” with “${widget.cardName}” on your profile?',
+            style: AppTheme.hankoSans(height: 1.45),
           ),
           actions: [
             TextButton(
+              style: answer,
               onPressed: () => Navigator.pop(context, false),
               child: Text('Cancel',
-                  style: AppTheme.sans(fontSize: 14, color: AppTheme.textMuted)),
+                  style: AppTheme.hankoSans(
+                      fontSize: 15,
+                      weight: FontWeight.w500,
+                      color: AppTheme.hankoStone)),
             ),
             TextButton(
+              style: answer,
               onPressed: () => Navigator.pop(context, true),
               child: Text('Pin it',
-                  style: AppTheme.sans(
-                      fontSize: 14,
-                      color: AppTheme.primary,
-                      weight: FontWeight.w700)),
+                  style: AppTheme.hankoSans(
+                      fontSize: 15, weight: FontWeight.w600)),
             ),
           ],
         ),
