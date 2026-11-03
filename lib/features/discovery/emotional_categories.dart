@@ -217,9 +217,10 @@ const _moods = <String, List<_Card>>{
 
 List<_Card> _handOf(_Category c) => _moods[c.name] ?? _defaultHand;
 
-// A vibe's sort order on its label, in the words Discover's tabs use.
+// A vibe's sort order on its label, in the words Discover's tabs use. The
+// spaces don't break, so a label that wraps keeps "top rated" whole.
 const _sortWords = {
-  'SCORE_DESC': 'Top rated',
+  'SCORE_DESC': 'Top rated',
   'TRENDING_DESC': 'Trending',
   'POPULARITY_DESC': 'Popular',
 };
@@ -673,14 +674,18 @@ class _CategoryRowState extends State<_CategoryRow> {
       cards: _handOf(cat),
       covers: widget.covers,
       coverWidth: cw,
-      extent: hero ? _handExtent([_handOf(cat)]) : _standardExtent,
+      // Each board takes its own hand's shape: a huddle is narrower than a
+      // splay. The words are top-aligned, so the boards still line up.
+      extent: _handExtent([_handOf(cat)]),
       lifted: lifted,
       dealIn: _dealIn && !still,
     );
     // What the vibe is made of, as a printed label: its genre and the order
     // AniList sorts it in, in the words Discover's own tabs use.
     final label = Text(
-      '${cat.genre} · ${_sortWords[cat.sort] ?? cat.sort}'.toUpperCase(),
+      '${cat.genre.replaceAll(' ', ' ')} · '
+              '${_sortWords[cat.sort] ?? cat.sort}'
+          .toUpperCase(),
       style: AppTheme.hankoSans(
         fontSize: AppTheme.hankoDataSmallSize,
         weight: FontWeight.w500,
@@ -884,13 +889,6 @@ class _CategoryRowState extends State<_CategoryRow> {
     );
   }
 }
-
-// The box every three-cover hand shares, so the boards line up.
-final Rect _standardExtent = _handExtent([
-  _defaultHand,
-  for (final c in _categories)
-    if (!c.isHiddenGems) _handOf(c),
-]);
 
 // ─────────────────────────────────────────────────────────────
 // The hand — a vibe's covers, posed (round seven)
