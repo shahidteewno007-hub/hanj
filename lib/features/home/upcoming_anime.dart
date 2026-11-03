@@ -192,7 +192,7 @@ class _UpcomingAnimeScreenState extends State<UpcomingAnimeScreen>
                     color: AppTheme.primary, size: 18),
                 const SizedBox(width: 8),
                 Expanded(child: Text(
-                    "You'll be notified when ${anime.titleEnglish ?? anime.title} airs!")),
+                    "You’ll be notified when ${anime.titleEnglish ?? anime.title} airs!")),
               ],
             ),
             backgroundColor: AppTheme.surfaceMid,
@@ -210,7 +210,8 @@ class _UpcomingAnimeScreenState extends State<UpcomingAnimeScreen>
   /// bell to put back: it still shows what is saved, and no confirmation
   /// was shown. The message says so, naming no cause, in place of any
   /// message still showing, in this screen's own message style. Offline,
-  /// the write waits for the connection, as before.
+  /// the write waits for the connection, as before. Its words are Home's,
+  /// typographic apostrophe included (question 154).
   void _alertNotSaved({required bool removing}) {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
@@ -218,8 +219,8 @@ class _UpcomingAnimeScreenState extends State<UpcomingAnimeScreen>
       ..showSnackBar(
         SnackBar(
           content: Text(removing
-              ? "Couldn't remove the reminder. Try again."
-              : "Couldn't set the reminder. Try again."),
+              ? "Couldn’t remove the reminder. Try again."
+              : "Couldn’t set the reminder. Try again."),
           backgroundColor: AppTheme.surfaceMid,
           behavior: SnackBarBehavior.floating,
         ),

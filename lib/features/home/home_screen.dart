@@ -1377,11 +1377,12 @@ class _HomeScreenState extends State<HomeScreen> {
     if (rated != null) return _buildLede(rated, style);
 
     // count is how many WATCHING shows are on the list, not episodes that
-    // aired, so the headline says that.
+    // aired, so the headline says that. The typographic apostrophe, as the
+    // failure line above (question 154).
     final count = _continueWatching.length;
     final String line;
     if (count > 0) {
-      line = 'You\'re watching $count show${count > 1 ? 's' : ''}.';
+      line = 'You’re watching $count show${count > 1 ? 's' : ''}.';
     } else if (_entries.isNotEmpty) {
       line = 'All caught up.';
     } else {
@@ -1845,7 +1846,7 @@ class _ImportPendingBanner extends StatelessWidget {
               const SizedBox(height: 4),
               Text(
                 "Bring your list over from AniList or MyAnimeList whenever "
-                "you're ready.",
+                "you’re ready.",
                 style: AppTheme.hankoSans(
                     fontSize: AppTheme.hankoMetaSize,
                     color: AppTheme.hankoStone,
@@ -2030,7 +2031,9 @@ class _TonightCardState extends State<_TonightCard>
       children: [
         Semantics(
           header: true,
-          child: Text("Tonight's drop",
+          // The typographic apostrophe: Shippori draws the typewriter one
+          // as a straight tick (questions 109 and 154).
+          child: Text('Tonight’s drop',
               style: AppTheme.hankoSerif(height: 1.3)),
         ),
         const SizedBox(height: 12),
@@ -3220,7 +3223,7 @@ class _ComingUpSectionState extends State<_ComingUpSection> {
       return Padding(
         padding: const EdgeInsets.only(top: 4, bottom: 4),
         child: Text(
-          "The next episodes of the shows you're watching appear here.",
+          "The next episodes of the shows you’re watching appear here.",
           style: AppTheme.hankoSans(
               fontSize: AppTheme.hankoMetaSize,
               color: AppTheme.hankoStone,
