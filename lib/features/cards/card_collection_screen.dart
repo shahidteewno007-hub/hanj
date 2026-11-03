@@ -532,7 +532,10 @@ class _HanjCardTile extends StatelessWidget {
     }
   }
 
-  // Map id → card number (matches catalogue; fallback to 0)
+  // Map id → card number (matches catalogue; fallback to 0). The secret
+  // cards had none and read "№ 0000" (question 144); they take 0901–0907,
+  // a block of their own in catalogue order, as the rares and epics have.
+  // Kept identical to _CardDetailSheet._cardNumberFor.
   int get _cardNumber {
     const nums = {
       'first_pull': 1, 'the_list_begins': 2, 'rated': 3, 'genre_curious': 4,
@@ -543,6 +546,9 @@ class _HanjCardTile extends StatelessWidget {
       'the_100_club': 100, 'year_of_anime': 365, 'all_seasons': 4, 'the_200_club': 200,
       'spring_2026_watcher': 237, 'winter_arc_2026': 88,
       'golden_week_2026': 312, 'summer_2026_watcher': 401,
+      'cant_let_go': 901, 'resurrection': 902, 'the_long_game': 903,
+      'time_traveller': 904, 'the_purist': 905, 'dropout': 906,
+      'ghost_of_seasons_past': 907,
     };
     return nums[id] ?? 0;
   }
@@ -674,6 +680,8 @@ class _CardDetailSheet extends StatelessWidget {
     return hints[id] ?? 'Keep watching and exploring.';
   }
 
+  // The secret cards' 0901–0907 as in _HanjCardTile._cardNumber
+  // (question 144).
   static int _cardNumberFor(String id) {
     const nums = {
       'first_pull': 1, 'the_list_begins': 2, 'rated': 3, 'genre_curious': 4,
@@ -684,6 +692,9 @@ class _CardDetailSheet extends StatelessWidget {
       'the_100_club': 100, 'year_of_anime': 365, 'all_seasons': 4, 'the_200_club': 200,
       'spring_2026_watcher': 237, 'winter_arc_2026': 88,
       'golden_week_2026': 312, 'summer_2026_watcher': 401,
+      'cant_let_go': 901, 'resurrection': 902, 'the_long_game': 903,
+      'time_traveller': 904, 'the_purist': 905, 'dropout': 906,
+      'ghost_of_seasons_past': 907,
     };
     return nums[id] ?? 0;
   }
