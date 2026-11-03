@@ -680,6 +680,18 @@ class _CardDetailSheet extends StatelessWidget {
     return hints[id] ?? 'Keep watching and exploring.';
   }
 
+  /// A seasonal card's print run, as the grid's tile passes it
+  /// (_HanjCardTile._totalCount), so the sheet and the shared image read
+  /// "№ 0237 / 2400" as the grid does, not "№ 0237" (question 143). Null
+  /// for every other card.
+  static int? _totalCountFor(String id) {
+    const totals = {
+      'spring_2026_watcher': 2400, 'winter_arc_2026': 1200,
+      'golden_week_2026': 800, 'summer_2026_watcher': 2400,
+    };
+    return totals[id];
+  }
+
   // The secret cards' 0901–0907 as in _HanjCardTile._cardNumber
   // (question 144).
   static int _cardNumberFor(String id) {
@@ -743,6 +755,7 @@ class _CardDetailSheet extends StatelessWidget {
                 category:   category.toUpperCase(),
                 kanji:      _kanjiFor(category),
                 cardNumber: _cardNumberFor(id),
+                totalCount: _totalCountFor(id),
                 unlockedAt: unlockedAt,
               ),
             ),
@@ -853,7 +866,7 @@ class _CardDetailSheet extends StatelessWidget {
               category:    category,
               kanji:       _kanjiFor(category),
               cardNumber:  _cardNumberFor(id),
-              totalCount:  null, // seasonal cards store this in Firestore already
+              totalCount:  _totalCountFor(id), // the pinned record keeps it too
             ),
             const SizedBox(height: 12),
             // Share — turns a card into a story-format image for IG / Snap / etc.
@@ -873,6 +886,7 @@ class _CardDetailSheet extends StatelessWidget {
                   category:   category.toUpperCase(),
                   kanji:      _kanjiFor(category),
                   cardNumber: _cardNumberFor(id),
+                  totalCount: _totalCountFor(id),
                   unlockedAt: unlockedAt,
                 ),
               ),
