@@ -508,13 +508,14 @@ class _AnimeCalendarScreenState extends State<AnimeCalendarScreen> {
             _remindersOn.remove(mediaId);
           }
         });
-        // In place of "Reminder set" if it's still showing.
+        // In place of "Reminder set" if it's still showing. The typographic
+        // apostrophe, as Home's identical messages (question 154).
         ScaffoldMessenger.of(context)
           ..hideCurrentSnackBar()
           ..showSnackBar(SnackBar(
             content: Text(newVal
-                ? "Couldn't set the reminder. Try again."
-                : "Couldn't remove the reminder. Try again."),
+                ? "Couldn’t set the reminder. Try again."
+                : "Couldn’t remove the reminder. Try again."),
             backgroundColor: AppTheme.surfaceLight,
             behavior: SnackBarBehavior.floating,
             margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
