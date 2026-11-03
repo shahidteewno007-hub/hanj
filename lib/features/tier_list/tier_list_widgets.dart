@@ -282,6 +282,26 @@ class TierPressable extends StatefulWidget {
 class _TierPressableState extends State<TierPressable> {
   bool _focused = false;
 
+  // The ring is for keyboard users, as InkWell's own focus highlight is:
+  // after a touch, or when a closing sheet hands focus back, it stays off.
+  bool get _keyboardMode => FocusManager.instance.highlightMode == FocusHighlightMode.traditional;
+
+  @override
+  void initState() {
+    super.initState();
+    FocusManager.instance.addHighlightModeListener(_modeChanged);
+  }
+
+  @override
+  void dispose() {
+    FocusManager.instance.removeHighlightModeListener(_modeChanged);
+    super.dispose();
+  }
+
+  void _modeChanged(FocusHighlightMode _) {
+    if (_focused && mounted) setState(() {});
+  }
+
   @override
   Widget build(BuildContext context) {
     return Semantics(
@@ -307,7 +327,7 @@ class _TierPressableState extends State<TierPressable> {
             clipBehavior: Clip.none,
             children: [
               widget.child,
-              if (_focused)
+              if (_focused && _keyboardMode)
                 Positioned.fill(
                   left: widget.ringInset,
                   top: widget.ringInset,
@@ -504,40 +524,59 @@ class TierEyebrow extends StatelessWidget {
       );
 }
 
-/// A sheet's drag handle and title, as Hanko's sheets draw them.
+/// A sheet's drag handle and title, as Hanko's sheets draw them, with an
+/// optional action (such as Done) beside the title.
 class TierSheetHeader extends StatelessWidget {
-  const TierSheetHeader(this.title, {super.key, this.subtitle});
+  const TierSheetHeader(this.title, {super.key, this.subtitle, this.trailing});
   final String title;
   final String? subtitle;
+  final Widget? trailing;
 
   @override
-  Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.fromLTRB(20, 10, 20, 8),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 36,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: AppTheme.hankoEdge,
-                  borderRadius: BorderRadius.circular(2),
-                ),
+  Widget build(BuildContext context) {
+    final heading = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Semantics(
+          header: true,
+          child: Text(title, style: AppTheme.hankoSerif(fontSize: 20)),
+        ),
+        if (subtitle != null) ...[
+          const SizedBox(height: 4),
+          Text(subtitle!, style: AppTheme.hankoSans(fontSize: 13, color: AppTheme.hankoStone)),
+        ],
+      ],
+    );
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 10, 20, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Center(
+            child: Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppTheme.hankoEdge,
+                borderRadius: BorderRadius.circular(2),
               ),
             ),
-            const SizedBox(height: 14),
-            Semantics(
-              header: true,
-              child: Text(title, style: AppTheme.hankoSerif(fontSize: 20)),
+          ),
+          const SizedBox(height: 14),
+          if (trailing == null)
+            heading
+          else
+            Row(
+              children: [
+                Expanded(child: heading),
+                const SizedBox(width: 12),
+                trailing!,
+              ],
             ),
-            if (subtitle != null) ...[
-              const SizedBox(height: 4),
-              Text(subtitle!, style: AppTheme.hankoSans(fontSize: 13, color: AppTheme.hankoStone)),
-            ],
-          ],
-        ),
-      );
+        ],
+      ),
+    );
+  }
 }
 
 /// Opens a Hanko sheet: sumi 2, top corners at the sheet radius.
@@ -550,8 +589,25 @@ Future<T?> showTierSheet<T>(BuildContext context, WidgetBuilder builder) {
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(AppTheme.hankoSheetRadius)),
     ),
-    builder: builder,
+    builder: (context) => TierTextSelection(child: builder(context)),
   );
+}
+
+/// Text selection in washi: the theme's own is coral, and coral is the
+/// user's verdicts only.
+class TierTextSelection extends StatelessWidget {
+  const TierTextSelection({super.key, required this.child});
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => TextSelectionTheme(
+        data: TextSelectionThemeData(
+          cursorColor: AppTheme.hankoWashi,
+          selectionColor: AppTheme.hankoWashi.withValues(alpha: 0.28),
+          selectionHandleColor: AppTheme.hankoWashi,
+        ),
+        child: child,
+      );
 }
 
 /// A short floating message in Hanko's colours.

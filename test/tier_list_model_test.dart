@@ -158,6 +158,18 @@ void main() {
     });
   });
 
+  group('the anime on a list', () {
+    test('counted all together, or only where the picture shows them', () {
+      // _c gives ids 1 and 4 anime 1, and id 2 anime 2.
+      final l = _list()..addCharacters([_c(1), _c(2), _c(4)]);
+      l.move(1, toTierId: 't0');
+      expect(l.mediaByUse().map((e) => e.key), [1, 2], reason: 'anime 1 has two, so it comes first');
+      expect(l.mediaByUse(rankedOnly: true).map((e) => e.key), [1]);
+      l.move(1);
+      expect(l.mediaByUse(rankedOnly: true), isEmpty);
+    });
+  });
+
   group('tiers', () {
     test('deleting one sends its characters to the tray, in order; the last stays', () {
       final l = _list(tiers: 2)..addCharacters([_c(1), _c(2), _c(3)]);

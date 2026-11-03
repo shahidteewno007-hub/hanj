@@ -231,8 +231,9 @@ class _TierListExportScreenState extends State<TierListExportScreen> {
                               ),
                             ),
                             const SizedBox(width: 10),
+                            // Equal halves: at two-to-one, "Download" broke
+                            // in the middle of the word.
                             Expanded(
-                              flex: 2,
                               child: TierMainButton(
                                 label: 'Share',
                                 icon: Icons.ios_share_rounded,
@@ -269,9 +270,10 @@ class TierListPoster extends StatelessWidget {
   static const double _pad = 18;
   static const wing = 'assets/images/hanj_wing_transparent.png';
 
-  /// The anime covers along the top: most-used first, at most six.
+  /// The covers along the top: the anime of the characters it pictures,
+  /// most-used first, at most six.
   static List<String> coversOf(TierList list) => [
-        for (final m in list.mediaByUse())
+        for (final m in list.mediaByUse(rankedOnly: true))
           if (list.sampleOf(m.key)?.mediaCover case final String c) c,
       ].take(6).toList();
 
@@ -302,7 +304,8 @@ class TierListPoster extends StatelessWidget {
     const gap = 5.0;
     final inner = width - _pad * 2 - plateW - 10;
     final faceW = ((inner - (perRow - 1) * gap) / perRow).floorToDouble();
-    final anime = list.mediaByUse();
+    // Unranked characters aren't on the picture, so they don't count here.
+    final anime = list.mediaByUse(rankedOnly: true);
     final covers = coversOf(list);
     final top = anime.isEmpty ? null : list.sampleOf(anime.first.key)?.mediaColor;
     final wash = top == null ? null : AppTheme.hankoCoverTint(Color(top));
@@ -477,7 +480,7 @@ class TierListPoster extends StatelessWidget {
   }
 
   String _fromLine() {
-    final anime = list.mediaByUse();
+    final anime = list.mediaByUse(rankedOnly: true);
     final names = [
       for (final m in anime)
         if (list.sampleOf(m.key)?.mediaTitle case final String t) t,

@@ -322,11 +322,14 @@ class TierList {
     return true;
   }
 
-  /// The anime on this list, most-used first, each with its count.
-  List<MapEntry<int, int>> mediaByUse() {
+  /// The anime on this list, most-used first, each with its count. With
+  /// [rankedOnly], only characters placed in a tier count: what the exported
+  /// picture shows.
+  List<MapEntry<int, int>> mediaByUse({bool rankedOnly = false}) {
     final counts = <int, int>{};
-    for (final c in characters.values) {
-      final m = c.mediaId;
+    final ids = rankedOnly ? [for (final t in tiers) ...t.characterIds] : characters.keys;
+    for (final id in ids) {
+      final m = characters[id]?.mediaId;
       if (m != null) counts[m] = (counts[m] ?? 0) + 1;
     }
     return counts.entries.toList()..sort((a, b) => b.value.compareTo(a.value));

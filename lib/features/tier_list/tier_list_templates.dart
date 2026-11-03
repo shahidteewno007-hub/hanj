@@ -181,7 +181,7 @@ const kTierTemplates = <TierListTemplate>[
       'Country level', 'City level', 'Street level',
     ],
     icon: Icons.bolt_rounded,
-    characters: ['Saitama', 'Goku', 'Gojo Satoru', 'Monkey D. Luffy', 'Naruto Uzumaki', 'Anos Voldigoad', 'Rimuru Tempest', 'Sung Jinwoo'],
+    characters: ['Saitama', 'Goku', 'Gojo Satoru', 'Monkey D. Luffy', 'Naruto Uzumaki', 'Anos Voldigoad', 'Rimuru Tempest', 'Yuuji Itadori'],
   ),
   TierListTemplate(
     id: 'strongest-overall',
@@ -194,7 +194,7 @@ const kTierTemplates = <TierListTemplate>[
       'Peak human', 'Average human', 'Weakling',
     ],
     icon: Icons.public_rounded,
-    characters: ['Zeno', 'Madoka Kaname', 'Saitama', 'Ryomen Sukuna', 'Escanor', 'Yujiro Hanma', 'Levi'],
+    characters: ['Madoka Kaname', 'Anos Voldigoad', 'Saitama', 'Sukuna', 'Escanor', 'Yuujirou Hanma', 'Levi'],
   ),
   TierListTemplate(
     id: 'villain-threat',
@@ -206,7 +206,7 @@ const kTierTemplates = <TierListTemplate>[
     tiers: ['God', 'Dragon', 'Demon', 'Tiger', 'Wolf'],
     pigments: [_gold, _peony, _wisteria, _sky, _ash],
     icon: Icons.warning_amber_rounded,
-    characters: ['Ryomen Sukuna', 'Madara Uchiha', 'Frieza', 'Muzan Kibutsuji', 'Sosuke Aizen', 'Meruem', 'Boros'],
+    characters: ['Sukuna', 'Madara Uchiha', 'Frieza', 'Muzan Kibutsuji', 'Sousuke Aizen', 'Meruem', 'Boros'],
   ),
   TierListTemplate(
     id: 'swordsman',
@@ -228,7 +228,7 @@ const kTierTemplates = <TierListTemplate>[
     tiers: ['Lived up to it', 'Legit', 'Mid', 'Fraud', 'Jobber'],
     pigments: [_gold, _bamboo, _ash, _wisteria, _ink],
     icon: Icons.sentiment_dissatisfied_rounded,
-    characters: ['Yamcha', 'Kaido', 'Hisoka', 'Sosuke Aizen', 'Tengen Uzui', 'Endeavor'],
+    characters: ['Yamcha', 'Hisoka', 'Sousuke Aizen', 'Tengen Uzui', 'Endeavor', 'Madara Uchiha'],
   ),
 
   // ── Hot takes ────────────────────────────────────────────
@@ -241,7 +241,7 @@ const kTierTemplates = <TierListTemplate>[
     tiers: ['Absolute Cinema', 'Peak fiction', 'Great', 'Solid', 'Mid', 'Forgettable'],
     pigments: [_gold, _peony, _wisteria, _sky, _ash, _ink],
     icon: Icons.theater_comedy_rounded,
-    characters: ['Johan Liebert', 'Griffith', 'Light Yagami', 'Meruem', 'Pain', 'Ryomen Sukuna', 'Dio Brando'],
+    characters: ['Johan Liebert', 'Griffith', 'Light Yagami', 'Meruem', 'Pain', 'Sukuna', 'Dio Brando'],
   ),
   TierListTemplate(
     id: 'most-aura',
@@ -252,7 +252,7 @@ const kTierTemplates = <TierListTemplate>[
     tiers: ['The chosen ones', 'Aura farmers', 'Sleeper build', 'Aura NPC', 'Aura debtors'],
     pigments: [_gold, _wisteria, _teal, _ash, _ink],
     icon: Icons.auto_awesome_rounded,
-    characters: ['Gojo Satoru', 'Itachi Uchiha', 'Sosuke Aizen', 'Levi', 'Shanks', 'Yoriichi Tsugikuni'],
+    characters: ['Gojo Satoru', 'Itachi Uchiha', 'Sousuke Aizen', 'Levi', 'Shanks', 'Yoriichi Tsugikuni'],
   ),
   TierListTemplate(
     id: 'best-sensei',
@@ -277,7 +277,7 @@ const kTierTemplates = <TierListTemplate>[
     ],
     pigments: [_gold, _bamboo, _sky, _wisteria, _ash, _ink],
     icon: Icons.family_restroom_rounded,
-    characters: ['Loid Forger', 'Minato Namikaze', 'Van Hohenheim', 'Endeavor', 'Gendo Ikari', 'Ging Freecss', 'Shou Tucker'],
+    characters: ['Loid Forger', 'Minato Namikaze', 'Van Hohenheim', 'Endeavor', 'Gendou Ikari', 'Ging Freecss', 'Shou Tucker'],
   ),
   TierListTemplate(
     id: 'tragic',
@@ -288,7 +288,7 @@ const kTierTemplates = <TierListTemplate>[
     tiers: ['Incredibly tragic', 'Very tragic', 'Tragic', 'Sad', 'Kinda sad', 'Not even sad'],
     pigments: [_sky, _wisteria, _teal, _bamboo, _ash, _ink],
     icon: Icons.water_drop_rounded,
-    characters: ['Gaara', 'Nagato', 'Kyojuro Rengoku', 'Jiraiya', 'Itachi Uchiha', 'Nina Tucker', 'Ken Kaneki'],
+    characters: ['Gaara', 'Pain', 'Kyoujurou Rengoku', 'Jiraiya', 'Itachi Uchiha', 'Nina Tucker', 'Ken Kaneki'],
   ),
   TierListTemplate(
     id: 'smartest',
@@ -298,7 +298,7 @@ const kTierTemplates = <TierListTemplate>[
     kind: TierTemplateKind.opinion,
     tiers: ['GOAT', 'SS', 'S', 'A', 'B', 'C', 'D'],
     icon: Icons.psychology_rounded,
-    characters: ['Lelouch Lamperouge', 'Light Yagami', 'L', 'Senku Ishigami', 'Shikamaru Nara', 'Kiyotaka Ayanokoji', 'Johan Liebert'],
+    characters: ['Lelouch Lamperouge', 'Light Yagami', 'L', 'Senkuu Ishigami', 'Shikamaru Nara', 'Kiyotaka Ayanokouji', 'Johan Liebert'],
   ),
   TierListTemplate(
     id: 'best-girl',

@@ -278,50 +278,52 @@ class _TierCharacterPickerScreenState extends State<TierCharacterPickerScreen> {
             ],
           ),
           const SizedBox(height: 8),
-          TextField(
-            controller: _field,
-            focusNode: _fieldFocus,
-            autofocus: true,
-            onChanged: _onType,
-            onSubmitted: (t) {
-              _debounce?.cancel();
-              if (t.trim().length >= 2) _search(t.trim());
-            },
-            textInputAction: TextInputAction.search,
-            style: AppTheme.hankoSans(fontSize: 16),
-            cursorColor: AppTheme.hankoWashi,
-            decoration: InputDecoration(
-              hintText: _mode == _Mode.anime ? 'Search an anime' : 'Search a character',
-              hintStyle: AppTheme.hankoSans(fontSize: 16, color: AppTheme.hankoAsh),
-              prefixIcon: const Icon(Icons.search_rounded, color: AppTheme.hankoStone),
-              suffixIcon: ValueListenableBuilder<TextEditingValue>(
-                valueListenable: _field,
-                builder: (_, v, _) => v.text.isEmpty
-                    ? const SizedBox.shrink()
-                    : IconButton(
-                        tooltip: 'Clear search',
-                        icon: const Icon(Icons.close_rounded, color: AppTheme.hankoStone),
-                        onPressed: () {
-                          _field.clear();
-                          _onType('');
-                          _fieldFocus.requestFocus();
-                        },
-                      ),
-              ),
-              filled: true,
-              fillColor: AppTheme.hankoSumi2,
-              contentPadding: const EdgeInsets.symmetric(vertical: 12),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
-                borderSide: const BorderSide(color: AppTheme.hankoHairline),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
-                borderSide: const BorderSide(color: AppTheme.hankoHairline),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
-                borderSide: const BorderSide(color: AppTheme.hankoEdge, width: 1.5),
+          TierTextSelection(
+            child: TextField(
+              controller: _field,
+              focusNode: _fieldFocus,
+              autofocus: true,
+              onChanged: _onType,
+              onSubmitted: (t) {
+                _debounce?.cancel();
+                if (t.trim().length >= 2) _search(t.trim());
+              },
+              textInputAction: TextInputAction.search,
+              style: AppTheme.hankoSans(fontSize: 16),
+              cursorColor: AppTheme.hankoWashi,
+              decoration: InputDecoration(
+                hintText: _mode == _Mode.anime ? 'Search an anime' : 'Search a character',
+                hintStyle: AppTheme.hankoSans(fontSize: 16, color: AppTheme.hankoAsh),
+                prefixIcon: const Icon(Icons.search_rounded, color: AppTheme.hankoStone),
+                suffixIcon: ValueListenableBuilder<TextEditingValue>(
+                  valueListenable: _field,
+                  builder: (_, v, _) => v.text.isEmpty
+                      ? const SizedBox.shrink()
+                      : IconButton(
+                          tooltip: 'Clear search',
+                          icon: const Icon(Icons.close_rounded, color: AppTheme.hankoStone),
+                          onPressed: () {
+                            _field.clear();
+                            _onType('');
+                            _fieldFocus.requestFocus();
+                          },
+                        ),
+                ),
+                filled: true,
+                fillColor: AppTheme.hankoSumi2,
+                contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+                  borderSide: const BorderSide(color: AppTheme.hankoHairline),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+                  borderSide: const BorderSide(color: AppTheme.hankoHairline),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+                  borderSide: const BorderSide(color: AppTheme.hankoEdge, width: 1.5),
+                ),
               ),
             ),
           ),

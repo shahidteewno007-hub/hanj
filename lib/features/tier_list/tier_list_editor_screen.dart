@@ -298,7 +298,7 @@ class _TierListEditorScreenState extends State<TierListEditorScreen> {
   Future<void> _renameList() async {
     final result = await showDialog<(String, String)>(
       context: context,
-      builder: (_) => _RenameListDialog(title: _list.title, prompt: _list.prompt),
+      builder: (_) => TierTextSelection(child: _RenameListDialog(title: _list.title, prompt: _list.prompt)),
     );
     if (!mounted || result == null) return;
     final (title, prompt) = result;
@@ -1044,184 +1044,188 @@ class _TierSheetState extends State<_TierSheet> {
     final i = list.indexOfTier(widget.tier.id);
     final suggestions = tierNameSuggestionsFor(list.templateId);
     final insets = MediaQuery.viewInsetsOf(context).bottom;
+    // Done sits beside the title, outside the scroll, and the tier's own
+    // moves come before the name ideas: at the bottom of fourteen rows of
+    // ideas, Done was about 1,670 px down.
     return Padding(
       padding: EdgeInsets.only(bottom: insets),
-      child: SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.only(bottom: 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              TierSheetHeader('Edit tier', subtitle: 'Tier ${i + 1} of ${list.tiers.length}'),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 6, 20, 0),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    ExcludeSemantics(
-                      child: ValueListenableBuilder<TextEditingValue>(
-                        valueListenable: _name,
-                        builder: (_, v, _) => MediaQuery.withNoTextScaling(
-                          child: TierPlate(
-                            label: v.text,
-                            pigment: TierPigment.at(_pigment),
-                            width: 76,
-                            minHeight: 76,
-                            fontSize: 15,
-                            placeholder: 'Name',
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: TextField(
-                        controller: _name,
-                        autofocus: true,
-                        maxLength: TierList.maxLabelLength,
-                        textInputAction: TextInputAction.done,
-                        onSubmitted: (_) => _done(),
-                        style: AppTheme.hankoSans(fontSize: 16),
-                        cursorColor: AppTheme.hankoWashi,
-                        decoration: InputDecoration(
-                          labelText: 'Tier name',
-                          labelStyle: AppTheme.hankoSans(color: AppTheme.hankoStone),
-                          counterStyle: AppTheme.hankoSans(fontSize: 11, color: AppTheme.hankoAsh),
-                          filled: true,
-                          fillColor: AppTheme.hankoSumi3,
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
-                            borderSide: const BorderSide(color: AppTheme.hankoEdge),
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
-                            borderSide: const BorderSide(color: AppTheme.hankoHairline),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
-                            borderSide: const BorderSide(color: AppTheme.hankoWashi, width: 1.5),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const Padding(
-                padding: EdgeInsets.fromLTRB(20, 14, 20, 8),
-                child: TierEyebrow('Colour'),
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Wrap(
-                  spacing: 4,
-                  runSpacing: 4,
-                  children: [
-                    for (var p = 0; p < TierPigment.all.length; p++)
-                      TierPressable(
-                        label: TierPigment.all[p].name,
-                        selected: p == _pigment,
-                        onTap: () => setState(() => _pigment = p),
-                        child: SizedBox(
-                          width: AppTheme.hankoTouch,
-                          height: AppTheme.hankoTouch,
-                          child: Center(
-                            child: Container(
-                              width: 34,
-                              height: 34,
-                              decoration: BoxDecoration(
-                                color: TierPigment.all[p].color,
-                                borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
-                                border: p == _pigment
-                                    ? Border.all(color: AppTheme.hankoWashi, width: 2)
-                                    : Border.all(color: AppTheme.hankoSumi2, width: 2),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          TierSheetHeader(
+            'Edit tier',
+            subtitle: 'Tier ${i + 1} of ${list.tiers.length}',
+            trailing: TierMainButton(label: 'Done', icon: Icons.check_rounded, onTap: _done),
+          ),
+          Flexible(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.only(bottom: 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 6, 20, 0),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        ExcludeSemantics(
+                          child: ValueListenableBuilder<TextEditingValue>(
+                            valueListenable: _name,
+                            builder: (_, v, _) => MediaQuery.withNoTextScaling(
+                              child: TierPlate(
+                                label: v.text,
+                                pigment: TierPigment.at(_pigment),
+                                width: 76,
+                                minHeight: 76,
+                                fontSize: 15,
+                                placeholder: 'Name',
                               ),
-                              child: p == _pigment
-                                  ? Icon(Icons.check_rounded, size: 18, color: TierPigment.all[p].ink)
-                                  : null,
                             ),
                           ),
                         ),
-                      ),
-                  ],
-                ),
-              ),
-              const Padding(
-                padding: EdgeInsets.fromLTRB(20, 14, 20, 2),
-                child: TierEyebrow('Name ideas'),
-              ),
-              for (final s in suggestions) ...[
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
-                  child: Text(s.key, style: AppTheme.hankoSans(fontSize: 12, color: AppTheme.hankoAsh)),
-                ),
-                SizedBox(
-                  height: AppTheme.hankoTouch,
-                  child: ListView.separated(
-                    scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    itemCount: s.value.length,
-                    separatorBuilder: (_, _) => const SizedBox(width: 6),
-                    itemBuilder: (_, k) => _NameChip(
-                      label: s.value[k],
-                      onTap: () {
-                        _name.text = s.value[k];
-                        _name.selection = TextSelection.collapsed(offset: s.value[k].length);
-                      },
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: TextField(
+                            controller: _name,
+                            autofocus: true,
+                            maxLength: TierList.maxLabelLength,
+                            textInputAction: TextInputAction.done,
+                            onSubmitted: (_) => _done(),
+                            style: AppTheme.hankoSans(fontSize: 16),
+                            cursorColor: AppTheme.hankoWashi,
+                            decoration: InputDecoration(
+                              labelText: 'Tier name',
+                              labelStyle: AppTheme.hankoSans(color: AppTheme.hankoStone),
+                              counterStyle: AppTheme.hankoSans(fontSize: 11, color: AppTheme.hankoAsh),
+                              filled: true,
+                              fillColor: AppTheme.hankoSumi3,
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+                                borderSide: const BorderSide(color: AppTheme.hankoEdge),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+                                borderSide: const BorderSide(color: AppTheme.hankoHairline),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+                                borderSide: const BorderSide(color: AppTheme.hankoWashi, width: 1.5),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                ),
-              ],
-              const SizedBox(height: 14),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    TierGhostButton(
-                      label: 'Move up',
-                      icon: Icons.arrow_upward_rounded,
-                      dense: true,
-                      onTap: i > 0 ? () => Navigator.pop(context, const _TierMoved(-1)) : null,
+                  const Padding(
+                    padding: EdgeInsets.fromLTRB(20, 14, 20, 8),
+                    child: TierEyebrow('Colour'),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Wrap(
+                      spacing: 4,
+                      runSpacing: 4,
+                      children: [
+                        for (var p = 0; p < TierPigment.all.length; p++)
+                          TierPressable(
+                            label: TierPigment.all[p].name,
+                            selected: p == _pigment,
+                            onTap: () => setState(() => _pigment = p),
+                            child: SizedBox(
+                              width: AppTheme.hankoTouch,
+                              height: AppTheme.hankoTouch,
+                              child: Center(
+                                child: Container(
+                                  width: 34,
+                                  height: 34,
+                                  decoration: BoxDecoration(
+                                    color: TierPigment.all[p].color,
+                                    borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+                                    border: p == _pigment
+                                        ? Border.all(color: AppTheme.hankoWashi, width: 2)
+                                        : Border.all(color: AppTheme.hankoSumi2, width: 2),
+                                  ),
+                                  child: p == _pigment
+                                      ? Icon(Icons.check_rounded, size: 18, color: TierPigment.all[p].ink)
+                                      : null,
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
-                    TierGhostButton(
-                      label: 'Move down',
-                      icon: Icons.arrow_downward_rounded,
-                      dense: true,
-                      onTap: i < list.tiers.length - 1 ? () => Navigator.pop(context, const _TierMoved(1)) : null,
+                  ),
+                  const SizedBox(height: 16),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        TierGhostButton(
+                          label: 'Move up',
+                          icon: Icons.arrow_upward_rounded,
+                          dense: true,
+                          onTap: i > 0 ? () => Navigator.pop(context, const _TierMoved(-1)) : null,
+                        ),
+                        TierGhostButton(
+                          label: 'Move down',
+                          icon: Icons.arrow_downward_rounded,
+                          dense: true,
+                          onTap: i < list.tiers.length - 1 ? () => Navigator.pop(context, const _TierMoved(1)) : null,
+                        ),
+                        TierGhostButton(
+                          label: 'Add a tier below',
+                          icon: Icons.add_rounded,
+                          dense: true,
+                          onTap: list.tiers.length < TierList.maxTiers
+                              ? () => Navigator.pop(context, const _TierAddBelow())
+                              : null,
+                        ),
+                        TierGhostButton(
+                          label: 'Delete tier',
+                          icon: Icons.delete_outline_rounded,
+                          dense: true,
+                          onTap: list.tiers.length > TierList.minTiers
+                              ? () => Navigator.pop(context, const _TierDeleted())
+                              : null,
+                        ),
+                      ],
                     ),
-                    TierGhostButton(
-                      label: 'Add a tier below',
-                      icon: Icons.add_rounded,
-                      dense: true,
-                      onTap: list.tiers.length < TierList.maxTiers
-                          ? () => Navigator.pop(context, const _TierAddBelow())
-                          : null,
+                  ),
+                  const Padding(
+                    padding: EdgeInsets.fromLTRB(20, 18, 20, 2),
+                    child: TierEyebrow('Name ideas'),
+                  ),
+                  for (final s in suggestions) ...[
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
+                      child: Text(s.key, style: AppTheme.hankoSans(fontSize: 12, color: AppTheme.hankoAsh)),
                     ),
-                    TierGhostButton(
-                      label: 'Delete tier',
-                      icon: Icons.delete_outline_rounded,
-                      dense: true,
-                      onTap: list.tiers.length > TierList.minTiers
-                          ? () => Navigator.pop(context, const _TierDeleted())
-                          : null,
+                    SizedBox(
+                      height: AppTheme.hankoTouch,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        itemCount: s.value.length,
+                        separatorBuilder: (_, _) => const SizedBox(width: 6),
+                        itemBuilder: (_, k) => _NameChip(
+                          label: s.value[k],
+                          onTap: () {
+                            _name.text = s.value[k];
+                            _name.selection = TextSelection.collapsed(offset: s.value[k].length);
+                          },
+                        ),
+                      ),
                     ),
                   ],
-                ),
+                ],
               ),
-              const SizedBox(height: 16),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: TierMainButton(label: 'Done', icon: Icons.check_rounded, onTap: _done),
-                ),
-              ),
-            ],
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
