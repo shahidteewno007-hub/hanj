@@ -217,6 +217,35 @@ const _moods = <String, List<_Card>>{
 
 List<_Card> _handOf(_Category c) => _moods[c.name] ?? _defaultHand;
 
+// ─────────────────────────────────────────────────────────────
+// Sharper picks (round seven; Shahid, 2026-11-04: "go with your
+// recommendations")
+// ─────────────────────────────────────────────────────────────
+// Two vibes ask AniList for more than a genre. Their hands and their lists
+// come through this file's _query with these filters in place of the plain
+// genre that searchAnime sends:
+//  - Hidden Gems was Psychological by score, which is the most-discussed
+//    shows there are (Re:ZERO, Steins;Gate). Now: rated 80 or more, and on
+//    10,000 to 50,000 lists, so rarely discussed but not obscure.
+//  - Tragic Masterpieces was the Horror genre. Now: AniList's Tragedy tag
+//    where it ranks 90 or more for the show, so the tragedy is the story.
+// [label] is the board's printed label in place of the genre.
+const _picks = <String, ({String args, String label})>{
+  'Hidden Gems': (
+    args: 'genre: "Psychological", averageScore_greater: 79, '
+        'popularity_greater: 10000, popularity_lesser: 50000',
+    label: 'Psychological',
+  ),
+  'Tragic Masterpieces': (
+    args: 'tag: "Tragedy", minimumTagRank: 90',
+    label: 'Tragedy',
+  ),
+};
+
+/// The filter a vibe's hand and list are asked for.
+String _filterOf(_Category c) =>
+    _picks[c.name]?.args ?? 'genre: ${jsonEncode(c.genre)}';
+
 // A vibe's sort order on its label, in the words Discover's tabs use. The
 // spaces don't break, so a label that wraps keeps "top rated" whole.
 const _sortWords = {
@@ -364,7 +393,7 @@ class _EmotionalCategoriesTabState extends State<EmotionalCategoriesTab>
       return (saved, true);
     }
 
-    final data = await _query({'query': _coversQuery()});
+    final (data, _) = await _query({'query': _coversQuery()});
     final fetched = data == null ? null : _parseCovers(data);
     if (fetched != null && fetched.values.any((l) => l.isNotEmpty)) {
       try {
@@ -390,7 +419,7 @@ class _EmotionalCategoriesTabState extends State<EmotionalCategoriesTab>
       for (var i = 0; i < _categories.length; i++)
         'v$i: Page(page: 1, perPage: ${_categories[i].isHiddenGems ? 10 : 6}) '
             '{ media(type: ANIME, isAdult: false, '
-            'genre: ${jsonEncode(_categories[i].genre)}, '
+            '${_filterOf(_categories[i])}, '
             'sort: [${_categories[i].sort}]) '
             '{ id averageScore coverImage { large color } } }',
     ];
@@ -459,40 +488,44 @@ class _EmotionalCategoriesTabState extends State<EmotionalCategoriesTab>
 
   /// PulseService._query's shape: the shared throttle, the 15 s timeout,
   /// the availability signal, AniList's rate-limit headers and a backoff
-  /// on 429. Null on any failure, so the caller falls back.
-  static Future<Map<String, dynamic>?> _query(Map<String, dynamic> body) async {
+  /// on 429. The body is null on any failure, so the caller falls back; the
+  /// status is this request's own outcome (null when AniList answered, 0 for
+  /// no response), which a row keeps for its empty message.
+  static Future<(Map<String, dynamic>?, int?)> _query(
+      Map<String, dynamic> body) async {
     await AnilistService.throttle();
+    final http.Response response;
     try {
-      final http.Response response;
-      try {
-        response = await http
-            .post(
-              Uri.parse('https://graphql.anilist.co'),
-              headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
-                'User-Agent': 'Hanj/1.0',
-              },
-              body: jsonEncode(body),
-            )
-            .timeout(const Duration(seconds: 15));
-      } catch (_) {
-        AnilistService.noteStatus(0, 'vibes');
-        rethrow;
-      }
-      AnilistService.noteStatus(response.statusCode, 'vibes');
-      AnilistService.noteLimits(response.headers);
-      if (response.statusCode == 429) {
-        final retryAfter =
-            int.tryParse(response.headers['retry-after'] ?? '') ?? 10;
-        AnilistService.backoff(retryAfter);
-        return null;
-      }
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body) as Map<String, dynamic>;
-      }
-    } catch (_) {}
-    return null;
+      response = await http
+          .post(
+            Uri.parse('https://graphql.anilist.co'),
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'User-Agent': 'Hanj/1.0',
+            },
+            body: jsonEncode(body),
+          )
+          .timeout(const Duration(seconds: 15));
+    } catch (_) {
+      AnilistService.noteStatus(0, 'vibes');
+      return (null, 0);
+    }
+    AnilistService.noteStatus(response.statusCode, 'vibes');
+    AnilistService.noteLimits(response.headers);
+    if (response.statusCode == 429) {
+      final retryAfter =
+          int.tryParse(response.headers['retry-after'] ?? '') ?? 10;
+      AnilistService.backoff(retryAfter);
+      return (null, 429);
+    }
+    if (response.statusCode != 200) return (null, response.statusCode);
+    try {
+      final json = jsonDecode(response.body);
+      return (json is Map<String, dynamic> ? json : null, null);
+    } catch (_) {
+      return (null, null);
+    }
   }
 
   Widget _row(_Category c, {required bool wide}) => _CategoryRow(
@@ -611,14 +644,10 @@ class _CategoryRowState extends State<_CategoryRow> {
     if (_hasFetched) return; // already loaded, don't re-fetch
     setState(() => _loading = true);
     try {
-      final results = await _anilist.searchAnime(
-        '',
-        genre: widget.category.genre,
-        sort: widget.category.sort,
-      );
-      // searchAnime has no await after its request, so the flag still holds
-      // this row's own outcome here — no other request can land in between.
-      final failStatus = AnilistService.lastFailStatus;
+      final pick = _picks[widget.category.name];
+      final (results, failStatus) = pick != null
+          ? await _fetchPicked(pick.args)
+          : await _searched();
       if (mounted) {
         setState(() {
           _failStatus = failStatus;
@@ -637,6 +666,69 @@ class _CategoryRowState extends State<_CategoryRow> {
     } catch (_) {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  Future<(List<Anime>, int?)> _searched() async {
+    final results = await _anilist.searchAnime(
+      '',
+      genre: widget.category.genre,
+      sort: widget.category.sort,
+    );
+    // searchAnime has no await after its request, so the flag still holds
+    // this row's own outcome here — no other request can land in between.
+    return (results, AnilistService.lastFailStatus);
+  }
+
+  /// A vibe with a sharper pick (_picks) asks for its list itself: the
+  /// fields searchAnime asks for, one page of 20, built into the same Anime.
+  Future<(List<Anime>, int?)> _fetchPicked(String args) async {
+    final (json, failStatus) = await _EmotionalCategoriesTabState._query({
+      'query': 'query { Page(page: 1, perPage: 20) { media(type: ANIME, '
+          'isAdult: false, $args, sort: [${widget.category.sort}]) { id '
+          'title { romaji english } coverImage { large } averageScore '
+          'episodes status seasonYear season format genres description '
+          'trailer { id site } } } }',
+    });
+    final data = json?['data'];
+    final page = data is Map ? data['Page'] : null;
+    final media = page is Map ? page['media'] : null;
+    return (
+      [
+        if (media is List)
+          for (final m in media) ?_animeOf(m),
+      ],
+      failStatus,
+    );
+  }
+
+  static Anime? _animeOf(Object? m) {
+    if (m is! Map) return null;
+    final title = m['title'] is Map ? m['title'] as Map : const {};
+    final cover = m['coverImage'] is Map ? m['coverImage'] as Map : const {};
+    final trailer = m['trailer'] is Map ? m['trailer'] as Map : const {};
+    final score = m['averageScore'];
+    final genres = m['genres'];
+    final trailerId = trailer['id'];
+    return Anime(
+      id: '${m['id']}',
+      title: title['romaji'] as String? ?? 'Unknown',
+      titleEnglish: title['english'] as String?,
+      imageUrl: cover['large'] as String?,
+      averageScore: score is num ? score.toDouble() : null,
+      episodes: m['episodes'] as int?,
+      status: m['status'] as String?,
+      seasonYear: m['seasonYear'] as int?,
+      season: m['season'] as String?,
+      format: m['format'] as String?,
+      genres: genres is List ? genres.whereType<String>().toList() : const [],
+      description: m['description'] as String?,
+      // As AnilistService does: only YouTube trailers have a URL.
+      trailerUrl: trailer['site'] == 'youtube' &&
+              trailerId is String &&
+              trailerId.isNotEmpty
+          ? 'https://www.youtube.com/watch?v=$trailerId'
+          : null,
+    );
   }
 
   void _toggle() {
@@ -683,7 +775,7 @@ class _CategoryRowState extends State<_CategoryRow> {
     // What the vibe is made of, as a printed label: its genre and the order
     // AniList sorts it in, in the words Discover's own tabs use.
     final label = Text(
-      '${cat.genre.replaceAll(' ', ' ')} · '
+      '${(_picks[cat.name]?.label ?? cat.genre).replaceAll(' ', ' ')} · '
               '${_sortWords[cat.sort] ?? cat.sort}'
           .toUpperCase(),
       style: AppTheme.hankoSans(
