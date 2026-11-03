@@ -1747,6 +1747,24 @@ Color _fieldOver(Color key, double alpha) {
   return c;
 }
 
+/// [key]'s hue as a deep, saturated tone with a luminance of [lum] or less:
+/// as much colour as a field can hold while the words on it keep their
+/// contrast (at 0.06, washi 7.7:1 and stone hi 5.4:1, as _fieldOver). Laid
+/// over sumi, a colour greys out before it gets that dark; this keeps its
+/// saturation, so a field with no art on it (the Taste Card, the aura's
+/// glow) still reads as colour, not as black.
+Color _jewel(Color key, double lum) {
+  final hsv = HSVColor.fromColor(key);
+  final saturation = math.max(hsv.saturation, 0.6);
+  var value = 1.0;
+  var c = hsv.withSaturation(saturation).withValue(value).toColor();
+  while (value > 0.05 && c.computeLuminance() > lum) {
+    value -= 0.01;
+    c = hsv.withSaturation(saturation).withValue(value).toColor();
+  }
+  return c;
+}
+
 /// The print's paper: fine washi and sumi specks at random but fixed places
 /// (the same seed every time, so a card saves the same on every phone),
 /// about one per 70 px², drawn in two calls. Under the words and covers.
@@ -2164,6 +2182,13 @@ class _Top9Place extends StatelessWidget {
     ),
   );
 
+  /// A washi keyline at 10% round the poster, so a dark cover's foot, under
+  /// its scrim, still ends where the poster does.
+  static const _keyline = BoxDecoration(
+    borderRadius: BorderRadius.all(Radius.circular(AppTheme.hankoRadius)),
+    border: Border.fromBorderSide(BorderSide(color: Color(0x1AEEE7DA))),
+  );
+
   @override
   Widget build(BuildContext context) {
     const w = _Top9Print.coverWidth, h = _Top9Print.coverHeight;
@@ -2188,6 +2213,7 @@ class _Top9Place extends StatelessWidget {
           children: [
             _PrintCover(url: entry.imageUrl),
             const DecoratedBox(decoration: _scrim),
+            const DecoratedBox(decoration: _keyline),
             Positioned(
               left: 7,
               bottom: 5,
@@ -2224,25 +2250,31 @@ class _Top9Legend extends StatelessWidget {
                   if (col > 0) const SizedBox(width: _Top9Print.gap),
                   SizedBox(
                     width: _Top9Print.coverWidth,
+                    // The number hangs in its own column, so a title's
+                    // second line starts under its first word.
                     child: row * 3 + col < items.length
-                        ? Text.rich(
-                            TextSpan(children: [
-                              TextSpan(
-                                text: '${row * 3 + col + 1}  ',
-                                style: AppTheme.hankoSans(
-                                    fontSize: AppTheme.hankoDataSmallSize,
-                                    weight: FontWeight.w600,
-                                    color: _Print.secondary,
-                                    height: 1.3,
-                                    tabular: true),
+                        ? Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              SizedBox(
+                                width: 13,
+                                child: Text('${row * 3 + col + 1}',
+                                    style: AppTheme.hankoSans(
+                                        fontSize: AppTheme.hankoDataSmallSize,
+                                        weight: FontWeight.w600,
+                                        color: _Print.secondary,
+                                        height: 1.3,
+                                        tabular: true)),
                               ),
-                              TextSpan(text: items[row * 3 + col].title),
-                            ]),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: AppTheme.hankoSans(
-                                fontSize: AppTheme.hankoDataSmallSize,
-                                height: 1.3),
+                              Expanded(
+                                child: Text(items[row * 3 + col].title,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: AppTheme.hankoSans(
+                                        fontSize: AppTheme.hankoDataSmallSize,
+                                        height: 1.3)),
+                              ),
+                            ],
                           )
                         : null,
                   ),
@@ -2483,7 +2515,7 @@ class _TasteGround extends StatelessWidget {
     var hue = (hsv.hue + 30) % 360;
     // Within 25° of coral's hue (about 9°): turn the other way.
     if (hue > 344 || hue < 34) hue = (hsv.hue - 30) % 360;
-    final far = hsv.withHue(hue).withValue(hsv.value * 0.8).toColor();
+    final far = hsv.withHue(hue).toColor();
     return CustomPaint(
       foregroundPainter: const _RingsPainter(
         centre: Offset(_Print.width - 26, 30),
@@ -2494,12 +2526,14 @@ class _TasteGround extends StatelessWidget {
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
+            // Jewel tones (_jewel): as deep as the words allow, and still
+            // the archetype's colour, where sumi would grey it out.
             colors: [
-              _fieldOver(colour, 0.5),
+              _jewel(colour, 0.06),
               AppTheme.hankoSumi,
-              _fieldOver(far, 0.36),
+              _jewel(far, 0.04),
             ],
-            stops: const [0, 0.55, 1],
+            stops: const [0, 0.6, 1],
           ),
         ),
       ),
@@ -2773,9 +2807,10 @@ class _AuraPrint extends StatelessWidget {
 }
 
 /// Monthly Aura's ground: the aura colour glowing round the fan's middle.
-/// Strongest (60% over sumi) right behind the covers, then held dark enough
-/// for washi (_fieldOver) by the time it reaches any words, fading to sumi
-/// at the print's edges; with three faint rings round it.
+/// Strongest (70% over sumi) behind the covers, showing between them and
+/// round their tops, then a deep tone of the colour (_jewel) held dark
+/// enough for washi by the time it reaches any words, fading to sumi at the
+/// print's edges; with three faint rings round it.
 class _AuraGlowPainter extends CustomPainter {
   const _AuraGlowPainter({required this.colour, required this.centreY});
 
@@ -2788,7 +2823,7 @@ class _AuraGlowPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final centre = Offset(size.width / 2, centreY);
     final core =
-        Color.alphaBlend(colour.withValues(alpha: 0.6), AppTheme.hankoSumi);
+        Color.alphaBlend(colour.withValues(alpha: 0.7), AppTheme.hankoSumi);
     final glow = Paint()
       ..shader = ui.Gradient.radial(
         centre,
@@ -2796,14 +2831,14 @@ class _AuraGlowPainter extends CustomPainter {
         [
           core,
           core,
-          _fieldOver(colour, 0.5),
-          _fieldOver(colour, 0.22),
+          _jewel(colour, 0.06),
+          _jewel(colour, 0.03),
           AppTheme.hankoSumi,
         ],
-        // The core reaches 55 px, inside the fan; by 97 px, past the fan's
-        // top and foot where the words begin, the glow is at its held
-        // strength.
-        const [0, 0.18, 0.32, 0.62, 1],
+        // The core reaches 67 px; by 103 px it is at its held strength,
+        // short of the nearest words (the byline and the aura's name,
+        // 106 px from the middle).
+        const [0, 0.22, 0.34, 0.66, 1],
       );
     canvas.drawRect(Offset.zero & size, glow);
     _RingsPainter(centre: centre, radii: const [118, 152, 190])
