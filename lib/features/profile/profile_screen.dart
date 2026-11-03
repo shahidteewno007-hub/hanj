@@ -1826,8 +1826,8 @@ class _DiaryItem {
 
 /// A diary row (hanko.html's .pdia): the day and the weekday (or the year,
 /// before this one) in Jost, the cover at 30 x 42, the title in Shippori 15
-/// on one line fading at its end, what the date means under it, and your
-/// seal when the show is rated. The date column grows with the text size.
+/// on one line fading at its end, what the date means under it, and, on a
+/// "Rated" row, your seal. The date column grows with the text size.
 class _DiaryRow extends StatelessWidget {
   const _DiaryRow({required this.item, this.onTap});
 
@@ -1847,14 +1847,17 @@ class _DiaryRow extends StatelessWidget {
   ];
 
   /// "Updated · now watching, 7 of 28": lastWatched can't say what the
-  /// update was, so the row says what the show is now.
+  /// update was, so the row says what the show is now. Each number keeps
+  /// its words (question 131, question 110's rule): no-break spaces join
+  /// "1 watched" and "7 of 28", so a line never ends on the number and
+  /// leaves "watched" alone on the next.
   static String _updatedLine(Map<String, dynamic> e) {
     final current = (e['currentEpisode'] as num?)?.toInt() ?? 0;
     final total = (e['episodes'] as num?)?.toInt();
     final String? now = switch (e['status']) {
       'WATCHING' => total != null && total > 0
-          ? 'watching, $current of $total'
-          : 'watching, $current watched',
+          ? 'watching, $current\u00A0of\u00A0$total'
+          : 'watching, $current\u00A0watched',
       'COMPLETED' => 'completed',
       'PLAN_TO_WATCH' => 'on your watchlist',
       'DROPPED' => 'dropped',
@@ -1876,7 +1879,12 @@ class _DiaryRow extends StatelessWidget {
         : item.rated
             ? 'Rated'
             : _updatedLine(entry);
-    final rating = entry != null && entry['userRating'] is num
+    // Only a "Rated" row carries your seal (question 132). A list entry
+    // keeps one rating, the latest (updateRating overwrites userRating and
+    // ratedAt, and the activity log records no ratings), so an "Updated"
+    // row can't know what your rating was on its day: a 29 Oct row showed
+    // the 8.5 sealed on 30 Oct. It shows no seal rather than a later one.
+    final rating = entry != null && item.rated && entry['userRating'] is num
         ? (entry['userRating'] as num).toDouble()
         : null;
     final spoken = [
