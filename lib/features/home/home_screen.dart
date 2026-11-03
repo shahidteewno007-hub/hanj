@@ -1598,6 +1598,10 @@ Future<String?> showHanjListSheet({
   String? currentStatus,
 }) {
   final firestoreService = FirestoreService();
+  // Shelves picked before the show is on the list (round seven, see
+  // _ShelfPicker). Made here, once per sheet, because the builder below can
+  // run again while the sheet animates.
+  final shelves = _ShelfDraft();
 
   // Hanko (question 46): each status is told by its sharp icon and its
   // word, as Detail's status button tells it, not by a colour of its own.
@@ -1648,6 +1652,12 @@ Future<String?> showHanjListSheet({
                 // Caught: uncaught, a rejected write was a fatal Crashlytics report.
                 firestoreService.addAnimeToList(anime: anime, status: s.$1)
                     .catchError((_) {});
+                // 4. Shelves picked while the show wasn't on the list go on
+                // its new entry, in a write of their own after it.
+                if (shelves.staged.isNotEmpty) {
+                  await _saveDraftShelves(
+                      context, anime.id, shelves.staged.toList());
+                }
               },
               splashFactory: NoSplash.splashFactory,
               highlightColor: AppTheme.hankoPressWash,
@@ -1699,17 +1709,39 @@ Future<String?> showHanjListSheet({
       return StatefulBuilder(
         builder: (ctx, setLocal) => Container(
           // hanko.html's sheet: sumi 2, 6 px top corners, the 20 px gutter.
+          // Since round seven it scrolls, and rises above the keyboard while
+          // a new shelf is named; its head sits on the show's own colours.
           decoration: const BoxDecoration(
             color: AppTheme.hankoSumi2,
             borderRadius: BorderRadius.vertical(
                 top: Radius.circular(AppTheme.hankoSheetRadius)),
           ),
-          padding: const EdgeInsets.fromLTRB(
-              AppTheme.hankoGutter, 10, AppTheme.hankoGutter, 32),
-          child: Column(
+          clipBehavior: Clip.antiAlias,
+          padding:
+              EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
+          child: SingleChildScrollView(
+           padding: const EdgeInsets.only(bottom: 32),
+           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+             Stack(
+              children: [
+               // The head on a wash of the cover's colours, as Home's
+               // feature band (round seven).
+               Positioned.fill(
+                 child: _ArtWash(
+                   url: anime.imageUrl,
+                   wordsFrom: AppTheme.hankoGutter + 48 + 12,
+                   base: AppTheme.hankoSumi2,
+                 ),
+               ),
+               Padding(
+                padding: const EdgeInsets.fromLTRB(
+                    AppTheme.hankoGutter, 10, AppTheme.hankoGutter, 20),
+                child: Column(
+                 crossAxisAlignment: CrossAxisAlignment.stretch,
+                 children: [
               // Handle
               Center(
                 child: Container(
@@ -1723,11 +1755,12 @@ Future<String?> showHanjListSheet({
               ),
               const SizedBox(height: 14),
               // The show's cover beside its name, as the sheet's head in
-              // hanko.html draws it: pictures for what the show is.
+              // hanko.html draws it: pictures for what the show is. 48 x 68
+              // since round seven's bigger posters, from 36 x 51.
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _HankoCover(url: anime.imageUrl, width: 36, height: 51),
+                  _HankoCover(url: anime.imageUrl, width: 48, height: 68),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
@@ -1744,11 +1777,12 @@ Future<String?> showHanjListSheet({
                               fontSize: 20, height: 1.15),
                         ),
                         const SizedBox(height: 4),
+                        // Stone-hi: quiet words on a cover's wash.
                         Text(
                           'Where does this one live?',
                           style: AppTheme.hankoSans(
                               fontSize: AppTheme.hankoLabelSize,
-                              color: AppTheme.hankoStone,
+                              color: AppTheme.hankoStoneHi,
                               height: 1.3),
                         ),
                       ],
@@ -1756,10 +1790,27 @@ Future<String?> showHanjListSheet({
                   ),
                 ],
               ),
-              const SizedBox(height: 20),
+                 ],
+                ),
+               ),
+              ],
+             ),
+             Padding(
+              padding: const EdgeInsets.symmetric(
+                  horizontal: AppTheme.hankoGutter),
+              child: Column(
+               mainAxisSize: MainAxisSize.min,
+               crossAxisAlignment: CrossAxisAlignment.stretch,
+               children: [
               pair(0, ctx, setLocal),
               const SizedBox(height: 8),
               pair(2, ctx, setLocal),
+              // Shelves (round seven): the sheet's one hairline sets them
+              // off from where the show lives.
+              const SizedBox(height: 20),
+              Container(height: 1, color: AppTheme.hankoHairline),
+              const SizedBox(height: 16),
+              _ShelfPicker(animeId: anime.id, draft: shelves),
               if (currentStatus != null) ...[
                 const SizedBox(height: 12),
                 Semantics(
@@ -1797,12 +1848,492 @@ Future<String?> showHanjListSheet({
                   ),
                 ),
               ],
+               ],
+              ),
+             ),
             ],
+           ),
           ),
         ),
       );
     },
   );
+}
+
+/// Saves shelves picked in the status sheet for a show that wasn't on the
+/// list (round seven), once a status has been chosen for it: one update of
+/// the new entry's tags, sent after the status write, so it lands after the
+/// entry exists. Awaited and caught: uncaught, a refused write would reach
+/// Crashlytics as fatal. A failure says so on the page the sheet was opened
+/// from, naming no cause; offline, the write waits for the connection.
+Future<void> _saveDraftShelves(
+    BuildContext context, String animeId, List<String> names) async {
+  final uid = FirebaseAuth.instance.currentUser?.uid;
+  if (uid == null || animeId.isEmpty) return;
+  try {
+    await FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .collection('animeList')
+        .doc(animeId)
+        .update({
+      'tags': FieldValue.arrayUnion(names),
+      'tagsUpdatedAt': FieldValue.serverTimestamp(),
+    });
+  } catch (_) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      content: Text('Couldn’t save its shelves. Try again.'),
+    ));
+  }
+}
+
+/// Shelves picked in the status sheet before the show is on the list
+/// (round seven): kept for the sheet's life, then saved with the status.
+class _ShelfDraft {
+  final Set<String> staged = {};
+}
+
+/// Shelving, in the status sheet (round seven; Shahid, 2026-11-03: "I am
+/// not able to shelve an anime"). A shelf is a name in the `tags` list on
+/// the show's own entry, users/{uid}/animeList/{id}: the field Profile's
+/// Shelves section reads (profile_screen.dart, _shelves) and
+/// FirestoreService.updateTags writes. The rules let the owner write the
+/// entry (firestore.rules, animeList), so no new rule is needed.
+///
+/// Every shelf you have shows as a chip, biggest first as Profile orders
+/// them, to put the show on or take it off, with "New shelf" to name one
+/// (a name you already have, in any case, is that shelf). On the list, a
+/// chip's change is written at once (arrayUnion or arrayRemove on tags,
+/// with tagsUpdatedAt as updateTags stamps it), awaited and caught: a
+/// refused write puts the chip back and says so. Off the list there is no
+/// entry to tag yet, so picks wait in [draft] and are saved with the show
+/// when a status is chosen (_saveDraftShelves), and the sheet says so.
+///
+/// It reads once, as the sheet opens: the show's entry, for its shelves and
+/// whether it is on the list, and the entries that have tags, for every
+/// shelf's name and size. Shelves are readable by any signed-in user, as
+/// Profile says, so the sheet says it too.
+class _ShelfPicker extends StatefulWidget {
+  const _ShelfPicker({required this.animeId, required this.draft});
+
+  final String animeId;
+  final _ShelfDraft draft;
+
+  @override
+  State<_ShelfPicker> createState() => _ShelfPickerState();
+}
+
+class _ShelfPickerState extends State<_ShelfPicker> {
+  bool _loading = true;
+  bool _failed = false;
+  bool _onList = false;
+  bool _naming = false;
+  String? _error;
+
+  /// This show's shelves: as saved, or as picked while it is off the list.
+  final Set<String> _mine = {};
+
+  /// Every shelf, in the order the chips show them.
+  final List<String> _all = [];
+
+  /// Per shelf, the number of its newest write, so a failed write only
+  /// puts back a chip that no later tap has changed.
+  final Map<String, int> _writes = {};
+
+  final _name = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _name.dispose();
+    super.dispose();
+  }
+
+  CollectionReference<Map<String, dynamic>>? get _list {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return null;
+    return FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .collection('animeList');
+  }
+
+  /// A tags field's shelf names, as Profile reads them: strings, trimmed,
+  /// empty ones left out.
+  static Set<String> _names(Object? tags) => {
+        if (tags is List)
+          for (final t in tags.whereType<String>())
+            if (t.trim().isNotEmpty) t.trim(),
+      };
+
+  /// Reads the show's entry and every tagged entry. Called from initState,
+  /// so it changes nothing before its first await; Retry sets the spinner.
+  Future<void> _load() async {
+    final list = _list;
+    if (list == null || widget.animeId.isEmpty) return;
+    try {
+      final (entry, tagged) = await (
+        list.doc(widget.animeId).get(),
+        list.where('tags', isNull: false).get(),
+      ).wait;
+      if (!mounted) return;
+      final sizes = <String, int>{};
+      for (final doc in tagged.docs) {
+        for (final name in _names(doc.data()['tags'])) {
+          sizes[name] = (sizes[name] ?? 0) + 1;
+        }
+      }
+      final order = sizes.keys.toList()
+        ..sort((a, b) {
+          final bySize = sizes[b]!.compareTo(sizes[a]!);
+          return bySize != 0
+              ? bySize
+              : a.toLowerCase().compareTo(b.toLowerCase());
+        });
+      final mine = {..._names(entry.data()?['tags']), ...widget.draft.staged};
+      setState(() {
+        _onList = entry.exists;
+        _mine
+          ..clear()
+          ..addAll(mine);
+        _all
+          ..clear()
+          ..addAll(order)
+          ..addAll(mine.where((name) => !sizes.containsKey(name)));
+        _loading = false;
+      });
+    } catch (_) {
+      // Offline with no copy on the device, or refused: say so, with Retry.
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _failed = true;
+      });
+    }
+  }
+
+  Future<void> _toggle(String name) async {
+    final on = !_mine.contains(name);
+    setState(() {
+      on ? _mine.add(name) : _mine.remove(name);
+      if (!_all.contains(name)) _all.add(name);
+      _error = null;
+    });
+    if (!_onList) {
+      on ? widget.draft.staged.add(name) : widget.draft.staged.remove(name);
+      return;
+    }
+    final list = _list;
+    if (list == null) return;
+    final write = (_writes[name] ?? 0) + 1;
+    _writes[name] = write;
+    try {
+      await list.doc(widget.animeId).update({
+        'tags': on
+            ? FieldValue.arrayUnion([name])
+            : FieldValue.arrayRemove([name]),
+        'tagsUpdatedAt': FieldValue.serverTimestamp(),
+      });
+    } catch (_) {
+      // Refused, or the entry has gone: the chip goes back unless a later
+      // tap has changed it since, and the line says so, naming no cause.
+      // Offline, the write waits for the connection and the chip stays.
+      if (!mounted || _writes[name] != write) return;
+      setState(() {
+        on ? _mine.remove(name) : _mine.add(name);
+        _error = 'Couldn’t save that shelf. Try again.';
+      });
+    }
+  }
+
+  void _addNamed() {
+    final name = _name.text.trim().replaceAll(RegExp(r'\s+'), ' ');
+    _name.clear();
+    setState(() => _naming = false);
+    if (name.isEmpty) return;
+    final existing = _all.firstWhere(
+        (s) => s.toLowerCase() == name.toLowerCase(),
+        orElse: () => name);
+    if (!_mine.contains(existing)) _toggle(existing);
+  }
+
+  void _retry() {
+    setState(() {
+      _loading = true;
+      _failed = false;
+    });
+    _load();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Signed out, or a show with no id: nothing to shelve.
+    if (_list == null || widget.animeId.isEmpty) return const SizedBox.shrink();
+    final quiet = AppTheme.hankoSans(
+        fontSize: AppTheme.hankoLabelSize,
+        color: AppTheme.hankoStone,
+        height: 1.35);
+    final said = AppTheme.hankoSans(
+        fontSize: AppTheme.hankoMetaSize, height: 1.35);
+    final error = _error;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Semantics(
+          header: true,
+          child: Text('Shelves', style: AppTheme.hankoSerif(height: 1.3)),
+        ),
+        const SizedBox(height: 4),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Padding(
+              padding: EdgeInsets.only(top: 1),
+              child: Icon(Icons.visibility_sharp,
+                  size: 16, color: AppTheme.hankoStone),
+            ),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text('Shelves are visible to signed-in Hanj users.',
+                  style: quiet),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        if (_loading)
+          const SizedBox(
+            height: AppTheme.hankoTouch,
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                    color: AppTheme.hankoWashi, strokeWidth: 1.5),
+              ),
+            ),
+          )
+        else if (_failed)
+          Row(
+            children: [
+              Expanded(
+                child: Text('Couldn’t load your shelves just now.',
+                    style: said),
+              ),
+              const SizedBox(width: 12),
+              _TextTile(label: 'Retry', onTap: _retry),
+            ],
+          )
+        else ...[
+          // No spacing: each chip's focus ring leaves 4 dp round it, so the
+          // chips stand 8 dp apart, and 12 between rows.
+          Wrap(
+            children: [
+              for (final name in _all)
+                _ShelfChip(
+                  label: name,
+                  selected: _mine.contains(name),
+                  onTap: () => _toggle(name),
+                ),
+              if (!_naming)
+                _ShelfChip(
+                  label: 'New shelf',
+                  icon: Icons.add_sharp,
+                  onTap: () => setState(() => _naming = true),
+                ),
+            ],
+          ),
+          if (_naming)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Row(
+                children: [
+                  Expanded(child: _nameField()),
+                  const SizedBox(width: 8),
+                  _TextTile(label: 'Add', onTap: _addNamed),
+                ],
+              ),
+            ),
+          if (!_onList && _mine.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text('Choose where it lives to save its shelves.',
+                  style: said),
+            ),
+          if (error != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(error, style: said),
+            ),
+        ],
+      ],
+    );
+  }
+
+  /// The new shelf's name: Hanko's field, sumi 3 with the edge outline and
+  /// square corners, washi when focused. Forty characters at most, without
+  /// a counter.
+  Widget _nameField() {
+    final edge = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+      borderSide: const BorderSide(color: AppTheme.hankoEdge),
+    );
+    return TextField(
+      controller: _name,
+      autofocus: true,
+      maxLength: 40,
+      buildCounter: (_,
+              {required currentLength, required isFocused, maxLength}) =>
+          null,
+      textCapitalization: TextCapitalization.sentences,
+      textInputAction: TextInputAction.done,
+      onSubmitted: (_) => _addNamed(),
+      cursorColor: AppTheme.hankoWashi,
+      style: AppTheme.hankoSans(fontSize: 15, height: 1.3),
+      decoration: InputDecoration(
+        hintText: 'Name the shelf',
+        hintStyle: AppTheme.hankoSans(
+            fontSize: 15, color: AppTheme.hankoStone, height: 1.3),
+        filled: true,
+        fillColor: AppTheme.hankoSumi3,
+        isDense: true,
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+        border: edge,
+        enabledBorder: edge,
+        focusedBorder: edge.copyWith(
+            borderSide: const BorderSide(color: AppTheme.hankoWashi)),
+      ),
+    );
+  }
+}
+
+/// A shelf in the status sheet (round seven): Hanko's chip, drawn 36 dp tall
+/// (AppTheme.hankoChipHeight) in a 48 dp target, square corners, Jost 500
+/// 14. Off: sumi 3 with the edge outline; on: washi with a sumi label and a
+/// check, as a chosen status tile; "New shelf" carries a plus instead. Its
+/// own semantics node, a toggle named for the shelf, with the InkWell's tap
+/// and focus inside it (question 119). The InkWell covers the whole target,
+/// so the chip draws its own press and hover washes, as +1 does, and
+/// keyboard focus draws a washi ring 2 dp outside it, which shows on a washi
+/// chip as on a sumi one.
+class _ShelfChip extends StatefulWidget {
+  const _ShelfChip({
+    required this.label,
+    required this.onTap,
+    this.selected,
+    this.icon,
+  });
+
+  final String label;
+  final VoidCallback onTap;
+
+  /// On or off for a shelf; null for "New shelf", an action.
+  final bool? selected;
+  final IconData? icon;
+
+  @override
+  State<_ShelfChip> createState() => _ShelfChipState();
+}
+
+class _ShelfChipState extends State<_ShelfChip> {
+  bool _pressed = false;
+  bool _hovered = false;
+  bool _focused = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final on = widget.selected == true;
+    final ink = on ? AppTheme.hankoSumi : AppTheme.hankoWashi;
+    final base = on ? AppTheme.hankoWashi : AppTheme.hankoSumi3;
+    final fill = _pressed || _hovered
+        ? Color.alphaBlend(
+            on ? const Color(0x1A121110) : AppTheme.hankoPressWash, base)
+        : base;
+    final mark = on ? Icons.check_sharp : widget.icon;
+    return Semantics(
+      container: true,
+      button: true,
+      toggled: widget.selected,
+      label: widget.label,
+      child: Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          onTap: widget.onTap,
+          onHighlightChanged: (v) => setState(() => _pressed = v),
+          onHover: (v) => setState(() => _hovered = v),
+          onFocusChange: (v) => setState(() => _focused = v),
+          splashFactory: NoSplash.splashFactory,
+          overlayColor: const WidgetStatePropertyAll(Colors.transparent),
+          child: ExcludeSemantics(
+            child: ConstrainedBox(
+              constraints:
+                  const BoxConstraints(minHeight: AppTheme.hankoTouch),
+              child: Center(
+                widthFactor: 1,
+                child: Container(
+                  padding: const EdgeInsets.all(2),
+                  decoration: BoxDecoration(
+                    borderRadius:
+                        BorderRadius.circular(AppTheme.hankoRadius + 2),
+                    border: Border.all(
+                        color: _focused
+                            ? AppTheme.hankoWashi
+                            : Colors.transparent,
+                        width: 2),
+                  ),
+                  child: AnimatedContainer(
+                    duration: MediaQuery.disableAnimationsOf(context)
+                        ? Duration.zero
+                        : const Duration(milliseconds: 150),
+                    constraints: const BoxConstraints(
+                        minHeight: AppTheme.hankoChipHeight),
+                    padding: EdgeInsets.fromLTRB(
+                        mark == null ? 14 : 10, 6, 14, 6),
+                    decoration: BoxDecoration(
+                      color: fill,
+                      borderRadius:
+                          BorderRadius.circular(AppTheme.hankoRadius),
+                      border: Border.all(
+                          color: on ? AppTheme.hankoWashi : AppTheme.hankoEdge),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (mark != null) ...[
+                          Icon(mark, size: 16, color: ink),
+                          const SizedBox(width: 6),
+                        ],
+                        Flexible(
+                          child: Text(
+                            widget.label,
+                            maxLines: 1,
+                            softWrap: false,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppTheme.hankoSans(
+                                fontSize: 14,
+                                weight: FontWeight.w500,
+                                color: ink,
+                                height: 1.2),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 // ── Import Pending Banner ─────────────────────────────────────
