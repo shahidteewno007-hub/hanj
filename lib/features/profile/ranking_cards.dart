@@ -1650,7 +1650,10 @@ class _Print extends StatelessWidget {
           children: [
             const Positioned.fill(
                 child: ColoredBox(color: AppTheme.hankoSumi)),
-            if (ground != null) Positioned.fill(child: ground),
+            // Clipped to the print: the Taste Card's corner rings and the
+            // aura's rings run past its edges, and showed on the page beside
+            // it. The saved image was always cut to these bounds.
+            if (ground != null) Positioned.fill(child: ClipRect(child: ground)),
             const Positioned.fill(
                 child: CustomPaint(painter: _GrainPainter())),
             Padding(
