@@ -188,9 +188,10 @@ class _RankingCardsScreenState extends State<RankingCardsScreen>
     );
     if (result == null || !mounted) return;
     final picks = result.pickedByYou ? result.ids : null;
-    if (listEquals(picks, _picks)) return;
+    final before = _picks;
+    if (listEquals(picks, before)) return;
     setState(() => _picks = picks);
-    _storePicks(picks);
+    _storePicks(picks, before);
   }
 
   /// Keeps your picks on your user document as `top9`, the list-entry ids in
@@ -199,7 +200,9 @@ class _RankingCardsScreenState extends State<RankingCardsScreen>
   /// every other writer of it merges, so nothing else there is touched. It
   /// holds ids only, no titles or covers. Awaited and caught, but the screen
   /// never waits on it: offline, Firestore keeps the change and sends it on.
-  Future<void> _storePicks(List<String>? picks) async {
+  /// A refused write puts [before] back, unless you've changed them again,
+  /// so the card never shows an order that wasn't kept.
+  Future<void> _storePicks(List<String>? picks, List<String>? before) async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
     try {
@@ -208,12 +211,12 @@ class _RankingCardsScreenState extends State<RankingCardsScreen>
         SetOptions(merge: true),
       );
     } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Couldn’t keep your Top 9 just now.'),
-          behavior: SnackBarBehavior.floating,
-        ));
-      }
+      if (!mounted) return;
+      if (listEquals(_picks, picks)) setState(() => _picks = before);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Couldn’t keep your Top 9 just now.'),
+        behavior: SnackBarBehavior.floating,
+      ));
     }
   }
 
