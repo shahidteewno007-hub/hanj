@@ -1706,11 +1706,84 @@ Future<String?> showHanjListSheet({
             ),
           );
 
+      // The sheet's head: the handle, and the show's cover beside its name,
+      // on a wash of the cover's colours, as Home's feature band (round
+      // seven).
+      Widget head() => Stack(
+            children: [
+              Positioned.fill(
+                child: _ArtWash(
+                  url: anime.imageUrl,
+                  base: AppTheme.hankoSumi2,
+                  wordsFrom: AppTheme.hankoGutter + 48 + 12,
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                    AppTheme.hankoGutter, 10, AppTheme.hankoGutter, 20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Handle
+                    Center(
+                      child: Container(
+                        width: 32,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: AppTheme.hankoEdge.withValues(alpha: 0.7),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    // The show's cover beside its name, as the sheet's head
+                    // in hanko.html draws it: pictures for what the show
+                    // is. 48 x 68 since round seven's bigger posters, from
+                    // 36 x 51.
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _HankoCover(url: anime.imageUrl, width: 48, height: 68),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Three lines, fading where a cut remains (H2
+                              // QA W2). Shared with Detail. Set from the
+                              // left now, beside the cover; it was centred.
+                              _FadeTitle(
+                                anime.titleEnglish ?? anime.title,
+                                maxLines: 3,
+                                textAlign: TextAlign.start,
+                                style: AppTheme.hankoSerif(
+                                    fontSize: 20, height: 1.15),
+                              ),
+                              const SizedBox(height: 4),
+                              // Stone-hi: quiet words on a cover's wash.
+                              Text(
+                                'Where does this one live?',
+                                style: AppTheme.hankoSans(
+                                    fontSize: AppTheme.hankoLabelSize,
+                                    color: AppTheme.hankoStoneHi,
+                                    height: 1.3),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          );
+
       return StatefulBuilder(
         builder: (ctx, setLocal) => Container(
           // hanko.html's sheet: sumi 2, 6 px top corners, the 20 px gutter.
           // Since round seven it scrolls, and rises above the keyboard while
-          // a new shelf is named; its head sits on the show's own colours.
+          // a new shelf is named.
           decoration: const BoxDecoration(
             color: AppTheme.hankoSumi2,
             borderRadius: BorderRadius.vertical(
@@ -1720,139 +1793,70 @@ Future<String?> showHanjListSheet({
           padding:
               EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
           child: SingleChildScrollView(
-           padding: const EdgeInsets.only(bottom: 32),
-           child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-             Stack(
+            padding: const EdgeInsets.only(bottom: 32),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-               // The head on a wash of the cover's colours, as Home's
-               // feature band (round seven).
-               Positioned.fill(
-                 child: _ArtWash(
-                   url: anime.imageUrl,
-                   wordsFrom: AppTheme.hankoGutter + 48 + 12,
-                   base: AppTheme.hankoSumi2,
-                 ),
-               ),
-               Padding(
-                padding: const EdgeInsets.fromLTRB(
-                    AppTheme.hankoGutter, 10, AppTheme.hankoGutter, 20),
-                child: Column(
-                 crossAxisAlignment: CrossAxisAlignment.stretch,
-                 children: [
-              // Handle
-              Center(
-                child: Container(
-                  width: 32,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: AppTheme.hankoEdge.withValues(alpha: 0.7),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 14),
-              // The show's cover beside its name, as the sheet's head in
-              // hanko.html draws it: pictures for what the show is. 48 x 68
-              // since round seven's bigger posters, from 36 x 51.
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _HankoCover(url: anime.imageUrl, width: 48, height: 68),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Three lines, fading where a cut remains (H2 QA
-                        // W2). Shared with Detail. Set from the left now,
-                        // beside the cover; it was centred.
-                        _FadeTitle(
-                          anime.titleEnglish ?? anime.title,
-                          maxLines: 3,
-                          textAlign: TextAlign.start,
-                          style: AppTheme.hankoSerif(
-                              fontSize: 20, height: 1.15),
-                        ),
-                        const SizedBox(height: 4),
-                        // Stone-hi: quiet words on a cover's wash.
-                        Text(
-                          'Where does this one live?',
-                          style: AppTheme.hankoSans(
-                              fontSize: AppTheme.hankoLabelSize,
-                              color: AppTheme.hankoStoneHi,
-                              height: 1.3),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-                 ],
-                ),
-               ),
-              ],
-             ),
-             Padding(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: AppTheme.hankoGutter),
-              child: Column(
-               mainAxisSize: MainAxisSize.min,
-               crossAxisAlignment: CrossAxisAlignment.stretch,
-               children: [
-              pair(0, ctx, setLocal),
-              const SizedBox(height: 8),
-              pair(2, ctx, setLocal),
-              // Shelves (round seven): the sheet's one hairline sets them
-              // off from where the show lives.
-              const SizedBox(height: 20),
-              Container(height: 1, color: AppTheme.hankoHairline),
-              const SizedBox(height: 16),
-              _ShelfPicker(animeId: anime.id, draft: shelves),
-              if (currentStatus != null) ...[
-                const SizedBox(height: 12),
-                Semantics(
-                  button: true,
-                  child: Material(
-                    color: Colors.transparent,
-                    shape: RoundedRectangleBorder(
-                      borderRadius:
-                          BorderRadius.circular(AppTheme.hankoRadius),
-                      side: const BorderSide(color: AppTheme.hankoEdge),
-                    ),
-                    child: InkWell(
-                      onTap: () => Navigator.pop(ctx, '__REMOVE__'),
-                      splashFactory: NoSplash.splashFactory,
-                      highlightColor: AppTheme.hankoPressWash,
-                      hoverColor: AppTheme.hankoPressWash,
-                      borderRadius:
-                          BorderRadius.circular(AppTheme.hankoRadius),
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(
-                            minHeight: AppTheme.hankoTouch),
-                        child: Center(
-                          child: Text(
-                            'Remove from list',
-                            textAlign: TextAlign.center,
-                            style: AppTheme.hankoSans(
-                                fontSize: AppTheme.hankoBodySize,
-                                weight: FontWeight.w500,
-                                color: AppTheme.hankoStone,
-                                height: 1.2),
+                head(),
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: AppTheme.hankoGutter),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      pair(0, ctx, setLocal),
+                      const SizedBox(height: 8),
+                      pair(2, ctx, setLocal),
+                      // Shelves (round seven): the sheet's one hairline sets
+                      // them off from where the show lives.
+                      const SizedBox(height: 20),
+                      Container(height: 1, color: AppTheme.hankoHairline),
+                      const SizedBox(height: 16),
+                      _ShelfPicker(animeId: anime.id, draft: shelves),
+                      if (currentStatus != null) ...[
+                        const SizedBox(height: 12),
+                        Semantics(
+                          button: true,
+                          child: Material(
+                            color: Colors.transparent,
+                            shape: RoundedRectangleBorder(
+                              borderRadius:
+                                  BorderRadius.circular(AppTheme.hankoRadius),
+                              side: const BorderSide(color: AppTheme.hankoEdge),
+                            ),
+                            child: InkWell(
+                              onTap: () => Navigator.pop(ctx, '__REMOVE__'),
+                              splashFactory: NoSplash.splashFactory,
+                              highlightColor: AppTheme.hankoPressWash,
+                              hoverColor: AppTheme.hankoPressWash,
+                              borderRadius:
+                                  BorderRadius.circular(AppTheme.hankoRadius),
+                              child: ConstrainedBox(
+                                constraints: const BoxConstraints(
+                                    minHeight: AppTheme.hankoTouch),
+                                child: Center(
+                                  child: Text(
+                                    'Remove from list',
+                                    textAlign: TextAlign.center,
+                                    style: AppTheme.hankoSans(
+                                        fontSize: AppTheme.hankoBodySize,
+                                        weight: FontWeight.w500,
+                                        color: AppTheme.hankoStone,
+                                        height: 1.2),
+                                  ),
+                                ),
+                              ),
+                            ),
                           ),
                         ),
-                      ),
-                    ),
+                      ],
+                    ],
                   ),
                 ),
               ],
-               ],
-              ),
-             ),
-            ],
-           ),
+            ),
           ),
         ),
       );
@@ -2693,7 +2697,7 @@ class _PickBand extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // On the wash, quiet words are stone-hi, Hanko's colour for them on a
-    // cover's tint; _ArtWash keeps at least 88% sumi under the words.
+    // cover's tint; the panel behind them keeps 89% sumi under the words.
     final meta = AppTheme.hankoSans(
         fontSize: AppTheme.hankoMetaSize,
         color: AppTheme.hankoStoneHi,
@@ -2706,12 +2710,7 @@ class _PickBand extends StatelessWidget {
     return Stack(
       children: [
         Positioned.fill(
-          child: _ArtWash(
-            url: imageUrl,
-            // Where the words start: the gutter, the print and its gap.
-            wordsFrom: AppTheme.hankoGutter + printWidth + 16,
-            base: AppTheme.hankoSumi,
-          ),
+          child: _ArtWash(url: imageUrl, base: AppTheme.hankoSumi),
         ),
         Padding(
           padding: EdgeInsets.fromLTRB(AppTheme.hankoGutter, 20,
@@ -2724,123 +2723,31 @@ class _PickBand extends StatelessWidget {
                 child: Text(heading, style: AppTheme.hankoSerif(height: 1.3)),
               ),
               const SizedBox(height: 14),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              Stack(
+                clipBehavior: Clip.none,
                 children: [
-                  Expanded(
-                    // One semantics node (container) with the InkWell's tap
-                    // and focus inside it, as the lede (question 119; see
-                    // _HomeScreenState._buildLede); the print and words are
-                    // left out of the tree, since the label says them. The
-                    // InkWell paints on a transparent Material of its own:
-                    // ink is drawn under a Material's children, so on the
-                    // page's Material the wash would hide the press and
-                    // focus washes.
-                    child: Semantics(
-                      container: true,
-                      button: true,
-                      label: [
-                        title,
-                        ?facts,
-                        if (score != null) 'AniList $score',
-                        ?note,
-                      ].join(', '),
-                      child: Material(
-                        type: MaterialType.transparency,
-                        child: InkWell(
-                          onTap: onOpen,
-                          splashFactory: NoSplash.splashFactory,
-                          highlightColor: AppTheme.hankoPressWash,
-                          hoverColor: AppTheme.hankoPressWash,
-                          child: ExcludeSemantics(
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                _PickPrint(url: imageUrl),
-                                const SizedBox(width: 16),
-                                Expanded(
-                                  // At least the print's height, so the note
-                                  // sits at its foot, as Detail's caption.
-                                  child: ConstrainedBox(
-                                    constraints: const BoxConstraints(
-                                        minHeight: printHeight),
-                                    child: Column(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.spaceBetween,
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            _FadeTitle(
-                                              title,
-                                              maxLines: 3,
-                                              style: AppTheme.hankoSerif(
-                                                  fontSize: AppTheme
-                                                      .hankoFeaturedSize,
-                                                  height: 1.15),
-                                            ),
-                                            if (facts != null) ...[
-                                              const SizedBox(height: 6),
-                                              Text(facts, style: meta),
-                                            ],
-                                            if (score != null) ...[
-                                              const SizedBox(height: 2),
-                                              Text.rich(
-                                                TextSpan(
-                                                  text: 'AniList ',
-                                                  style: meta,
-                                                  children: [
-                                                    TextSpan(
-                                                      text: score,
-                                                      style: AppTheme.hankoSans(
-                                                        fontSize: AppTheme
-                                                            .hankoMetaSize,
-                                                        weight:
-                                                            FontWeight.w500,
-                                                        color:
-                                                            AppTheme.hankoAi,
-                                                        height: 1.4,
-                                                        tabular: true,
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                            ],
-                                          ],
-                                        ),
-                                        if (note != null)
-                                          Padding(
-                                            padding:
-                                                const EdgeInsets.only(top: 10),
-                                            child: Text(
-                                              note,
-                                              style: AppTheme.hankoSans(
-                                                  fontSize:
-                                                      AppTheme.hankoLabelSize,
-                                                  weight: FontWeight.w500,
-                                                  color: AppTheme.hankoStoneHi,
-                                                  height: 1.3),
-                                            ),
-                                          ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
+                  // A darker panel behind the words: 70% sumi over the
+                  // wash's 64%, 89% in all, which keeps stone-hi and the
+                  // crowd's ai at AA whatever the cover. Its edge is a blur
+                  // that ends under the print, so it draws no line, and it
+                  // runs out to the band's right edge.
+                  const Positioned(
+                    left: printWidth - 4,
+                    top: -20,
+                    right: -AppTheme.hankoGutter,
+                    bottom: -20,
+                    child: IgnorePointer(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          boxShadow: [
+                            BoxShadow(
+                                color: Color(0xB3121110), blurRadius: 16),
+                          ],
                         ),
                       ),
                     ),
                   ),
-                  if (trailing != null) ...[
-                    const SizedBox(width: 12),
-                    trailing,
-                  ],
+                  _row(meta, facts, score, note, trailing),
                 ],
               ),
               if (footer != null)
@@ -2849,6 +2756,120 @@ class _PickBand extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+
+  /// The print and the words, one button, and [trailing] beside them.
+  Widget _row(TextStyle meta, String? facts, String? score, String? note,
+      Widget? trailing) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          // One semantics node (container) with the InkWell's tap and focus
+          // inside it, as the lede (question 119; see
+          // _HomeScreenState._buildLede); the print and words are left out
+          // of the tree, since the label says them. The InkWell paints on a
+          // transparent Material of its own: ink is drawn under a
+          // Material's children, so on the page's Material the wash would
+          // hide the press and focus washes.
+          child: Semantics(
+            container: true,
+            button: true,
+            label: [
+              title,
+              ?facts,
+              if (score != null) 'AniList $score',
+              ?note,
+            ].join(', '),
+            child: Material(
+              type: MaterialType.transparency,
+              child: InkWell(
+                onTap: onOpen,
+                splashFactory: NoSplash.splashFactory,
+                highlightColor: AppTheme.hankoPressWash,
+                hoverColor: AppTheme.hankoPressWash,
+                child: ExcludeSemantics(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _PickPrint(url: imageUrl),
+                      const SizedBox(width: 16),
+                      Expanded(child: _words(meta, facts, score, note)),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+        if (trailing != null) ...[
+          const SizedBox(width: 12),
+          trailing,
+        ],
+      ],
+    );
+  }
+
+  /// The title, the facts, AniList's score and the note, at least the
+  /// print's height, so the note sits at its foot, as Detail's caption.
+  Widget _words(TextStyle meta, String? facts, String? score, String? note) {
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: printHeight),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _FadeTitle(
+                title,
+                maxLines: 3,
+                style: AppTheme.hankoSerif(
+                    fontSize: AppTheme.hankoFeaturedSize, height: 1.15),
+              ),
+              if (facts != null) ...[
+                const SizedBox(height: 6),
+                Text(facts, style: meta),
+              ],
+              if (score != null) ...[
+                const SizedBox(height: 2),
+                Text.rich(
+                  TextSpan(
+                    text: 'AniList ',
+                    style: meta,
+                    children: [
+                      TextSpan(
+                        text: score,
+                        style: AppTheme.hankoSans(
+                          fontSize: AppTheme.hankoMetaSize,
+                          weight: FontWeight.w500,
+                          color: AppTheme.hankoAi,
+                          height: 1.4,
+                          tabular: true,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
+          if (note != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: Text(
+                note,
+                style: AppTheme.hankoSans(
+                    fontSize: AppTheme.hankoLabelSize,
+                    weight: FontWeight.w500,
+                    color: AppTheme.hankoStoneHi,
+                    height: 1.3),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }
@@ -2929,22 +2950,24 @@ class _PickPrint extends StatelessWidget {
 /// A cover's own colours as a field (round seven): the cover decoded 24 px
 /// wide and stretched across the field, so it reads as a soft wash of the
 /// art with no blur filter (blur is the app's most expensive raster effect,
-/// PERF.md S2-2). Under sumi: 64% by the print, so its colours glow round
-/// it, and from [wordsFrom] at least 88%, which keeps washi, stone-hi and
-/// the crowd's ai at AA on it whatever the cover (ai over white art under
-/// 88% sumi is 4.7:1). It fades into [base] at the top and the bottom.
+/// PERF.md S2-2). Under 64% sumi, which keeps washi words on it at AA
+/// whatever the cover (washi over white art: 4.7:1). With [wordsFrom] it
+/// darkens from there to at least 88%, which keeps stone-hi and the crowd's
+/// ai at AA too (ai over white art: 4.7:1); without it, whatever draws
+/// quieter words on the field puts its own darker panel behind them, as
+/// _PickBand does. It fades into [base] at the top and the bottom.
 /// Decoration only: nothing in it reaches the semantics tree.
 class _ArtWash extends StatelessWidget {
   const _ArtWash({
     required this.url,
-    required this.wordsFrom,
     required this.base,
+    this.wordsFrom,
   });
 
   final String? url;
 
-  /// Where the words begin, from the left edge.
-  final double wordsFrom;
+  /// Where quiet words begin, from the left edge.
+  final double? wordsFrom;
 
   /// The colour the field sits on and fades into: the page's or a sheet's.
   final Color base;
@@ -2961,8 +2984,10 @@ class _ArtWash extends StatelessWidget {
     return ExcludeSemantics(
       child: LayoutBuilder(builder: (context, constraints) {
         final width = constraints.maxWidth;
-        final dark = (wordsFrom / width).clamp(0.0, 1.0);
-        final lit = ((wordsFrom - 28) / width).clamp(0.0, dark);
+        final from = wordsFrom;
+        final dark = from == null ? 1.0 : (from / width).clamp(0.0, 1.0);
+        final lit = from == null ? 1.0 : ((from - 28) / width).clamp(0.0, dark);
+        final words = from == null ? 0.64 : 0.88;
         return Stack(
           fit: StackFit.expand,
           children: [
@@ -2980,8 +3005,8 @@ class _ArtWash extends StatelessWidget {
                   colors: [
                     base.withValues(alpha: 0.64),
                     base.withValues(alpha: 0.64),
-                    base.withValues(alpha: 0.88),
-                    base.withValues(alpha: 0.9),
+                    base.withValues(alpha: words),
+                    base.withValues(alpha: from == null ? 0.64 : 0.9),
                   ],
                   stops: [0, lit, dark, 1],
                 ),
