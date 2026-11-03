@@ -2729,12 +2729,13 @@ class _HankoSeasons extends StatefulWidget {
     return '$counted · $total episodes';
   }
 
-  /// The spine's colour: the cover's own, or the edge when it has none or
-  /// its hue sits by the seal's (Detail's tint guard), so coral stays yours.
+  /// The spine's colour: the cover's own, or the edge when it has none.
+  /// Every show brings its colour (Print Room, question 159; Shahid,
+  /// 2026-11-04: "Go ahead"), so there's no hue guard: a cover near coral
+  /// keeps its colour too.
   static Color _spine(String? hex) {
     if (hex == null || !RegExp(r'^#[0-9a-fA-F]{6}$').hasMatch(hex)) return AppTheme.hankoEdge;
-    final colour = Color(0xFF000000 | int.parse(hex.substring(1), radix: 16));
-    return AppTheme.hankoCoverTint(colour) == null ? AppTheme.hankoEdge : colour;
+    return Color(0xFF000000 | int.parse(hex.substring(1), radix: 16));
   }
 
   @override
