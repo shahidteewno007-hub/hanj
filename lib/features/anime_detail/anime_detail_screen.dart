@@ -823,10 +823,14 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
                 builder: (_, _) => GestureDetector(
                   onHorizontalDragEnd: (details) {
                     if (details.primaryVelocity == null) return;
-                    if (details.primaryVelocity! < -200 && _selectedTab < 3) {
-                      setState(() { _swipeDirection = 1; _selectedTab++; });
-                    } else if (details.primaryVelocity! > 200 && _selectedTab > 0) {
-                      setState(() { _swipeDirection = -1; _selectedTab--; });
+                    // A swipe steps through the tabs shown, past a hidden
+                    // one (Episodes, round seven).
+                    const shown = _SimpleTabBar.shown;
+                    final at = shown.indexOf(_selectedTab);
+                    if (details.primaryVelocity! < -200 && at < shown.length - 1) {
+                      setState(() { _swipeDirection = 1; _selectedTab = shown[at + 1]; });
+                    } else if (details.primaryVelocity! > 200 && at > 0) {
+                      setState(() { _swipeDirection = -1; _selectedTab = shown[at - 1]; });
                     }
                   },
                   child: AnimatedSwitcher(
@@ -1368,8 +1372,9 @@ class HankoDetailHeader extends StatefulWidget {
     );
   }
 
-  /// The colophon's fact lines: "TV", "Fall 2023", "28 episodes", "24 min
-  /// each". What's missing is left out, never guessed. The format has a line
+  /// The colophon's fact lines: "TV", "Fall 2023", "28 episodes" (or, airing
+  /// with no total yet, "5 episodes so far"), "24 min each". What's missing
+  /// is left out, never guessed. The format has a line
   /// of its own: in the column beside the print (92 dp on a 360 dp phone),
   /// "TV, Spring 2009" wrapped and left "TV," alone. The season and its year
   /// share the next line whenever they fit; when larger text can't fit them,
@@ -1382,6 +1387,7 @@ class HankoDetailHeader extends StatefulWidget {
     int? episodes,
     int? duration,
     bool airing = false,
+    int? nextEpisode,
   }) {
     final film = format == 'MOVIE';
     final formatWord = switch (format) {
@@ -1398,9 +1404,18 @@ class HankoDetailHeader extends StatefulWidget {
         '${season[0]}${season.substring(1).toLowerCase()}',
       if (seasonYear != null) '$seasonYear',
     ].join(' ');
-    final count = film || episodes == null || episodes <= 0
+    // An airing show with no total yet counts what has aired, the episodes
+    // before the next one: the count lives here since the Episodes tab went
+    // (round seven). "so far" stays with its "episodes" when the column is
+    // too narrow for the line.
+    final aired = airing && nextEpisode != null ? nextEpisode - 1 : 0;
+    final count = film
         ? null
-        : '$episodes ${episodes == 1 ? 'episode' : 'episodes'}';
+        : episodes != null && episodes > 0
+            ? '$episodes ${episodes == 1 ? 'episode' : 'episodes'}'
+            : aired > 0
+                ? '$aired ${aired == 1 ? 'episode' : 'episodes'} so\u00A0far'
+                : null;
     return [
       ?formatWord,
       seasonWord,
@@ -1581,6 +1596,7 @@ class _HankoDetailHeaderState extends State<HankoDetailHeader> {
                                       episodes: widget.episodes,
                                       duration: widget.duration,
                                       airing: widget.airing,
+                                      nextEpisode: widget.nextEpisode,
                                     ),
                                   ),
                                   Padding(
@@ -3502,6 +3518,18 @@ class _SimpleTabBar extends StatelessWidget {
 
   static const _tabs = ['Overview', 'Episodes', 'Cast', 'You May Like'];
 
+  // The Episodes tab is switched off (round seven). It listed "Episode 1"
+  // to the last as rows that did nothing; Shahid, 2026-11-03: "not sure why
+  // we have this option of episode list doesn't do anything, we can have the
+  // number of episodes somewhere on the detail screen remove it". The count
+  // is in the header's facts. Kept, not deleted (CLAUDE.md); true brings it
+  // back as it was.
+  static const bool _showEpisodes = false;
+
+  /// The tabs shown, as indices into [_tabs]. They are also _TabContent's
+  /// cases, so a hidden tab keeps its number and its code.
+  static const List<int> shown = [0, if (_showEpisodes) 1, 2, 3];
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -3509,7 +3537,8 @@ class _SimpleTabBar extends StatelessWidget {
       child: Column(
         children: [
           Row(
-            children: List.generate(_tabs.length, (i) {
+            children: List.generate(shown.length, (at) {
+              final i = shown[at];
               final isSelected = selected == i;
               return Expanded(
                 child: MouseRegion(
@@ -3551,12 +3580,12 @@ class _SimpleTabBar extends StatelessWidget {
           ),
           // Indicator row
           Row(
-            children: List.generate(_tabs.length, (i) {
+            children: List.generate(shown.length, (at) {
               return Expanded(
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
                   height: 2,
-                  color: selected == i ? AppTheme.hankoWashi : Colors.transparent,
+                  color: selected == shown[at] ? AppTheme.hankoWashi : Colors.transparent,
                 ),
               );
             }),
