@@ -2380,20 +2380,27 @@ class _HankoLink extends StatelessWidget {
     // inside it (question 104, as the status word). The label used to sit
     // over excluded semantics, which dropped the InkWell's tap, so a screen
     // reader found "Studio, MAPPA" but couldn't open it. The name drawn on
-    // the page is left out, under the InkWell, so it isn't read twice.
+    // the page is left out, under the InkWell, so it isn't read twice. The
+    // transparent Material is the InkWell's own ink layer (question 138, as
+    // the bell's): ink is drawn under a Material's children, and the nearest
+    // Material was the Scaffold's, under the tinted field, which hid the
+    // links' focus and press washes.
     return Semantics(
       container: true,
       link: true,
       label: semanticLabel,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
-        splashFactory: NoSplash.splashFactory,
-        highlightColor: AppTheme.hankoPressWash,
-        child: ExcludeSemantics(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: AppTheme.hankoTouch, minWidth: double.infinity),
-            child: Align(alignment: Alignment.centerLeft, child: text),
+      child: Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+          splashFactory: NoSplash.splashFactory,
+          highlightColor: AppTheme.hankoPressWash,
+          child: ExcludeSemantics(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: AppTheme.hankoTouch, minWidth: double.infinity),
+              child: Align(alignment: Alignment.centerLeft, child: text),
+            ),
           ),
         ),
       ),
