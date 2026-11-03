@@ -51,7 +51,9 @@ class TonightWatchCard extends StatelessWidget {
         children: [
           Semantics(
             header: true,
-            child: Text("Tonight's watch",
+            // The typographic apostrophe: Shippori draws the typewriter one
+            // as a straight tick (questions 109 and 154).
+            child: Text('Tonight’s watch',
                 style: AppTheme.hankoSerif(height: 1.3)),
           ),
           const SizedBox(height: 6),
@@ -239,7 +241,7 @@ class _TonightWatchSheetState extends State<TonightWatchSheet>
     'Emotional':    'Sometimes you just need to feel something real.',
     'Cozy':         'Slow down and stay awhile.',
     'Dark':         'Not every story needs light.',
-    'Funny':        'Life\'s too short — laugh a little.',
+    'Funny':        'Life’s too short — laugh a little.',
     'Mind-bending': 'Leave reality at the door.',
   };
 
@@ -344,7 +346,7 @@ class _TonightWatchSheetState extends State<TonightWatchSheet>
                     children: [
                       Semantics(
                         header: true,
-                        child: Text("Tonight's watch",
+                        child: Text('Tonight’s watch',
                             style: AppTheme.hankoSerif(
                                 fontSize: AppTheme.hankoLedeSize,
                                 height: 1.2)),
@@ -431,6 +433,7 @@ class _TonightWatchSheetState extends State<TonightWatchSheet>
     if (_recommendation == null) {
       // An empty answer and a failed request land here alike, so the copy
       // names no cause it can't verify (ANILIST-OFFLINE-0908-REPORT.md).
+      // The typographic apostrophe, as Home's failure line (question 154).
       return Center(
         child: Padding(
           padding:
@@ -438,7 +441,7 @@ class _TonightWatchSheetState extends State<TonightWatchSheet>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text("Couldn't find a pick just now.",
+              Text("Couldn’t find a pick just now.",
                   textAlign: TextAlign.center,
                   style: AppTheme.hankoSerif(
                       fontSize: AppTheme.hankoFeaturedSize, height: 1.3)),

@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -192,7 +194,7 @@ class _UpcomingAnimeScreenState extends State<UpcomingAnimeScreen>
                     color: AppTheme.primary, size: 18),
                 const SizedBox(width: 8),
                 Expanded(child: Text(
-                    "You'll be notified when ${anime.titleEnglish ?? anime.title} airs!")),
+                    "You’ll be notified when ${anime.titleEnglish ?? anime.title} airs!")),
               ],
             ),
             backgroundColor: AppTheme.surfaceMid,
@@ -210,7 +212,8 @@ class _UpcomingAnimeScreenState extends State<UpcomingAnimeScreen>
   /// bell to put back: it still shows what is saved, and no confirmation
   /// was shown. The message says so, naming no cause, in place of any
   /// message still showing, in this screen's own message style. Offline,
-  /// the write waits for the connection, as before.
+  /// the write waits for the connection, as before. Its words are Home's,
+  /// typographic apostrophe included (question 154).
   void _alertNotSaved({required bool removing}) {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
@@ -218,8 +221,8 @@ class _UpcomingAnimeScreenState extends State<UpcomingAnimeScreen>
       ..showSnackBar(
         SnackBar(
           content: Text(removing
-              ? "Couldn't remove the reminder. Try again."
-              : "Couldn't set the reminder. Try again."),
+              ? "Couldn’t remove the reminder. Try again."
+              : "Couldn’t set the reminder. Try again."),
           backgroundColor: AppTheme.surfaceMid,
           behavior: SnackBarBehavior.floating,
         ),
@@ -602,19 +605,22 @@ class _UpcomingAnimeRowState extends State<UpcomingAnimeRow> {
 
   @override
   Widget build(BuildContext context) {
-    // Hanko (stage H4, item h; hanko.html's poster strip, .mlt): 72 × 102
-    // covers with square 2 px corners on sumi 3 while they load, each title
-    // under its cover in Jost 500 12 on up to two lines, and "See all" as a
-    // quiet washi link in a 48 dp target. No coral and no arrow: in Hanko
+    // Hanko (stage H4, item h; hanko.html's poster strip, .mlt): 88 × 125
+    // covers (72 × 102 before round seven) with square 2 px corners on sumi
+    // 3 while they load, each title under its cover in Jost 500 12 on up to
+    // two lines, and "See all" as a quiet washi link in a 48 dp target. No coral and no arrow: in Hanko
     // coral is your seal, and nothing in this row is yours. The data, the
     // static cache and where each tap goes are as they were.
     final scaler = MediaQuery.textScalerOf(context);
     // The columns widen as the titles' text grows, so a long word still fits
     // one line: at 1.3x a 72 px column broke "Apothecary" mid-word. Tied to
-    // the 12 px title's own growth (Android's large sizes scale non-linearly),
-    // and never narrower than the frame's 72 px. The cover keeps 72 x 102.
+    // the 12 px title's own growth (Android's large sizes scale non-linearly).
+    // 88 wide at least since round seven (Shahid, 2026-11-03: "make the
+    // posters a bit bigger on home screen"), from 72, as Home's own strips;
+    // past 88 only where 72 grown with the text would be. The cover keeps
+    // the 72 x 102 frame's shape.
     final grow = scaler.scale(12) / 12;
-    final itemWidth = grow > 1 ? 72 * grow : 72.0;
+    final itemWidth = math.max(88.0, 72 * grow);
     final coverHeight = itemWidth * 102 / 72;
     // Two lines of title at the reader's text size, so the strip grows with
     // large text instead of cutting the titles' second line.
