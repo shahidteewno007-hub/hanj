@@ -36,8 +36,12 @@ class TierListStore {
 
   static final _rand = math.Random();
 
-  /// Completes once every save and delete asked for so far has finished.
-  Future<void> get idle => _queue;
+  // Saves and deletes asked for and not yet finished.
+  int _pending = 0;
+
+  /// Completes once every save and delete asked for so far has finished:
+  /// at once when none is running.
+  Future<void> get idle => _pending == 0 ? Future<void>.value() : _queue;
 
   /// A new list id: time plus a little randomness, base 36.
   static String freshId() =>
@@ -72,8 +76,11 @@ class TierListStore {
 
   /// Saves [list], adding it if it's new. Returns false when it couldn't be
   /// written, or when it's new and [maxLists] are already saved.
-  Future<bool> save(TierList list) {
-    final done = _queue.then((_) => _save(list));
+  Future<bool> save(TierList list) => _enqueue(() => _save(list));
+
+  Future<bool> _enqueue(Future<bool> Function() job) {
+    _pending++;
+    final done = _queue.then((_) => job()).whenComplete(() => _pending--);
     _queue = done.then((_) {}, onError: (_) {});
     return done;
   }
@@ -102,11 +109,7 @@ class TierListStore {
   }
 
   /// Deletes the list with [id]. Returns false when it couldn't be removed.
-  Future<bool> delete(String id) {
-    final done = _queue.then((_) => _delete(id));
-    _queue = done.then((_) {}, onError: (_) {});
-    return done;
-  }
+  Future<bool> delete(String id) => _enqueue(() => _delete(id));
 
   Future<bool> _delete(String id) async {
     try {

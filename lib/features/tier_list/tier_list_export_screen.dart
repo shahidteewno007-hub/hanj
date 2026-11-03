@@ -191,58 +191,59 @@ class _TierListExportScreenState extends State<TierListExportScreen> {
                 ),
               ),
             ),
-            Container(
-              decoration: const BoxDecoration(
-                color: AppTheme.hankoSumi2,
-                border: Border(top: BorderSide(color: AppTheme.hankoHairline)),
-              ),
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 560),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      MergeSemantics(
-                        child: SwitchListTile(
-                          value: _names,
-                          onChanged: (v) => setState(() => _names = v),
-                          contentPadding: EdgeInsets.zero,
-                          activeThumbColor: AppTheme.hankoSumi,
-                          activeTrackColor: AppTheme.hankoWashi,
-                          inactiveThumbColor: AppTheme.hankoStone,
-                          inactiveTrackColor: AppTheme.hankoSumi3,
-                          title: Text('Names under faces', style: AppTheme.hankoSans(fontSize: 15)),
-                        ),
-                      ),
-                      if (!_ready)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: Text('Loading the faces…',
-                              style: AppTheme.hankoSans(fontSize: 13, color: AppTheme.hankoStone)),
-                        ),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: TierGhostButton(
-                              label: kIsWeb ? 'Download' : 'Save',
-                              icon: Icons.download_rounded,
-                              onTap: _ready && !_busy ? _save : null,
-                            ),
+            // A Material, not a coloured box, so the switch row's ink shows.
+            Material(
+              color: AppTheme.hankoSumi2,
+              shape: const Border(top: BorderSide(color: AppTheme.hankoHairline)),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 560),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        MergeSemantics(
+                          child: SwitchListTile(
+                            value: _names,
+                            onChanged: (v) => setState(() => _names = v),
+                            contentPadding: EdgeInsets.zero,
+                            activeThumbColor: AppTheme.hankoSumi,
+                            activeTrackColor: AppTheme.hankoWashi,
+                            inactiveThumbColor: AppTheme.hankoStone,
+                            inactiveTrackColor: AppTheme.hankoSumi3,
+                            title: Text('Names under faces', style: AppTheme.hankoSans(fontSize: 15)),
                           ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            flex: 2,
-                            child: TierMainButton(
-                              label: 'Share',
-                              icon: Icons.ios_share_rounded,
-                              busy: _busy,
-                              onTap: _ready ? _share : null,
-                            ),
+                        ),
+                        if (!_ready)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: Text('Loading the faces…',
+                                style: AppTheme.hankoSans(fontSize: 13, color: AppTheme.hankoStone)),
                           ),
-                        ],
-                      ),
-                    ],
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TierGhostButton(
+                                label: kIsWeb ? 'Download' : 'Save',
+                                icon: Icons.download_rounded,
+                                onTap: _ready && !_busy ? _save : null,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              flex: 2,
+                              child: TierMainButton(
+                                label: 'Share',
+                                icon: Icons.ios_share_rounded,
+                                busy: _busy,
+                                onTap: _ready ? _share : null,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),

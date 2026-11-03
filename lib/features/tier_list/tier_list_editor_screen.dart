@@ -489,7 +489,16 @@ class _TierListEditorScreenState extends State<TierListEditorScreen> {
             ),
           ),
           const SizedBox(width: 6),
-          TierGhostButton(label: 'Share', icon: Icons.ios_share_rounded, dense: true, onTap: _export),
+          // Past 1.4x text the labelled button would leave the title a few
+          // letters, so it becomes an icon with the same name.
+          if (MediaQuery.textScalerOf(context).scale(14) > 14 * 1.4)
+            IconButton(
+              tooltip: 'Share',
+              icon: const Icon(Icons.ios_share_rounded, color: AppTheme.hankoWashi),
+              onPressed: _export,
+            )
+          else
+            TierGhostButton(label: 'Share', icon: Icons.ios_share_rounded, dense: true, onTap: _export),
           PopupMenuButton<String>(
             tooltip: 'More',
             icon: const Icon(Icons.more_vert_rounded, color: AppTheme.hankoWashi),
@@ -754,21 +763,29 @@ class _TierListEditorScreenState extends State<TierListEditorScreen> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Semantics(
+                    // A wrap, not a row: at large text sizes the button moves
+                    // under the label rather than squeezing it into a column
+                    // of single letters (which made the tray half the screen).
+                    SizedBox(
+                      width: double.infinity,
+                      child: Wrap(
+                        alignment: WrapAlignment.spaceBetween,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        spacing: 12,
+                        runSpacing: 4,
+                        children: [
+                          Semantics(
                             header: true,
                             child: TierEyebrow(n == 0 ? 'Unranked' : 'Unranked  ·  $n',
                                 color: AppTheme.hankoStoneHi),
                           ),
-                        ),
-                        TierMainButton(
-                          label: _list.isEmpty ? 'Add characters' : 'Add more',
-                          icon: Icons.person_add_alt_1_rounded,
-                          onTap: _list.isFull ? null : _addCharacters,
-                        ),
-                      ],
+                          TierMainButton(
+                            label: _list.isEmpty ? 'Add characters' : 'Add more',
+                            icon: Icons.person_add_alt_1_rounded,
+                            onTap: _list.isFull ? null : _addCharacters,
+                          ),
+                        ],
+                      ),
                     ),
                     if (showBody) ...[
                       const SizedBox(height: 8),
@@ -875,22 +892,33 @@ class _CharacterSheet extends StatelessWidget {
               padding: EdgeInsets.fromLTRB(20, 4, 20, 6),
               child: TierEyebrow('Move to'),
             ),
-            for (var t = 0; t < list.tiers.length; t++)
-              _destination(
-                context,
-                label: list.tiers[t].label.trim().isEmpty ? 'Tier ${t + 1} (unnamed)' : list.tiers[t].label,
-                pigment: TierPigment.at(list.tiers[t].pigment),
-                here: current?.id == list.tiers[t].id,
-                onTap: () => Navigator.pop(context, _MoveTo(list.tiers[t].id)),
+            // The tiers as chips in their own colours, top tier first, so the
+            // choice reads like the list itself and the sheet stays short.
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  for (var t = 0; t < list.tiers.length; t++)
+                    _destination(
+                      context,
+                      label: list.tiers[t].label.trim().isEmpty ? 'Tier ${t + 1}' : list.tiers[t].label,
+                      pigment: TierPigment.at(list.tiers[t].pigment),
+                      here: current?.id == list.tiers[t].id,
+                      onTap: () => Navigator.pop(context, _MoveTo(list.tiers[t].id)),
+                    ),
+                  _destination(
+                    context,
+                    label: 'Unranked',
+                    pigment: null,
+                    here: current == null,
+                    onTap: () => Navigator.pop(context, const _MoveTo(null)),
+                  ),
+                ],
               ),
-            _destination(
-              context,
-              label: 'Unranked',
-              pigment: null,
-              here: current == null,
-              onTap: () => Navigator.pop(context, const _MoveTo(null)),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 14),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Wrap(
@@ -924,36 +952,41 @@ class _CharacterSheet extends StatelessWidget {
     );
   }
 
+  /// A tier as a chip in its own colour. Where the character is now carries
+  /// a check and an outline, so it never rests on colour alone.
   Widget _destination(BuildContext context,
       {required String label, required TierPigment? pigment, required bool here, required VoidCallback onTap}) {
+    final ink = pigment?.ink ?? AppTheme.hankoWashi;
     return TierPressable(
-      label: here ? '$label, current place' : 'Move to $label',
+      label: here ? '$label, where they are now' : 'Move to $label',
       selected: here,
+      ringInset: -3,
       onTap: here ? () => Navigator.pop(context) : onTap,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: AppTheme.hankoTouch),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
-          child: Row(
-            children: [
-              Container(
-                width: 28,
-                height: 28,
-                decoration: BoxDecoration(
-                  color: pigment?.color ?? AppTheme.hankoSumi3,
-                  border: pigment == null ? Border.all(color: AppTheme.hankoEdge) : null,
-                  borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
-                ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(child: Text(label, style: AppTheme.hankoSans(fontSize: 15))),
-              if (here) ...[
-                const Icon(Icons.check_rounded, size: 18, color: AppTheme.hankoWashi),
-                const SizedBox(width: 6),
-                Text('Here', style: AppTheme.hankoSans(fontSize: 13, color: AppTheme.hankoStone)),
-              ],
+      child: Container(
+        constraints: const BoxConstraints(minHeight: AppTheme.hankoTouch, minWidth: AppTheme.hankoTouch),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: pigment?.color ?? AppTheme.hankoSumi3,
+          borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+          border: here
+              ? Border.all(color: AppTheme.hankoSumi, width: 2)
+              : (pigment == null ? Border.all(color: AppTheme.hankoEdge) : null),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (here) ...[
+              Icon(Icons.check_rounded, size: 16, color: ink),
+              const SizedBox(width: 6),
             ],
-          ),
+            Flexible(
+              child: Text(
+                label,
+                textAlign: TextAlign.center,
+                style: AppTheme.hankoSans(fontSize: 14, weight: FontWeight.w600, color: ink),
+              ),
+            ),
+          ],
         ),
       ),
     );

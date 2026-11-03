@@ -304,6 +304,7 @@ class _TierPressableState extends State<TierPressable> {
         child: ExcludeSemantics(
           excluding: widget.label != null,
           child: Stack(
+            clipBehavior: Clip.none,
             children: [
               widget.child,
               if (_focused)
