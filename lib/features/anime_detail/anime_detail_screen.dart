@@ -823,10 +823,15 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
                   child: AnimatedSwitcher(
                     duration: const Duration(milliseconds: 220),
                     transitionBuilder: (child, animation) {
-                      final offset = Tween<Offset>(
+                      // A CurveTween, not a CurvedAnimation (question 141). This
+                      // builder runs on every rebuild of the tab content, and each
+                      // CurvedAnimation left a status listener on the switcher's
+                      // controller that nothing removed. With no reverse curve,
+                      // the two give the same values.
+                      final offset = animation.drive(Tween<Offset>(
                         begin: Offset(_swipeDirection * 0.18, 0),
                         end: Offset.zero,
-                      ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOut));
+                      ).chain(CurveTween(curve: Curves.easeOut)));
                       return SlideTransition(
                         position: offset,
                         child: FadeTransition(opacity: animation, child: child),
