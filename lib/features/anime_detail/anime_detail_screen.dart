@@ -1266,7 +1266,8 @@ class HankoDetailHeader extends StatefulWidget {
   final String title;
 
   /// AniList's `title.native`, for the slip. A title with no Japanese (or
-  /// other CJK) letters gets no slip.
+  /// other CJK) letters gets no slip. The slip is switched off since round
+  /// seven (`_HankoPrint._showNativeTitle`).
   final String? nativeTitle;
 
   /// The cover the previous screen showed (AniList's `large`, 230 px wide).
@@ -2091,8 +2092,16 @@ class _HankoBar extends StatelessWidget {
 }
 
 /// The print: the whole cover, never cropped to a band, with its native
-/// title on a slip. Tapping it opens the gallery.
+/// title on a slip (switched off, see [_showNativeTitle]). Tapping it opens
+/// the gallery.
 class _HankoPrint extends StatelessWidget {
+  // The native title's slip is switched off (round seven). Shahid left it to
+  // the main session ("Maybe remove the japanese if you suggest"), which
+  // recommended removing it: the slip set the title in the phone's own
+  // Japanese font, not Hanko's, and most of Hanj's users can't read it. Kept,
+  // not deleted (CLAUDE.md); true brings it back as it was.
+  static const bool _showNativeTitle = false;
+
   const _HankoPrint({
     required this.width,
     required this.height,
@@ -2153,7 +2162,7 @@ class _HankoPrint extends StatelessWidget {
                 placeholder: (_, _) => const SizedBox.shrink(),
                 errorWidget: none,
               ),
-            if (HankoTitleSlip.shows(nativeTitle))
+            if (_showNativeTitle && HankoTitleSlip.shows(nativeTitle))
               Positioned(
                 left: 10,
                 top: 10,
