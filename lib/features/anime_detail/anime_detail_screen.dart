@@ -2192,12 +2192,36 @@ class _HankoPrint extends StatelessWidget {
         ),
       ),
     );
+    // Its own semantics node (container) with the InkWell's tap and focus
+    // inside it (question 139, R5B's pattern), so the keyboard reaches it:
+    // the GestureDetector gave a screen reader the tap but no focus. The
+    // InkWell lies over the art on its own transparent Material, since ink
+    // is drawn under a Material's children and the cover would hide it. The
+    // art is left out of the tree: the label says it.
     return Semantics(
+      container: true,
       image: true,
       button: onTap != null,
       label: 'Cover of $title',
       hint: onTap != null ? 'Opens the gallery' : null,
-      child: GestureDetector(onTap: onTap, child: art),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          ExcludeSemantics(child: art),
+          if (onTap != null)
+            Positioned.fill(
+              child: Material(
+                type: MaterialType.transparency,
+                child: InkWell(
+                  onTap: onTap,
+                  borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+                  splashFactory: NoSplash.splashFactory,
+                  highlightColor: AppTheme.hankoPressWash,
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }
@@ -3080,24 +3104,43 @@ class _CastRow extends StatelessWidget {
           const SizedBox(width: 8),
           MouseRegion(
             cursor: vaId != null ? SystemMouseCursors.click : MouseCursor.defer,
-            child: GestureDetector(
-              onTap: vaId != null ? () => Navigator.push(context, MaterialPageRoute(
-                  builder: (_) => StaffDetailScreen(staffId: vaId, staffName: vaName))) : null,
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(minHeight: AppTheme.hankoTouch),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Column(crossAxisAlignment: CrossAxisAlignment.end, mainAxisSize: MainAxisSize.min, children: [
-                    Text(vaName.isNotEmpty ? vaName : '—',
-                        style: AppTheme.hankoSans(fontSize: AppTheme.hankoMetaSize, weight: FontWeight.w500).copyWith(
-                          decoration: vaId != null ? TextDecoration.underline : null,
-                          decorationColor: AppTheme.hankoEdge,
-                        ),
-                        maxLines: 1, overflow: TextOverflow.ellipsis),
-                    Text('Voice', style: AppTheme.hankoSans(fontSize: AppTheme.hankoLabelSize, color: AppTheme.hankoStone)),
-                  ]),
-                  const SizedBox(width: 8),
-                  _Avatar(url: va['image']?['medium'] as String?, name: vaName),
-                ]),
+            // The voice actor: a link to their page, as its own semantics
+            // node with the InkWell's tap and focus inside it (question 139,
+            // R5B's pattern, as the header's links): with a GestureDetector
+            // the keyboard couldn't reach it. Without a page it is a name
+            // with no tap. The words and the face are left out of the tree,
+            // since the label says them; the Material is the ink's layer.
+            child: Semantics(
+              container: true,
+              link: vaId != null,
+              label: 'Voice actor, ${vaName.isNotEmpty ? vaName : 'unknown'}',
+              child: Material(
+                type: MaterialType.transparency,
+                child: InkWell(
+                  onTap: vaId != null ? () => Navigator.push(context, MaterialPageRoute(
+                      builder: (_) => StaffDetailScreen(staffId: vaId, staffName: vaName))) : null,
+                  borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+                  splashFactory: NoSplash.splashFactory,
+                  highlightColor: AppTheme.hankoPressWash,
+                  child: ExcludeSemantics(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(minHeight: AppTheme.hankoTouch),
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        Column(crossAxisAlignment: CrossAxisAlignment.end, mainAxisSize: MainAxisSize.min, children: [
+                          Text(vaName.isNotEmpty ? vaName : '—',
+                              style: AppTheme.hankoSans(fontSize: AppTheme.hankoMetaSize, weight: FontWeight.w500).copyWith(
+                                decoration: vaId != null ? TextDecoration.underline : null,
+                                decorationColor: AppTheme.hankoEdge,
+                              ),
+                              maxLines: 1, overflow: TextOverflow.ellipsis),
+                          Text('Voice', style: AppTheme.hankoSans(fontSize: AppTheme.hankoLabelSize, color: AppTheme.hankoStone)),
+                        ]),
+                        const SizedBox(width: 8),
+                        _Avatar(url: va['image']?['medium'] as String?, name: vaName),
+                      ]),
+                    ),
+                  ),
+                ),
               ),
             ),
           ),
@@ -3115,23 +3158,40 @@ class _StaffRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final node = edge['node'] as Map?;
     final role = edge['role'] as String? ?? '—';
+    // Its own semantics node (container), named by the name and role, with
+    // the InkWell's tap and focus inside it (question 139, R5B's pattern):
+    // with a GestureDetector the keyboard couldn't reach it. The row's words
+    // and face are left out, since the label says them; the Material is the
+    // ink's layer.
     return MouseRegion(
       cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        onTap: () { final id = node?['id'] as int?; final name = node?['name']?['full'] as String? ?? ''; if (id != null) Navigator.push(context, MaterialPageRoute(builder: (_) => StaffDetailScreen(staffId: id, staffName: name))); },
-        // Hanko: a plain row, no card.
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 4),
-          color: Colors.transparent,
-          child: Row(children: [
-            _Avatar(url: node?['image']?['medium'] as String?, name: node?['name']?['full'] as String? ?? '?'),
-            const SizedBox(width: 12),
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(node?['name']?['full'] as String? ?? '—', style: AppTheme.hankoSans(weight: FontWeight.w500)),
-              Text(role, style: AppTheme.hankoSans(fontSize: AppTheme.hankoLabelSize, color: AppTheme.hankoStone)),
-            ])),
-            const Icon(Icons.chevron_right_sharp, color: AppTheme.hankoStone, size: 20),
-          ]),
+      child: Semantics(
+        container: true,
+        button: true,
+        label: '${node?['name']?['full'] as String? ?? 'Unknown'}, $role',
+        child: Material(
+          type: MaterialType.transparency,
+          child: InkWell(
+            onTap: () { final id = node?['id'] as int?; final name = node?['name']?['full'] as String? ?? ''; if (id != null) Navigator.push(context, MaterialPageRoute(builder: (_) => StaffDetailScreen(staffId: id, staffName: name))); },
+            splashFactory: NoSplash.splashFactory,
+            highlightColor: AppTheme.hankoPressWash,
+            child: ExcludeSemantics(
+              // Hanko: a plain row, no card.
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                color: Colors.transparent,
+                child: Row(children: [
+                  _Avatar(url: node?['image']?['medium'] as String?, name: node?['name']?['full'] as String? ?? '?'),
+                  const SizedBox(width: 12),
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(node?['name']?['full'] as String? ?? '—', style: AppTheme.hankoSans(weight: FontWeight.w500)),
+                    Text(role, style: AppTheme.hankoSans(fontSize: AppTheme.hankoLabelSize, color: AppTheme.hankoStone)),
+                  ])),
+                  const Icon(Icons.chevron_right_sharp, color: AppTheme.hankoStone, size: 20),
+                ]),
+              ),
+            ),
+          ),
         ),
       ),
     );
@@ -3543,31 +3603,47 @@ class _SimpleTabBar extends StatelessWidget {
               return Expanded(
                 child: MouseRegion(
                   cursor: SystemMouseCursors.click,
+                  // Its own semantics node (container), named by the tab and
+                  // keeping its selected state, with the InkWell's tap and
+                  // focus inside it (question 139, R5B's pattern): with a
+                  // GestureDetector the keyboard couldn't switch tabs. The
+                  // word drawn is left out, since the label says it. The
+                  // transparent Material is the InkWell's ink layer, over
+                  // the bar's fill; the cell has none of its own now, as it
+                  // would hide the ink, and the bar's is the same colour.
                   child: Semantics(
+                    container: true,
                     button: true,
                     selected: isSelected,
-                    child: GestureDetector(
-                      onTap: () => onTap(i),
-                      child: Container(
-                        // 14 + 14 around the label: a 48 dp target (H3).
-                        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 4),
-                        color: AppTheme.background,
-                        // One line, scaled down to its quarter when large
-                        // text would wrap it: at 1.3x "You May Like" wrapped
-                        // and overflowed the header by 23 px (H2 QA, §1c).
-                        child: FittedBox(
-                          fit: BoxFit.scaleDown,
-                          child: Text(
-                            _tabs[i],
-                            maxLines: 1,
-                            softWrap: false,
-                            textAlign: TextAlign.center,
-                            style: AppTheme.sans(
-                              fontSize: 13,
-                              weight: isSelected ? FontWeight.w600 : FontWeight.w400,
-                              // Hanko: washi for the tab you're on, stone for
-                              // the rest; coral is only your seal now.
-                              color: isSelected ? AppTheme.hankoWashi : AppTheme.hankoStone,
+                    label: _tabs[i],
+                    child: Material(
+                      type: MaterialType.transparency,
+                      child: InkWell(
+                        onTap: () => onTap(i),
+                        splashFactory: NoSplash.splashFactory,
+                        highlightColor: AppTheme.hankoPressWash,
+                        child: ExcludeSemantics(
+                          child: Padding(
+                            // 14 + 14 around the label: a 48 dp target (H3).
+                            padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 4),
+                            // One line, scaled down to its quarter when large
+                            // text would wrap it: at 1.3x "You May Like" wrapped
+                            // and overflowed the header by 23 px (H2 QA, §1c).
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                _tabs[i],
+                                maxLines: 1,
+                                softWrap: false,
+                                textAlign: TextAlign.center,
+                                style: AppTheme.sans(
+                                  fontSize: 13,
+                                  weight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                                  // Hanko: washi for the tab you're on, stone for
+                                  // the rest; coral is only your seal now.
+                                  color: isSelected ? AppTheme.hankoWashi : AppTheme.hankoStone,
+                                ),
+                              ),
                             ),
                           ),
                         ),
