@@ -2819,11 +2819,28 @@ class _AuraGlowPainter extends CustomPainter {
   /// The fan's middle, from the print's top.
   final double centreY;
 
+  /// [c] turned out of coral's hue when it falls within Hanko's 25° guard
+  /// (the one Detail's cover tint keeps), to 30° from coral on its own side.
+  /// Coral means only your own verdicts, so the glow, which is decoration,
+  /// never takes it: Coral Fire (an empty month's aura, question 98) and
+  /// Blazing Orange glow amber, Crimson Edge a deep pink. The dot and the
+  /// name keep the aura's own colour.
+  static Color _awayFromCoral(Color c) {
+    final hsv = HSVColor.fromColor(c);
+    final coral = HSVColor.fromColor(AppTheme.hankoCoral).hue;
+    var d = hsv.hue - coral;
+    if (d > 180) d -= 360;
+    if (d < -180) d += 360;
+    if (d.abs() > AppTheme.hankoTintHueGuard) return c;
+    return hsv.withHue((coral + (d < 0 ? -30 : 30)) % 360).toColor();
+  }
+
   @override
   void paint(Canvas canvas, Size size) {
     final centre = Offset(size.width / 2, centreY);
+    final hue = _awayFromCoral(colour);
     final core =
-        Color.alphaBlend(colour.withValues(alpha: 0.7), AppTheme.hankoSumi);
+        Color.alphaBlend(hue.withValues(alpha: 0.7), AppTheme.hankoSumi);
     final glow = Paint()
       ..shader = ui.Gradient.radial(
         centre,
@@ -2831,8 +2848,8 @@ class _AuraGlowPainter extends CustomPainter {
         [
           core,
           core,
-          _jewel(colour, 0.06),
-          _jewel(colour, 0.03),
+          _jewel(hue, 0.06),
+          _jewel(hue, 0.03),
           AppTheme.hankoSumi,
         ],
         // The core reaches 67 px; by 103 px it is at its held strength,
