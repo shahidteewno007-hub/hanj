@@ -93,6 +93,15 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
   // the app bar's and the tab bar's among them, which show none of it.
   final ValueNotifier<int> _staffVersion = ValueNotifier<int>(0);
 
+  // Opened from the keyboard, Detail gives Back the keyboard focus (question
+  // 153), so Enter works at once. The screen as a whole used to hold
+  // Flutter's focus while the web page reported Back as focused, and Enter
+  // did nothing until Tab was pressed. Traditional highlight mode means the
+  // last input was a key or a mouse, not touch: opened by touch, nothing
+  // changes.
+  final bool _focusBack =
+      FocusManager.instance.highlightMode == FocusHighlightMode.traditional;
+
   @override
   void initState() {
     super.initState();
@@ -1122,6 +1131,7 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
         systemOverlayStyle: SystemUiOverlayStyle.light,
         leading: IconButton(
           tooltip: 'Back',
+          autofocus: _focusBack,
           icon: const Icon(Icons.arrow_back_sharp),
           color: AppTheme.hankoWashi,
           onPressed: () => Navigator.pop(context),
