@@ -2663,9 +2663,15 @@ class _HankoSeasons extends StatefulWidget {
       for (final t in titles) t.substring(cut).replaceFirst(RegExp(r'^[\s:\-–—~,.!]+'), '').trim(),
     ];
     final ordinal = rest.any((r) => RegExp(r'^\d+(st|nd|rd|th) season', caseSensitive: false).hasMatch(r));
+    // What adds only a number ("Mob Psycho 100 II") is that season: "Season 2".
+    String numbered(String r) {
+      const roman = {'II': 2, 'III': 3, 'IV': 4, 'V': 5, 'VI': 6, 'VII': 7, 'VIII': 8, 'IX': 9, 'X': 10};
+      final n = roman[r] ?? (RegExp(r'^\d{1,2}$').hasMatch(r) ? int.parse(r) : null);
+      return n == null ? r : 'Season $n';
+    }
     return [
       for (final (i, r) in rest.indexed)
-        r.isNotEmpty ? r : (i == 0 ? (ordinal ? '1st Season' : 'Season 1') : shown[i]),
+        r.isNotEmpty ? numbered(r) : (i == 0 ? (ordinal ? '1st Season' : 'Season 1') : shown[i]),
     ];
   }
 
