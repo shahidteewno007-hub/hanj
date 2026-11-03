@@ -1402,6 +1402,18 @@ class _PetalParticles extends StatelessWidget {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CARD CATALOGUE — all 30 cards pre-defined
+//
+// The unlock overlay (card_unlock_overlay.dart) looks a card up here by the id
+// the server sends (functions/index.js). Entries whose ids had drifted from the
+// server's (romance_soul, slice_of_life, fantasy_lord, spring_2026, winter_arc,
+// golden_week, ghost_past) were never found, so those unlocks showed a generic
+// card numbered 0000; they now carry the server's ids, names and descriptions.
+// Numbers match the collection's (card_collection_screen.dart). Secret cards
+// carry their real rarity, as the collection draws them: as CardRarity.secret
+// they drew the locked face even once unlocked; Obsessed is epic, as on the
+// server, and Can't Let Go is a secret (the server's category). The 200 Club
+// and Summer 2026 Watcher, missing, are added. Every other entry keeps its own
+// name, description, category and kanji.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class HanjCardCatalogue {
@@ -1418,9 +1430,9 @@ class HanjCardCatalogue {
     HanjCardData(id: 'binge_mode',      name: 'Binge Mode',        description: 'Five anime. One month. No regrets.',           rarity: CardRarity.rare,      category: 'WATCHER',  kanji: '速', cardNumber: 216),
     HanjCardData(id: 'loyal',           name: 'Loyal',             description: 'Three months active. The habit is real.',      rarity: CardRarity.rare,      category: 'STREAK',   kanji: '継', cardNumber: 217),
     HanjCardData(id: 'action_purist',   name: 'Action Purist',     description: 'Ten action anime completed.',                  rarity: CardRarity.rare,      category: 'GENRE',    kanji: '闘', cardNumber: 218),
-    HanjCardData(id: 'romance_soul',    name: 'Romance Soul',      description: 'Ten romance anime completed.',                 rarity: CardRarity.rare,      category: 'GENRE',    kanji: '愛', cardNumber: 219),
-    HanjCardData(id: 'slice_of_life',   name: 'Slice of Life Soul',description: 'Ten slice-of-life completed.',                 rarity: CardRarity.rare,      category: 'GENRE',    kanji: '日', cardNumber: 220),
-    HanjCardData(id: 'fantasy_lord',    name: 'Fantasy Lord',      description: 'Ten fantasy anime completed.',                 rarity: CardRarity.rare,      category: 'GENRE',    kanji: '幻', cardNumber: 221),
+    HanjCardData(id: 'romance_run',     name: 'Hopeless Romantic', description: 'Love stories hit different.',                  rarity: CardRarity.rare,      category: 'GENRE',    kanji: '愛', cardNumber: 220),
+    HanjCardData(id: 'sol_soul',        name: 'Slice of Life Soul',description: 'You find the extraordinary in the ordinary.',  rarity: CardRarity.rare,      category: 'GENRE',    kanji: '日', cardNumber: 219),
+    HanjCardData(id: 'fantasy_pilgrim', name: 'Fantasy Pilgrim',   description: "You live in worlds that don't exist.",        rarity: CardRarity.rare,      category: 'GENRE',    kanji: '幻', cardNumber: 221),
 
     // ── Epic ─────────────────────────────────────────────────────────────────
     HanjCardData(id: 'the_50_club',     name: 'The 50 Club',       description: 'Fifty worlds completed. You are not a casual.', rarity: CardRarity.epic,     category: 'DEVOTION', kanji: '心', cardNumber: 50),
@@ -1428,26 +1440,32 @@ class HanjCardCatalogue {
     HanjCardData(id: 'harsh_critic',    name: 'Harsh Critic',      description: 'Average rating under 6. Standards are high.',  rarity: CardRarity.epic,      category: 'TASTE',    kanji: '厳', cardNumber: 52),
     HanjCardData(id: 'the_optimist',    name: 'The Optimist',      description: 'Average rating over 8.5. Everything is good.', rarity: CardRarity.epic,      category: 'TASTE',    kanji: '楽', cardNumber: 53),
     HanjCardData(id: 'decade_scholar',  name: 'Decade Scholar',    description: 'Anime from five different decades witnessed.', rarity: CardRarity.epic,      category: 'LINEAGE',  kanji: '学', cardNumber: 54),
-    HanjCardData(id: 'cant_let_go',     name: "Can't Let Go",      description: 'Dropped and re-added. You already know.',      rarity: CardRarity.epic,      category: 'DEVOTION', kanji: '執', cardNumber: 55),
+    // A secret card (the server's category 'secret'), numbered as the collection's secrets.
+    HanjCardData(id: 'cant_let_go',     name: "Can't Let Go",      description: "Dropped it. Came back. Some stories won't release you.", rarity: CardRarity.epic, category: 'SECRET', kanji: '執', cardNumber: 901),
 
     // ── Legendary ────────────────────────────────────────────────────────────
     HanjCardData(id: 'the_100_club',    name: 'The Century Mark',  description: 'One hundred worlds witnessed. The mark, earned in fire.', rarity: CardRarity.legendary, category: 'MANGA CUT', kanji: '百', cardNumber: 100),
     HanjCardData(id: 'year_of_anime',   name: 'Year of Anime',     description: 'Active every month for twelve months.',        rarity: CardRarity.legendary,  category: 'STREAK',   kanji: '年', cardNumber: 365),
-    HanjCardData(id: 'obsessed',        name: 'Obsessed',          description: 'Ten anime in one month. There is no cure.',    rarity: CardRarity.legendary,  category: 'DEVOTION', kanji: '狂', cardNumber: 999),
-    HanjCardData(id: 'all_seasons',     name: 'All Seasons',       description: 'Spring, Summer, Fall, Winter. All witnessed.', rarity: CardRarity.legendary,  category: 'SEASONAL', kanji: '季', cardNumber: 4),
+    // Epic on the server and in the collection (№ 0055), so it's drawn as epic.
+    HanjCardData(id: 'obsessed',        name: 'Obsessed',          description: 'Ten anime in one month. There is no cure.',    rarity: CardRarity.epic,       category: 'DEVOTION', kanji: '狂', cardNumber: 55),
+    HanjCardData(id: 'all_seasons',     name: 'All Seasons',       description: 'Spring, Summer, Fall, Winter. All witnessed.', rarity: CardRarity.legendary,  category: 'SEASONAL', kanji: '季', cardNumber: 400),
+    HanjCardData(id: 'the_200_club',    name: 'The 200 Club',      description: 'Two hundred worlds. You are the library.',     rarity: CardRarity.legendary,  category: 'WATCHER',  kanji: '眼', cardNumber: 200),
 
     // ── Seasonal ─────────────────────────────────────────────────────────────
-    HanjCardData(id: 'spring_2026',     name: 'Spring 2026 Watcher', description: "You were here for Spring 2026. This card doesn't come back.", rarity: CardRarity.seasonal, category: 'SEASON', kanji: '季', cardNumber: 237, totalCount: 2400),
-    HanjCardData(id: 'winter_arc',      name: 'Winter Arc',        description: 'Five anime in December–January.',              rarity: CardRarity.seasonal,   category: 'SEASON',   kanji: '冬', cardNumber: 88,  totalCount: 1200),
-    HanjCardData(id: 'golden_week',     name: 'Golden Week Marathon', description: 'Two anime during Golden Week.',             rarity: CardRarity.seasonal,   category: 'SEASON',   kanji: '金', cardNumber: 312, totalCount: 800),
+    HanjCardData(id: 'spring_2026_watcher', name: 'Spring 2026 Watcher', description: 'You were here for Spring 2026.',            rarity: CardRarity.seasonal,   category: 'SEASON',   kanji: '季', cardNumber: 237, totalCount: 2400),
+    HanjCardData(id: 'winter_arc_2026', name: 'Winter Arc',        description: 'The coldest, longest watch sessions.',         rarity: CardRarity.seasonal,   category: 'SEASON',   kanji: '冬', cardNumber: 88,  totalCount: 1200),
+    HanjCardData(id: 'golden_week_2026', name: 'Golden Week Marathon', description: 'You did not leave the house.',             rarity: CardRarity.seasonal,   category: 'SEASON',   kanji: '金', cardNumber: 312, totalCount: 800),
+    HanjCardData(id: 'summer_2026_watcher', name: 'Summer 2026 Watcher', description: 'Hot outside. You stayed in and watched.', rarity: CardRarity.seasonal,   category: 'SEASON',   kanji: '夏', cardNumber: 401, totalCount: 2400),
 
     // ── Secret ───────────────────────────────────────────────────────────────
-    HanjCardData(id: 'ghost_past',      name: 'Ghost of Seasons Past', description: 'Completed on the anniversary of its air date.', rarity: CardRarity.secret, category: 'SECRET', kanji: '霊', cardNumber: 0),
-    HanjCardData(id: 'the_purist',      name: 'The Purist',        description: 'Original and remake. You honour the source.',   rarity: CardRarity.secret,    category: 'SECRET',   kanji: '純', cardNumber: 0),
-    HanjCardData(id: 'time_traveller',  name: 'Time Traveller',    description: 'Anime from five different decades.',            rarity: CardRarity.secret,    category: 'SECRET',   kanji: '時', cardNumber: 0),
-    HanjCardData(id: 'dropout',         name: 'Dropout',           description: 'Ten dropped. No shame — taste is selective.',   rarity: CardRarity.secret,    category: 'SECRET',   kanji: '落', cardNumber: 0),
-    HanjCardData(id: 'resurrection',    name: 'Resurrection',      description: 'Dropped and completed the same anime.',         rarity: CardRarity.secret,    category: 'SECRET',   kanji: '復', cardNumber: 0),
-    HanjCardData(id: 'the_long_game',   name: 'The Long Game',     description: 'Plan to Watch for over a year. Patience rewarded.', rarity: CardRarity.secret, category: 'SECRET', kanji: '待', cardNumber: 0),
+    // In their real rarities, as the collection draws them; CardRarity.secret
+    // is the locked face.
+    HanjCardData(id: 'ghost_of_seasons_past', name: 'Ghost of Seasons Past', description: 'Completed an anime on the anniversary of its air date.', rarity: CardRarity.legendary, category: 'SECRET', kanji: '霊', cardNumber: 907),
+    HanjCardData(id: 'the_purist',      name: 'The Purist',        description: 'Original and remake. You honour the source.',   rarity: CardRarity.legendary, category: 'SECRET',   kanji: '純', cardNumber: 905),
+    HanjCardData(id: 'time_traveller',  name: 'Time Traveller',    description: 'Anime from five different decades.',            rarity: CardRarity.epic,      category: 'SECRET',   kanji: '時', cardNumber: 904),
+    HanjCardData(id: 'dropout',         name: 'Dropout',           description: 'Ten dropped. No shame — taste is selective.',   rarity: CardRarity.rare,      category: 'SECRET',   kanji: '落', cardNumber: 906),
+    HanjCardData(id: 'resurrection',    name: 'Resurrection',      description: 'Dropped and completed the same anime.',         rarity: CardRarity.epic,      category: 'SECRET',   kanji: '復', cardNumber: 902),
+    HanjCardData(id: 'the_long_game',   name: 'The Long Game',     description: 'Plan to Watch for over a year. Patience rewarded.', rarity: CardRarity.rare, category: 'SECRET', kanji: '待', cardNumber: 903),
     HanjCardData(id: 'cant_let_go_s',   name: "Can't Let Go",      description: 'Dropped and re-added the same anime.',          rarity: CardRarity.secret,    category: 'SECRET',   kanji: '執', cardNumber: 0),
   ];
 }

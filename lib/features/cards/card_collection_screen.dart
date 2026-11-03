@@ -535,7 +535,9 @@ class _HanjCardTile extends StatelessWidget {
   // Map id → card number (matches catalogue; fallback to 0). The secret
   // cards had none and read "№ 0000" (question 144); they take 0901–0907,
   // a block of their own in catalogue order, as the rares and epics have.
-  // Kept identical to _CardDetailSheet._cardNumberFor.
+  // All Seasons was 0004, Genre Curious's number too; it is 0400, the four
+  // seasons in the 100 and 200 Clubs' style. Kept identical to
+  // _CardDetailSheet._cardNumberFor and HanjCardCatalogue (hanj_card.dart).
   int get _cardNumber {
     const nums = {
       'first_pull': 1, 'the_list_begins': 2, 'rated': 3, 'genre_curious': 4,
@@ -543,7 +545,7 @@ class _HanjCardTile extends StatelessWidget {
       'action_purist': 218, 'sol_soul': 219, 'romance_run': 220, 'fantasy_pilgrim': 221,
       'the_50_club': 50, 'genre_lord': 51, 'harsh_critic': 52, 'the_optimist': 53,
       'decade_scholar': 54, 'obsessed': 55,
-      'the_100_club': 100, 'year_of_anime': 365, 'all_seasons': 4, 'the_200_club': 200,
+      'the_100_club': 100, 'year_of_anime': 365, 'all_seasons': 400, 'the_200_club': 200,
       'spring_2026_watcher': 237, 'winter_arc_2026': 88,
       'golden_week_2026': 312, 'summer_2026_watcher': 401,
       'cant_let_go': 901, 'resurrection': 902, 'the_long_game': 903,
@@ -701,7 +703,7 @@ class _CardDetailSheet extends StatelessWidget {
       'action_purist': 218, 'sol_soul': 219, 'romance_run': 220, 'fantasy_pilgrim': 221,
       'the_50_club': 50, 'genre_lord': 51, 'harsh_critic': 52, 'the_optimist': 53,
       'decade_scholar': 54, 'obsessed': 55,
-      'the_100_club': 100, 'year_of_anime': 365, 'all_seasons': 4, 'the_200_club': 200,
+      'the_100_club': 100, 'year_of_anime': 365, 'all_seasons': 400, 'the_200_club': 200,
       'spring_2026_watcher': 237, 'winter_arc_2026': 88,
       'golden_week_2026': 312, 'summer_2026_watcher': 401,
       'cant_let_go': 901, 'resurrection': 902, 'the_long_game': 903,
@@ -1126,12 +1128,25 @@ class _PinCardButtonState extends State<_PinCardButton> {
     // If a card is already pinned, ask to replace it
     if (_pinned.isNotEmpty) {
       final existingName = (_pinned.first['name'] as String?) ?? 'current card';
+      // In Hanko's language, as the sheet it rises over (question 130's
+      // cards pass): the sheets' sumi 2 and 6 px corners, the card's
+      // rarity colour as its edge, a Shippori head, typographic quotes, and
+      // "Pin it" in washi 600 where it was coral (coral marks only your
+      // own verdicts). Both answers press with Hanko's wash, no ripple.
+      const answer = ButtonStyle(
+        overlayColor: WidgetStatePropertyAll(AppTheme.hankoPressWash),
+        splashFactory: NoSplash.splashFactory,
+        minimumSize: WidgetStatePropertyAll(Size(64, AppTheme.hankoTouch)),
+        shape: WidgetStatePropertyAll(RoundedRectangleBorder(
+          borderRadius: BorderRadius.all(Radius.circular(AppTheme.hankoRadius)),
+        )),
+      );
       final confirm = await showDialog<bool>(
         context: context,
         builder: (_) => AlertDialog(
-          backgroundColor: const Color(0xFF0F0C09),
+          backgroundColor: AppTheme.hankoSumi2,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(AppTheme.hankoSheetRadius),
             side: BorderSide(
               color: CardRarity.values
                   .firstWhere((r) => r.name == widget.rarity,
@@ -1142,25 +1157,28 @@ class _PinCardButtonState extends State<_PinCardButton> {
           ),
           title: Text(
             'Replace card?',
-            style: AppTheme.serif(fontSize: 18, weight: FontWeight.w700),
+            style: AppTheme.hankoSerif(fontSize: 18, height: 1.3),
           ),
           content: Text(
-            'Replace "$existingName" with "${widget.cardName}" on your profile?',
-            style: AppTheme.sans(fontSize: 14, color: AppTheme.textSecondary),
+            'Replace “$existingName” with “${widget.cardName}” on your profile?',
+            style: AppTheme.hankoSans(height: 1.45),
           ),
           actions: [
             TextButton(
+              style: answer,
               onPressed: () => Navigator.pop(context, false),
               child: Text('Cancel',
-                  style: AppTheme.sans(fontSize: 14, color: AppTheme.textMuted)),
+                  style: AppTheme.hankoSans(
+                      fontSize: 15,
+                      weight: FontWeight.w500,
+                      color: AppTheme.hankoStone)),
             ),
             TextButton(
+              style: answer,
               onPressed: () => Navigator.pop(context, true),
               child: Text('Pin it',
-                  style: AppTheme.sans(
-                      fontSize: 14,
-                      color: AppTheme.primary,
-                      weight: FontWeight.w700)),
+                  style: AppTheme.hankoSans(
+                      fontSize: 15, weight: FontWeight.w600)),
             ),
           ],
         ),
