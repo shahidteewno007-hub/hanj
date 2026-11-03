@@ -462,13 +462,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             builder: (_) => const RankingCardsScreen())),
                       ),
                       const SizedBox(height: _rowGap),
+                      // Tier lists take Cadre's place among what you make
+                      // and collect (Shahid, 2026-11-03). The screen and its
+                      // /tierlist route are the tier-list feature's own.
                       _EntryRow(
-                        icon: Icons.local_fire_department_sharp,
-                        title: 'Cadre',
-                        line: 'Draft a deck from any cast and clash',
-                        onTap: () => Navigator.push(context, MaterialPageRoute(
-                            builder: (_) => const CadreLobbyScreen())),
+                        icon: Icons.table_rows_sharp,
+                        title: 'Tier lists',
+                        line: 'Rank characters from god tier down',
+                        onTap: () =>
+                            Navigator.pushNamed(context, '/tierlist'),
                       ),
+                      if (_cadreRow) ...[
+                        const SizedBox(height: _rowGap),
+                        _EntryRow(
+                          icon: Icons.local_fire_department_sharp,
+                          title: 'Cadre',
+                          line: 'Draft a deck from any cast and clash',
+                          onTap: () => Navigator.push(context, MaterialPageRoute(
+                              builder: (_) => const CadreLobbyScreen())),
+                        ),
+                      ],
                       const SizedBox(height: _groupGap),
                       _EntryRow(
                         icon: Icons.people_sharp,
@@ -540,6 +553,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
   /// width, and that row names your pinned card in words. The card's code
   /// is kept below (_pinnedCard), switched off here.
   static const bool _pinnedCardInHeader = false;
+
+  /// Cadre's row, "Draft a deck from any cast and clash", stood where the
+  /// Tier lists row is until Shahid's call of 2026-11-03: "Maybe add a new
+  /// feature instead of cadre where you make your tier list". The row is
+  /// kept here, switched off, and Cadre itself (lib/cadre/ and its /cadre
+  /// route) is untouched.
+  static const bool _cadreRow = false;
 
   /// Space between the rows below the hairline: 4 between rows in a group,
   /// as H5 set it, and 16 between groups, so the groups read without
