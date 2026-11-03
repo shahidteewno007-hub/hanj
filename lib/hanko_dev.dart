@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 
 import 'core/theme/app_theme.dart';
 import 'features/anime_detail/anime_detail_screen.dart' show HankoDetailHeader;
+import 'widgets/hanko_cover_colour.dart';
+import 'widgets/hanko_field.dart';
+import 'widgets/hanko_print.dart';
 import 'widgets/hanko_rating_ruler.dart';
 import 'widgets/hanko_reel.dart';
 import 'widgets/hanko_seal.dart';
@@ -93,6 +96,14 @@ class _Specimen extends StatelessWidget {
                       note: 'coverImage.color at 20% over sumi, behind the print. '
                           'Neutral sumi when the cover’s hue is within 25° of the seal’s.',
                       child: _Tints(),
+                    ),
+                    const _Section(
+                      title: 'Print Room',
+                      note: 'Stage P1 (DESIGN.md §9): the colour field, the print '
+                          'and the colour read from an image. No screen uses them '
+                          'yet. The fields use real AniList colours; the prints are '
+                          'flat cover colours, as everywhere in this specimen.',
+                      child: _PrintRoom(),
                     ),
                     const _Section(title: 'Type', child: _Type()),
                     const _Section(
@@ -312,6 +323,267 @@ class _Tints extends StatelessWidget {
           Text(tint == null ? 'neutral: close to the seal' : 'tinted', style: _cap),
         ],
       ),
+    );
+  }
+}
+
+// ── Print Room (stage P1) ───────────────────────────────────────────────
+
+String _hexOf(Color c) =>
+    '#${(c.toARGB32() & 0xFFFFFF).toRadixString(16).padLeft(6, '0').toUpperCase()}';
+
+double _contrast(Color a, Color b) {
+  final x = a.computeLuminance(), y = b.computeLuminance();
+  return x > y ? (x + 0.05) / (y + 0.05) : (y + 0.05) / (x + 0.05);
+}
+
+class _PrintRoom extends StatelessWidget {
+  const _PrintRoom();
+
+  // Real AniList cover colours. The first four get no tint today, because
+  // their hue is within 25° of the seal's.
+  static const _shows = <(String, Color)>[
+    ('Black Clover Season 2', Color(0xFFF1A143)),
+    ('DAN DA DAN', Color(0xFFE47850)),
+    ('Cowboy Bebop', Color(0xFFF16B50)),
+    ('The Apothecary Diaries', Color(0xFFF1865D)),
+    ('Frieren', Color(0xFFBBF1A1)),
+    ('OSHI NO KO', Color(0xFFFF35C9)),
+    ('Perfect Blue', Color(0xFF1A356B)),
+  ];
+
+  // A shelf's titles and cover colours (AniList's), with one seal.
+  static const _shelfShows = <(String, Color, double?)>[
+    ('The Apothecary Diaries Season 3', Color(0xFFE4A128), null),
+    ('Firefly Wedding', Color(0xFFAEBB35), null),
+    ('Cyberpunk: Edgerunners 2', Color(0xFFFE286B), 9.0),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final head = AppTheme.hankoSans(
+        fontSize: AppTheme.hankoLabelSize, weight: FontWeight.w500);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('The field rule', style: head),
+        const SizedBox(height: 4),
+        Text(
+          'Up to 45% of the cover’s colour, capped at luminance 0.10 where text '
+          'sits. No hue guard: your seal keeps its sumi keyline.',
+          style: _cap,
+        ),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 14,
+          runSpacing: 14,
+          children: [for (final (show, cover) in _shows) _field(show, cover)],
+        ),
+        const SizedBox(height: 26),
+        Text('A hero print on its field, with the glow behind it', style: head),
+        const SizedBox(height: 12),
+        _hero(),
+        const SizedBox(height: 26),
+        Text('A shelf: prints on mats of their own colour', style: head),
+        const SizedBox(height: 12),
+        _shelf(),
+        const SizedBox(height: 26),
+        Text('A colour read from an image', style: head),
+        const SizedBox(height: 4),
+        Text(
+          'HankoCoverColour on the app’s own wing asset, so it needs no '
+          'network. The strokes’ coral should come back.',
+          style: _cap,
+        ),
+        const SizedBox(height: 12),
+        const _ReadColour(),
+      ],
+    );
+  }
+
+  Widget _field(String show, Color cover) {
+    final field = AppTheme.hankoField(cover) ?? AppTheme.hankoSumi;
+    final tintedToday = AppTheme.hankoCoverTint(cover) != null;
+    return SizedBox(
+      width: 160,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            height: 96,
+            child: HankoField(
+              colour: cover,
+              solidTo: 1,
+              child: Padding(
+                padding: const EdgeInsets.all(10),
+                child: Align(
+                  alignment: Alignment.bottomLeft,
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Expanded(
+                        child: Text(show,
+                            style: AppTheme.hankoSerif(
+                                fontSize: AppTheme.hankoListTitleSize)),
+                      ),
+                      const SizedBox(width: 8),
+                      HankoSeal.score(8.5, size: 28),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '${_hexOf(field)}, washi '
+            '${_contrast(AppTheme.hankoWashi, field).toStringAsFixed(2)}:1',
+            style: _cap,
+          ),
+          Text(tintedToday ? 'Today: tinted' : 'Today: no tint, near the seal',
+              style: _cap),
+        ],
+      ),
+    );
+  }
+
+  Widget _hero() {
+    const frieren = Color(0xFFBBF1A1);
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 360),
+      child: HankoField(
+        colour: frieren,
+        solidTo: 0.62,
+        glow: const Alignment(-0.42, -0.3),
+        // The specimen's column is narrower than a phone, so the print is
+        // 180 wide here (Detail's is 208) and the colophon keeps its width.
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 20, 12, 36),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  HankoPrint(
+                    url: null,
+                    width: 180,
+                    height: 256,
+                    lift: HankoPrintLift.large,
+                    placeholder: frieren,
+                    seal: HankoSeal.score(9.5, size: 48),
+                    sealOverhang: const Offset(10, 12),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Text(
+                      'MADHOUSE\nTV\nFall 2023\n28 episodes\n24 min each',
+                      style: AppTheme.hankoSans(height: 1.5),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 30),
+              Text('Frieren: Beyond Journey’s End',
+                  style: AppTheme.hankoSerif(fontSize: 28, height: 1.16)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _shelf() {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (final (title, cover, score) in _shelfShows) ...[
+            SizedBox(
+              width: 120,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  HankoPrint(
+                    url: null,
+                    width: 108,
+                    height: 154,
+                    placeholder: cover,
+                    mat: AppTheme.hankoField(cover),
+                    seal: score == null ? null : HankoSeal.score(score, size: 30),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    title,
+                    maxLines: 2,
+                    overflow: TextOverflow.fade,
+                    style: AppTheme.hankoSerif(fontSize: 14, height: 1.25),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _ReadColour extends StatefulWidget {
+  const _ReadColour();
+
+  @override
+  State<_ReadColour> createState() => _ReadColourState();
+}
+
+class _ReadColourState extends State<_ReadColour> {
+  late final Future<Color?> _colour = HankoCoverColour.of(
+      const AssetImage('assets/images/hanj_wing_transparent.png'),
+      key: 'specimen:wing');
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<Color?>(
+      future: _colour,
+      builder: (context, snapshot) {
+        final colour = snapshot.data;
+        final field = AppTheme.hankoField(colour);
+        final String line;
+        if (snapshot.connectionState != ConnectionState.done) {
+          line = 'Reading…';
+        } else if (colour == null || field == null) {
+          line = 'No colour read.';
+        } else {
+          line = 'Read ${_hexOf(colour)}. Its field is ${_hexOf(field)}.';
+        }
+        return Row(
+          children: [
+            Container(
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(
+                color: colour ?? AppTheme.hankoSumi,
+                borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+                border: Border.all(color: AppTheme.hankoHairline),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Container(
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(
+                color: field ?? AppTheme.hankoSumi,
+                borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+                border: Border.all(color: AppTheme.hankoHairline),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(child: Text(line, style: _note)),
+          ],
+        );
+      },
     );
   }
 }

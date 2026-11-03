@@ -356,6 +356,55 @@ class AppTheme {
   static const Duration hankoSheetRise      = Duration(milliseconds: 240);
   static const Curve    hankoSheetCurve     = Curves.decelerate;
 
+  // ── Print Room (DESIGN.md §9; Shahid chose it 2026-11-03) ──
+  // Every show brings its colour. hankoField mixes the cover's colour into
+  // sumi, at most hankoFieldMix of it, and only as strong as a luminance cap
+  // allows: hankoFieldTextCap where text sits, so washi on the field keeps
+  // 5.69:1 or better; hankoFieldGlowCap for the pool of light behind a print,
+  // where no text sits. There is no hue guard: your seal's 2 px sumi keyline
+  // keeps it clear of a field near its own hue, as it does on cover art. On
+  // a field all text is washi, since stone hi drops to 3.96:1 on the
+  // lightest ones. Detail keeps hankoCoverTint until its own stage moves it.
+  static const double hankoFieldMix     = 0.45;
+  static const double hankoFieldTextCap = 0.10; // relative luminance under text
+  static const double hankoFieldGlowMix = 0.60;
+  static const double hankoFieldGlowCap = 0.16; // behind a print, no text
+
+  static Color? hankoField(
+    Color? cover, {
+    double cap = hankoFieldTextCap,
+    double mix = hankoFieldMix,
+  }) {
+    if (cover == null) return null;
+    final opaque = cover.withValues(alpha: 1);
+    // Step down from the full mix until the field is dark enough: 0.005
+    // steps land within a hair of the cap, in at most 120 tries.
+    for (var t = mix; t > 0; t -= 0.005) {
+      final field = Color.lerp(hankoSumi, opaque, t)!;
+      if (field.computeLuminance() <= cap) return field;
+    }
+    return hankoSumi;
+  }
+
+  // Secondary text on washi paper (the share cards): 6.07:1 on washi, where
+  // stone would be 2.21:1.
+  static const Color hankoPaperInk = Color(0xFF5B544A);
+
+  // A print lying on the page casts one soft shadow, which shows on a colour
+  // field (sumi swallows it). It's a rectangle shadow, never a
+  // MaskFilter.blur on a path (PERF.md S2-2). The large one is for a
+  // screen's hero print. A shelf print sits on a mat of its own colour,
+  // hankoMatPad wide.
+  static const List<BoxShadow> hankoPrintShadow = [
+    BoxShadow(color: Color(0xB3000000), offset: Offset(0, 14), blurRadius: 28, spreadRadius: -10),
+    BoxShadow(color: Color(0x59000000), offset: Offset(0, 3), blurRadius: 8),
+  ];
+  static const List<BoxShadow> hankoPrintShadowLarge = [
+    BoxShadow(color: Color(0xBF000000), offset: Offset(0, 22), blurRadius: 40, spreadRadius: -12),
+    BoxShadow(color: Color(0x66000000), offset: Offset(0, 4), blurRadius: 10),
+  ];
+  static const double hankoMatPad = 6;
+
   // ── Theme ──────────────────────────────────────────────────
   static ThemeData get darkTheme {
     return ThemeData(
