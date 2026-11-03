@@ -3917,6 +3917,8 @@ class _NextEpisodeCountdownState extends State<_NextEpisodeCountdown> {
               // layer: ink is drawn under a Material's children, and the
               // nearest Material was the Scaffold's, under the card's fill,
               // which would have hidden the bell's focus and press washes.
+              // It hovers with the press wash, as Home's and the Calendar's
+              // bells do (question 152).
               Semantics(
                 container: true,
                 button: true,
@@ -3929,6 +3931,7 @@ class _NextEpisodeCountdownState extends State<_NextEpisodeCountdown> {
                     borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
                     splashFactory: NoSplash.splashFactory,
                     highlightColor: AppTheme.hankoPressWash,
+                    hoverColor: AppTheme.hankoPressWash,
                     child: ExcludeSemantics(
                       child: SizedBox.square(
                         dimension: AppTheme.hankoTouch,
