@@ -1448,7 +1448,7 @@ class HanjCardCatalogue {
     HanjCardData(id: 'year_of_anime',   name: 'Year of Anime',     description: 'Active every month for twelve months.',        rarity: CardRarity.legendary,  category: 'STREAK',   kanji: '年', cardNumber: 365),
     // Epic on the server and in the collection (№ 0055), so it's drawn as epic.
     HanjCardData(id: 'obsessed',        name: 'Obsessed',          description: 'Ten anime in one month. There is no cure.',    rarity: CardRarity.epic,       category: 'DEVOTION', kanji: '狂', cardNumber: 55),
-    HanjCardData(id: 'all_seasons',     name: 'All Seasons',       description: 'Spring, Summer, Fall, Winter. All witnessed.', rarity: CardRarity.legendary,  category: 'SEASONAL', kanji: '季', cardNumber: 4),
+    HanjCardData(id: 'all_seasons',     name: 'All Seasons',       description: 'Spring, Summer, Fall, Winter. All witnessed.', rarity: CardRarity.legendary,  category: 'SEASONAL', kanji: '季', cardNumber: 400),
     HanjCardData(id: 'the_200_club',    name: 'The 200 Club',      description: 'Two hundred worlds. You are the library.',     rarity: CardRarity.legendary,  category: 'WATCHER',  kanji: '眼', cardNumber: 200),
 
     // ── Seasonal ─────────────────────────────────────────────────────────────

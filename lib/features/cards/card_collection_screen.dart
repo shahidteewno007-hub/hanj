@@ -535,7 +535,9 @@ class _HanjCardTile extends StatelessWidget {
   // Map id → card number (matches catalogue; fallback to 0). The secret
   // cards had none and read "№ 0000" (question 144); they take 0901–0907,
   // a block of their own in catalogue order, as the rares and epics have.
-  // Kept identical to _CardDetailSheet._cardNumberFor.
+  // All Seasons was 0004, Genre Curious's number too; it is 0400, the four
+  // seasons in the 100 and 200 Clubs' style. Kept identical to
+  // _CardDetailSheet._cardNumberFor and HanjCardCatalogue (hanj_card.dart).
   int get _cardNumber {
     const nums = {
       'first_pull': 1, 'the_list_begins': 2, 'rated': 3, 'genre_curious': 4,
@@ -543,7 +545,7 @@ class _HanjCardTile extends StatelessWidget {
       'action_purist': 218, 'sol_soul': 219, 'romance_run': 220, 'fantasy_pilgrim': 221,
       'the_50_club': 50, 'genre_lord': 51, 'harsh_critic': 52, 'the_optimist': 53,
       'decade_scholar': 54, 'obsessed': 55,
-      'the_100_club': 100, 'year_of_anime': 365, 'all_seasons': 4, 'the_200_club': 200,
+      'the_100_club': 100, 'year_of_anime': 365, 'all_seasons': 400, 'the_200_club': 200,
       'spring_2026_watcher': 237, 'winter_arc_2026': 88,
       'golden_week_2026': 312, 'summer_2026_watcher': 401,
       'cant_let_go': 901, 'resurrection': 902, 'the_long_game': 903,
@@ -701,7 +703,7 @@ class _CardDetailSheet extends StatelessWidget {
       'action_purist': 218, 'sol_soul': 219, 'romance_run': 220, 'fantasy_pilgrim': 221,
       'the_50_club': 50, 'genre_lord': 51, 'harsh_critic': 52, 'the_optimist': 53,
       'decade_scholar': 54, 'obsessed': 55,
-      'the_100_club': 100, 'year_of_anime': 365, 'all_seasons': 4, 'the_200_club': 200,
+      'the_100_club': 100, 'year_of_anime': 365, 'all_seasons': 400, 'the_200_club': 200,
       'spring_2026_watcher': 237, 'winter_arc_2026': 88,
       'golden_week_2026': 312, 'summer_2026_watcher': 401,
       'cant_let_go': 901, 'resurrection': 902, 'the_long_game': 903,
