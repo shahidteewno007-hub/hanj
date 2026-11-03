@@ -1946,6 +1946,7 @@ class _ShelfPickerState extends State<_ShelfPicker> {
   final Map<String, int> _writes = {};
 
   final _name = TextEditingController();
+  final _nameFocus = FocusNode(debugLabel: 'new shelf name');
 
   @override
   void initState() {
@@ -1956,7 +1957,19 @@ class _ShelfPickerState extends State<_ShelfPicker> {
   @override
   void dispose() {
     _name.dispose();
+    _nameFocus.dispose();
     super.dispose();
+  }
+
+  /// Opens the name field and gives it the keyboard. Asked for outright, not
+  /// with autofocus: autofocus does nothing while anything else in the sheet
+  /// has focus, and a chip that was just tapped can (seen on the web, where
+  /// the tap focused the chip and Enter then took the shelf off again).
+  void _startNaming() {
+    setState(() => _naming = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _naming) _nameFocus.requestFocus();
+    });
   }
 
   CollectionReference<Map<String, dynamic>>? get _list {
@@ -2149,7 +2162,7 @@ class _ShelfPickerState extends State<_ShelfPicker> {
                 _ShelfChip(
                   label: 'New shelf',
                   icon: Icons.add_sharp,
-                  onTap: () => setState(() => _naming = true),
+                  onTap: _startNaming,
                 ),
             ],
           ),
@@ -2190,7 +2203,7 @@ class _ShelfPickerState extends State<_ShelfPicker> {
     );
     return TextField(
       controller: _name,
-      autofocus: true,
+      focusNode: _nameFocus,
       maxLength: 40,
       buildCounter: (_,
               {required currentLength, required isFocused, maxLength}) =>
