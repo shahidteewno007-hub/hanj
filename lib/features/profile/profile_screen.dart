@@ -1026,16 +1026,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   /// Shelves (Hanko stage H5, item g): your list entries grouped by their
-  /// tags, the field the uncalled tags API writes (firestore_service.dart's
+  /// tags, the field the tags API writes (firestore_service.dart's
   /// updateTags), read from the list Profile already has, so it costs no
-  /// request. Stage H7 builds the shelves themselves; nothing writes a tag
-  /// yet, so today this section never shows, and it promises nothing in
-  /// the meantime. Once a shelf exists it appears here as hanko.html draws
-  /// it, under the privacy line the repo rules call for: list entries are
-  /// readable by any signed-in user (firestore.rules, animeList).
+  /// request. Shelving an anime arrives in round seven's Home; until a list
+  /// has a tag this section doesn't show, and it promises nothing in the
+  /// meantime. It sits under the privacy line the repo rules call for: list
+  /// entries are readable by any signed-in user (firestore.rules,
+  /// animeList).
   ///
-  /// Biggest shelf first, then by name; three shelves at most, each with
-  /// its first three covers and how many more.
+  /// Biggest shelf first, then by name; three shelves at most, each drawn
+  /// as a reel of all its covers on a ledge (_shelfReel), then how many
+  /// more shelves there are.
   Widget _buildShelves(List<_Shelf> shelves) {
     final quiet = AppTheme.hankoSans(
       fontSize: AppTheme.hankoLabelSize,
@@ -1043,14 +1044,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
       height: 1.35,
     );
     final more = shelves.length - 3;
+    // The words keep the gutter on both sides; a reel runs on to the
+    // column's right edge.
+    Widget gutter(Widget child) => Padding(
+          padding: const EdgeInsets.symmetric(horizontal: AppTheme.hankoGutter),
+          child: child,
+        );
     return Padding(
-      padding: const EdgeInsets.fromLTRB(
-          AppTheme.hankoGutter, 26, AppTheme.hankoGutter, 0),
+      padding: const EdgeInsets.only(top: 26),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const _SectionHead('Shelves', bottom: 8),
-          Row(
+          gutter(const _SectionHead('Shelves', bottom: 8)),
+          gutter(Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Padding(
@@ -1064,22 +1070,130 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     style: quiet),
               ),
             ],
-          ),
+          )),
           const SizedBox(height: 14),
           for (var i = 0; i < shelves.length && i < 3; i++) ...[
-            if (i > 0) const SizedBox(height: 18),
-            _shelf(shelves[i], quiet),
+            if (i > 0) const SizedBox(height: _shelvesAsReels ? 22 : 18),
+            _shelvesAsReels
+                ? _shelfReel(shelves[i], quiet)
+                : gutter(_shelf(shelves[i], quiet)),
           ],
           if (more > 0) ...[
             const SizedBox(height: 14),
-            Text(more == 1 ? 'and 1 more shelf' : 'and $more more shelves',
-                style: quiet),
+            gutter(Text(
+                more == 1 ? 'and 1 more shelf' : 'and $more more shelves',
+                style: quiet)),
           ],
         ],
       ),
     );
   }
 
+  /// Shelves as reels on a ledge (round seven: Shahid asked for richer
+  /// designs than "letters with black background"). H5's shelf, three
+  /// 64 x 90 posters and "and N more" as hanko.html drew it, is kept as
+  /// _shelf, switched off here.
+  static const bool _shelvesAsReels = true;
+
+  /// A shelf as a reel: its name and how many titles it holds, then every
+  /// cover on it, newest first, 78 x 110 at the covers' own 230 : 325,
+  /// standing side by side on a ledge (an edge-colour lip on a sumi 3
+  /// board, with a soft shade under it). The reel scrolls sideways and runs
+  /// on to the column's right edge, so a long shelf shows that it goes on;
+  /// the ledge stays put while the covers slide along it. Each cover opens
+  /// its show and shows keyboard focus, as Favourites' do (_CoverButton).
+  /// No blur and no new reads: the covers are the list's own.
+  Widget _shelfReel(_Shelf shelf, TextStyle quiet) {
+    const coverWidth = 78.0, coverHeight = 110.0;
+    // Room around the covers for the focus ring, 3 px outside the art,
+    // which the reel's clip would otherwise cut.
+    const ringRoom = 4.0;
+    const lip = 1.0, board = 4.0, shade = 6.0;
+    final count = shelf.entries.length;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding:
+              const EdgeInsets.symmetric(horizontal: AppTheme.hankoGutter),
+          child: SizedBox(
+            width: double.infinity,
+            child: Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.end,
+              spacing: 12,
+              runSpacing: 2,
+              children: [
+                Text(shelf.name,
+                    style: AppTheme.hankoSerif(
+                        fontSize: AppTheme.hankoListTitleSize, height: 1.25)),
+                Text(count == 1 ? '1 title' : '$count titles', style: quiet),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 10 - ringRoom),
+        SizedBox(
+          height: ringRoom + coverHeight + lip + board + shade,
+          child: Stack(
+            children: [
+              // The ledge, from the gutter to the column's edge.
+              const Positioned(
+                left: AppTheme.hankoGutter,
+                right: 0,
+                top: ringRoom + coverHeight,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    ColoredBox(
+                      color: AppTheme.hankoEdge,
+                      child: SizedBox(height: lip),
+                    ),
+                    ColoredBox(
+                      color: AppTheme.hankoSumi3,
+                      child: SizedBox(height: board),
+                    ),
+                    DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [Color(0x66000000), Color(0x00000000)],
+                        ),
+                      ),
+                      child: SizedBox(height: shade),
+                    ),
+                  ],
+                ),
+              ),
+              ListView.separated(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.fromLTRB(
+                    AppTheme.hankoGutter, ringRoom, AppTheme.hankoGutter, 0),
+                itemCount: count,
+                separatorBuilder: (_, _) => const SizedBox(width: 10),
+                itemBuilder: (context, i) => Align(
+                  alignment: Alignment.topCenter,
+                  child: _CoverButton(
+                    label: (shelf.entries[i]['title'] as String?) ?? 'Unknown',
+                    onTap: () => _openEntry(shelf.entries[i]),
+                    child: _Cover(
+                      url: shelf.entries[i]['imageUrl'] as String?,
+                      width: coverWidth,
+                      height: coverHeight,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// H5's shelf (hanko.html): the name and count, then the first three
+  /// covers at 64 x 90 and "and N more". Switched off by _shelvesAsReels.
   Widget _shelf(_Shelf shelf, TextStyle quiet) {
     final count = shelf.entries.length;
     final rest = count - 3;
