@@ -2350,6 +2350,13 @@ class _ContinueCardState extends State<_ContinueCard> {
     // label says only how far you are.
     final progressWords =
         hasTotal ? '$_current of $total' : '$_current watched';
+    final progressStyle = AppTheme.hankoSans(
+      fontSize: AppTheme.hankoLabelSize,
+      weight: FontWeight.w500,
+      color: AppTheme.hankoStone,
+      height: 1,
+      tabular: true,
+    );
 
     return InkWell(
       onTap: () {
@@ -2388,16 +2395,16 @@ class _ContinueCardState extends State<_ContinueCard> {
                 const SizedBox(height: 9),
                 Row(
                   children: [
+                    // progressWords, with its count rolling to the new one
+                    // when +1 lands (round seven).
                     ExcludeSemantics(
-                      child: Text(
-                        progressWords,
-                        style: AppTheme.hankoSans(
-                          fontSize: AppTheme.hankoLabelSize,
-                          weight: FontWeight.w500,
-                          color: AppTheme.hankoStone,
-                          height: 1,
-                          tabular: true,
-                        ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _RollingCount(value: _current, style: progressStyle),
+                          Text(hasTotal ? ' of $total' : ' watched',
+                              style: progressStyle),
+                        ],
                       ),
                     ),
                     const SizedBox(width: 10),
@@ -2430,11 +2437,24 @@ class _ContinueCardState extends State<_ContinueCard> {
   }
 }
 
-/// Hanko's outlined +1 tile: sumi 3 with a 1 px edge outline (4.02:1), 48 dp
-/// square, "+1" in Jost 600 washi. Outlined rather than filled because it
-/// repeats on every row, and one filled main action per screen is the rule.
-/// While its write is on its way the outline turns washi.
-class _PlusOneTile extends StatelessWidget {
+/// Hanko's outlined +1 tile: sumi 3 with a 1 px edge outline (4.02:1), "+1"
+/// in Jost 600 washi. Outlined rather than filled because it repeats on
+/// every row, and one filled main action per screen is the rule. While its
+/// write is on its way the outline turns washi.
+///
+/// Round seven (Shahid, 2026-11-03: "plus +1 a bit smaller and give it an
+/// animation when I press it"): the square is drawn at 40 dp, from 48, with
+/// "+1" at 14, from 15, inside the same 48 dp target, so it is as easy to
+/// hit as before. Each tap presses it like a seal: in to 0.92, out through
+/// AppTheme.hankoSealPressScale and back to rest, 240 ms in all. With
+/// "remove animations" on it doesn't move.
+///
+/// The InkWell keeps the whole target, so its tap and keyboard focus stay in
+/// the button's own semantics node (question 119). Its washes would cover
+/// the whole target too, a square wider than the one drawn, so the square
+/// draws them itself from the InkWell's highlight, hover and focus: the 8%
+/// press wash, and for keyboard focus a washi outline with a 12% wash.
+class _PlusOneTile extends StatefulWidget {
   const _PlusOneTile({
     required this.nextEpisode,
     required this.saving,
@@ -2445,8 +2465,63 @@ class _PlusOneTile extends StatelessWidget {
   final bool saving;
   final VoidCallback? onTap;
 
+  /// The drawn square, inside the AppTheme.hankoTouch target.
+  static const double drawn = 40;
+
+  @override
+  State<_PlusOneTile> createState() => _PlusOneTileState();
+}
+
+class _PlusOneTileState extends State<_PlusOneTile>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _press = AnimationController(
+    vsync: this,
+    duration: AppTheme.hankoSealPress * 2,
+  );
+  late final Animation<double> _scale = TweenSequence<double>([
+    TweenSequenceItem(
+      tween: Tween(begin: 1.0, end: 0.92)
+          .chain(CurveTween(curve: Curves.easeOut)),
+      weight: 30,
+    ),
+    TweenSequenceItem(
+      tween: Tween(begin: 0.92, end: AppTheme.hankoSealPressScale)
+          .chain(CurveTween(curve: Curves.easeOut)),
+      weight: 30,
+    ),
+    TweenSequenceItem(
+      tween: Tween(begin: AppTheme.hankoSealPressScale, end: 1.0)
+          .chain(CurveTween(curve: Curves.easeInOut)),
+      weight: 40,
+    ),
+  ]).animate(_press);
+
+  bool _pressed = false;
+  bool _hovered = false;
+  bool _focused = false;
+
+  @override
+  void dispose() {
+    _press.dispose();
+    super.dispose();
+  }
+
+  void _tap() {
+    if (!MediaQuery.disableAnimationsOf(context)) _press.forward(from: 0);
+    widget.onTap?.call();
+  }
+
   @override
   Widget build(BuildContext context) {
+    final onTap = widget.onTap;
+    final fill = _focused
+        ? Color.alphaBlend(
+            AppTheme.hankoWashi.withValues(alpha: 0.12), AppTheme.hankoSumi3)
+        : _pressed || _hovered
+            ? Color.alphaBlend(AppTheme.hankoPressWash, AppTheme.hankoSumi3)
+            : AppTheme.hankoSumi3;
+    final outline =
+        widget.saving || _focused ? AppTheme.hankoWashi : AppTheme.hankoEdge;
     // One semantics node (container) with the InkWell's tap and focus
     // inside it, as the lede (question 119; see _HomeScreenState._buildLede).
     // "+1" is left out of the tree, since the label says what it does.
@@ -2454,34 +2529,96 @@ class _PlusOneTile extends StatelessWidget {
       container: true,
       button: true,
       enabled: onTap != null,
-      label: 'Mark episode $nextEpisode watched',
+      label: 'Mark episode ${widget.nextEpisode} watched',
       child: Material(
-        color: AppTheme.hankoSumi3,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
-          side: BorderSide(
-              color: saving ? AppTheme.hankoWashi : AppTheme.hankoEdge),
-        ),
+        type: MaterialType.transparency,
         child: InkWell(
-          onTap: onTap,
+          onTap: onTap == null ? null : _tap,
+          onHighlightChanged: (v) => setState(() => _pressed = v),
+          onHover: (v) => setState(() => _hovered = v),
+          onFocusChange: (v) => setState(() => _focused = v),
           splashFactory: NoSplash.splashFactory,
-          highlightColor: AppTheme.hankoPressWash,
-          hoverColor: AppTheme.hankoPressWash,
-          borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+          overlayColor: const WidgetStatePropertyAll(Colors.transparent),
           child: ExcludeSemantics(
-            child: SizedBox(
-              width: AppTheme.hankoTouch,
-              height: AppTheme.hankoTouch,
+            child: SizedBox.square(
+              dimension: AppTheme.hankoTouch,
               child: Center(
-                child: Text(
-                  '+1',
-                  style: AppTheme.hankoSans(
-                      fontSize: 15, weight: FontWeight.w600, height: 1),
+                child: ScaleTransition(
+                  scale: _scale,
+                  child: Container(
+                    width: _PlusOneTile.drawn,
+                    height: _PlusOneTile.drawn,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: fill,
+                      borderRadius:
+                          BorderRadius.circular(AppTheme.hankoRadius),
+                      border: Border.all(color: outline),
+                    ),
+                    child: Text(
+                      '+1',
+                      style: AppTheme.hankoSans(
+                          fontSize: 14, weight: FontWeight.w600, height: 1),
+                    ),
+                  ),
                 ),
               ),
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// A Continue row's count, which rolls when it changes (round seven): the
+/// new figure comes up from below as the old one leaves upward, 160 ms, so
+/// a +1 is seen to land in the row's words. A count that goes back (a save
+/// that failed) rolls the other way. Still with "remove animations" on.
+class _RollingCount extends StatefulWidget {
+  const _RollingCount({required this.value, required this.style});
+
+  final int value;
+  final TextStyle style;
+
+  @override
+  State<_RollingCount> createState() => _RollingCountState();
+}
+
+class _RollingCountState extends State<_RollingCount> {
+  bool _up = true;
+
+  @override
+  void didUpdateWidget(_RollingCount old) {
+    super.didUpdateWidget(old);
+    if (old.value != widget.value) _up = widget.value > old.value;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final still = MediaQuery.disableAnimationsOf(context);
+    final current = ValueKey(widget.value);
+    return ClipRect(
+      child: AnimatedSwitcher(
+        duration: still ? Duration.zero : const Duration(milliseconds: 160),
+        switchInCurve: Curves.easeOut,
+        switchOutCurve: Curves.easeIn,
+        layoutBuilder: (shown, leaving) => Stack(
+          alignment: Alignment.centerLeft,
+          children: [...leaving, ?shown],
+        ),
+        transitionBuilder: (child, animation) {
+          // The incoming figure runs 0 → 1 from below (above when going
+          // back); the leaving one runs 1 → 0, so it starts where it is.
+          final incoming = child.key == current;
+          final edge = (incoming == _up) ? 0.7 : -0.7;
+          return SlideTransition(
+            position: Tween(begin: Offset(0, edge), end: Offset.zero)
+                .animate(animation),
+            child: FadeTransition(opacity: animation, child: child),
+          );
+        },
+        child: Text('${widget.value}', key: current, style: widget.style),
       ),
     );
   }
