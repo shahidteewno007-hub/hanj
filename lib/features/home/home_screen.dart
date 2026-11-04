@@ -620,6 +620,45 @@ class _HomeScreenState extends State<HomeScreen> {
     return HankoField(coverUrl: _heroCover(), solidTo: 0.72, child: header);
   }
 
+  /// Tonight's band on its show's colour (Print Room, P2; DESIGN.md §9.5):
+  /// a flat field from [url]'s cover, the width of the page as the hero's
+  /// is, fading in from the page over its first 56 dp and out at its foot,
+  /// while [band] keeps the record's column (_PickBand). The band's buttons
+  /// get a transparent Material of its own, so their press and focus washes
+  /// show over the field: ink is drawn under a Material's children.
+  Widget _bandField(String? url, Widget band) {
+    if (!_printRoom) return band;
+    return HankoField(
+      coverUrl: url,
+      solidTo: 0.75,
+      child: Stack(
+        children: [
+          Positioned(
+            left: 0,
+            top: 0,
+            right: 0,
+            height: 56,
+            child: IgnorePointer(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      AppTheme.hankoSumi,
+                      AppTheme.hankoSumi.withValues(alpha: 0),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Material(type: MaterialType.transparency, child: band),
+        ],
+      ),
+    );
+  }
+
   /// Item (i): on a wide window the record blocks (the lede, the Continue
   /// rows and tonight's pick) keep the phone's column instead of stretching:
   /// Responsive.proseMaxWidth, 440 px of text (WEB.md §9.3's one-column
@@ -883,7 +922,8 @@ class _HomeScreenState extends State<HomeScreen> {
             if (_pickable.isNotEmpty)
               SliverToBoxAdapter(
                 key: const ValueKey('home-watchlist-pick'),
-                child: _recordColumn(Padding(
+                child: _bandField(_pickable.first['imageUrl'] as String?,
+                    _recordColumn(Padding(
                   padding: const EdgeInsets.only(top: 4),
                   child: Builder(builder: (context) {
                     final pick = _watchlistPick();
@@ -911,16 +951,16 @@ class _HomeScreenState extends State<HomeScreen> {
                           : null,
                     );
                   }),
-                )),
+                ))),
               )
             // ── Tonight's Drop / Anime of Day ────────────────
             else if (_animeOfDay != null)
               SliverToBoxAdapter(
                 key: const ValueKey('home-anime-of-day'),
-                child: _recordColumn(Padding(
+                child: _bandField(_animeOfDay!.imageUrl, _recordColumn(Padding(
                   padding: const EdgeInsets.only(top: 4),
                   child: _TonightCard(anime: _animeOfDay!, open: _open),
-                )),
+                ))),
               ),
 
             // ── Tonight's Watch ──────────────────────────────
@@ -1305,7 +1345,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: ExcludeSemantics(
                     child: Text.rich(
                       TextSpan(
-                        text: 'Continue',
+                        // A Mincho space and a Jost one: about the
+                        // mockup's gap before the count.
+                        text: 'Continue ',
                         style: AppTheme.hankoSerif(height: 1.3),
                         children: [
                           TextSpan(
@@ -2978,62 +3020,28 @@ class _PickBand extends StatelessWidget {
     );
   }
 
-  /// Print Room's band (P2; DESIGN.md §9.5, frame 02): the show's own colour
-  /// as a flat field instead of the art wash, fading in from the page over
-  /// its first 56 dp and out at its foot, with the cover as a print lying on
-  /// it. Every word on it is washi, so the darker panel goes; AniList's
-  /// score is washi too, since the crowd's ai would fall to about 2.5:1 on
-  /// the lightest fields. Its buttons sit on a transparent Material of the
-  /// band's own, so their press and focus washes show over the field.
+  /// Print Room's band (P2; DESIGN.md §9.5, frame 02): no art wash, since
+  /// Home lays the show's own colour behind the band as a flat field the
+  /// width of the page (_HomeScreenState._bandField), and the cover lies on
+  /// it as a print. Every word on it is washi, so the darker panel goes;
+  /// AniList's score is washi too, since the crowd's ai would fall to about
+  /// 2.5:1 on the lightest fields.
   Widget _onField(TextStyle meta, String? facts, String? score, String? note,
       Widget? trailing, Widget? footer) {
-    return HankoField(
-      coverUrl: imageUrl,
-      solidTo: 0.75,
-      child: Stack(
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+          AppTheme.hankoGutter, 20, AppTheme.hankoGutter, footer == null ? 22 : 2),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Positioned(
-            left: 0,
-            top: 0,
-            right: 0,
-            height: 56,
-            child: IgnorePointer(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      AppTheme.hankoSumi,
-                      AppTheme.hankoSumi.withValues(alpha: 0),
-                    ],
-                  ),
-                ),
-              ),
-            ),
+          Semantics(
+            header: true,
+            child: Text(heading, style: AppTheme.hankoSerif(height: 1.3)),
           ),
-          Material(
-            type: MaterialType.transparency,
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(AppTheme.hankoGutter, 24,
-                  AppTheme.hankoGutter, footer == null ? 22 : 2),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Semantics(
-                    header: true,
-                    child:
-                        Text(heading, style: AppTheme.hankoSerif(height: 1.3)),
-                  ),
-                  const SizedBox(height: 14),
-                  _row(meta, facts, score, note, trailing),
-                  if (footer != null)
-                    Padding(
-                        padding: const EdgeInsets.only(top: 6), child: footer),
-                ],
-              ),
-            ),
-          ),
+          const SizedBox(height: 14),
+          _row(meta, facts, score, note, trailing),
+          if (footer != null)
+            Padding(padding: const EdgeInsets.only(top: 6), child: footer),
         ],
       ),
     );
