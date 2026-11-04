@@ -295,9 +295,9 @@ class _ImportPageContent extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Wing mark logo
+              // The mark, with its flash
               Image.asset(
-                'assets/images/hanj_wing_transparent.png',
+                'assets/images/hanj_cut.png',
                 width: 72,
                 height: 72,
                 fit: BoxFit.contain,

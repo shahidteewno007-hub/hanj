@@ -191,18 +191,14 @@
   <!-- Removed on Flutter's first frame — see the script at the end of body. -->
   <div id="hanj-splash">
     <div class="hanj-splash__inner">
-      <!-- The wing mark, inline. No background rect: the shell already paints
-           #121110. Two strokes rather than three, matching favicon.svg. The old
-           ">=96px only" rule for the three-stroke master was wrong: it described
-           file size, not render size. See MARK-SIZES.md. Still no webfont and no
-           image request here, per the W2 note below. -->
-      <svg class="hanj-splash__mark" viewBox="0 0 64 64" aria-hidden="true" focusable="false">
-        <g transform="translate(11.23,9.37) scale(0.62) translate(-28.50,-34.50)">
-          <path d="M34 102 Q62 92 90 60" fill="none" stroke="#E8624A"
-                stroke-width="11.0" stroke-linecap="round"/>
-          <path d="M39 82 Q60 68 82 38" fill="none" stroke="#E8624A"
-                stroke-width="7.0" stroke-linecap="round"/>
-        </g>
+      <!-- The mark, inline: assets/icon/hanj_cut.svg, the full cut with its
+           flash, since 54 px is well above the small cut's range (see
+           MARK-SIZES.md). No background rect: the shell already paints
+           #121110. Still no webfont and no image request here, per the W2
+           note below. -->
+      <svg class="hanj-splash__mark" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path fill="#E8624A" d="M16.58 5.42A0.5 0.5 0 0 0 16.501 4.649A10 10 0 0 0 2.649 18.501A0.5 0.5 0 0 0 3.42 18.58ZM20.58 5.42A0.5 0.5 0 0 1 21.351 5.499A10 10 0 0 1 7.499 19.351A0.5 0.5 0 0 1 7.42 18.58Z"/>
+        <path fill="#EEE7DA" d="M23.314 0.686A284.669 284.669 0 0 1 0.686 23.314A284.669 284.669 0 0 1 23.314 0.686Z"/>
       </svg>
       <!-- "Hanj" drawn from Shippori Mincho SemiBold (SIL Open Font License 1.1,
            Copyright 2021 The Shippori Mincho Project Authors). -->

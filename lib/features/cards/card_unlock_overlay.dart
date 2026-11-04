@@ -281,7 +281,7 @@ class _CardUnlockPageState extends State<_CardUnlockPage>
       ),
       child: Center(
         child: Image.asset(
-          'assets/images/hanj_wing_transparent.png',
+          'assets/images/hanj_cut.png',
           width: 56,
           height: 56,
           color: _color.withValues(alpha: 0.25),
