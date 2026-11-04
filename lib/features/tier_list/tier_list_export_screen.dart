@@ -275,7 +275,10 @@ class TierListPoster extends StatelessWidget {
 
   static const double width = 360;
   static const double _pad = 18;
-  static const wing = 'assets/images/hanj_wing_transparent.png';
+
+  /// The mark at the foot, at 18 px: Clean Cut's small cut, without the
+  /// flash (MARK-SIZES.md §0). The name is the wing's, which it replaced.
+  static const wing = 'assets/images/hanj_cut_small.png';
 
   /// The covers along the top: the anime of the characters it pictures,
   /// most-used first, at most six.

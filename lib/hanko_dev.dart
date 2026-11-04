@@ -391,8 +391,8 @@ class _PrintRoom extends StatelessWidget {
         Text('A colour read from an image', style: head),
         const SizedBox(height: 4),
         Text(
-          'HankoCoverColour on the app’s own wing asset, so it needs no '
-          'network. The strokes’ coral should come back.',
+          'HankoCoverColour on the app’s own mark, so it needs no '
+          'network. The seal’s coral should come back.',
           style: _cap,
         ),
         const SizedBox(height: 12),
@@ -540,8 +540,8 @@ class _ReadColour extends StatefulWidget {
 
 class _ReadColourState extends State<_ReadColour> {
   late final Future<Color?> _colour = HankoCoverColour.of(
-      const AssetImage('assets/images/hanj_wing_transparent.png'),
-      key: 'specimen:wing');
+      const AssetImage('assets/images/hanj_cut.png'),
+      key: 'specimen:mark');
 
   @override
   Widget build(BuildContext context) {
