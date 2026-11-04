@@ -3349,10 +3349,11 @@ class _StartWatchingState extends State<_StartWatching> {
               child: Align(
                 alignment: Alignment.centerLeft,
                 widthFactor: 1,
+                // As wide as its words and 20 either side, the mockup's, not
+                // the width of the room it lies in.
                 child: Container(
                   height: 40,
                   padding: const EdgeInsets.symmetric(horizontal: 20),
-                  alignment: Alignment.center,
                   decoration: BoxDecoration(
                     color: fill,
                     borderRadius:
@@ -3369,16 +3370,19 @@ class _StartWatchingState extends State<_StartWatching> {
                   ),
                   // At very large text the words shrink to fit the room
                   // beside the print, rather than spill out of the button.
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Text(
-                      starting ? 'Starting…' : 'Start watching',
-                      maxLines: 1,
-                      style: AppTheme.hankoSans(
-                          fontSize: 15,
-                          weight: FontWeight.w600,
-                          color: AppTheme.hankoSumi,
-                          height: 1),
+                  child: Center(
+                    widthFactor: 1,
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        starting ? 'Starting…' : 'Start watching',
+                        maxLines: 1,
+                        style: AppTheme.hankoSans(
+                            fontSize: 15,
+                            weight: FontWeight.w600,
+                            color: AppTheme.hankoSumi,
+                            height: 1),
+                      ),
                     ),
                   ),
                 ),
