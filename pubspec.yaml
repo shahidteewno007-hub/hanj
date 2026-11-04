@@ -46,8 +46,14 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
-    # 2.0x/ and 3.0x/ variants are picked up automatically for this entry.
-    - assets/images/hanj_wing_transparent.png
+    # The mark (Clean Cut, 2026-11) in two optical cuts: hanj_cut.png with its
+    # flash for 48 px and up, hanj_cut_small.png without it for 18-22 px
+    # (MARK-SIZES.md). 2.0x/ and 3.0x/ variants are picked up automatically
+    # for each entry.
+    - assets/images/hanj_cut.png
+    - assets/images/hanj_cut_small.png
+    # hanj_wing_transparent.png (+ 2.0x/, 3.0x/) is the wing mark these
+    # replaced, undeclared on the same terms as the two below.
     # hanj_wing.png (94,054 B) and hanj_wing_transparent_hires.png (9,917 B)
     # were declared here and bundled into every build, but nothing in lib/
     # references either and both are the pre-2026-09 mark. Undeclared so they

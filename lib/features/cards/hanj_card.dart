@@ -1116,14 +1116,14 @@ class _RarityPill extends StatelessWidget {
   }
 }
 
-/// Hanj feather icon — top right of every card
+/// The Hanj mark, its small cut — top right of every card
 class _HanjFeather extends StatelessWidget {
   const _HanjFeather();
 
   @override
   Widget build(BuildContext context) {
     return Image.asset(
-      'assets/images/hanj_wing_transparent.png',
+      'assets/images/hanj_cut_small.png',
       width: 22,
       height: 22,
       fit: BoxFit.contain,

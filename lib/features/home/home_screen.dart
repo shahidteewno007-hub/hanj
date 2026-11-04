@@ -605,9 +605,9 @@ class _HomeScreenState extends State<HomeScreen> {
     )),
   );
 
-  /// The top line (Hanko stage H4, item g): the coral wing beside "Hanj" in
-  /// Shippori Mincho, and Search as a 48 dp button. The wing is the text cut
-  /// (MARK-SIZES.md §1), drawn for 18 px and validated to 48, here at 20.
+  /// The top line (Hanko stage H4, item g): the coral mark beside "Hanj" in
+  /// Shippori Mincho, and Search as a 48 dp button. At 20 the mark is its
+  /// small cut, without the flash (MARK-SIZES.md §0).
   Widget _buildTopLine() {
     return SizedBox(
       height: 48,
@@ -623,7 +623,7 @@ class _HomeScreenState extends State<HomeScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Image.asset(
-                  'assets/images/hanj_wing_transparent.png',
+                  'assets/images/hanj_cut_small.png',
                   width: 20,
                   height: 20,
                   fit: BoxFit.contain,
