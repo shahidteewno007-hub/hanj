@@ -81,6 +81,54 @@ class _HomeScreenState extends State<HomeScreen> {
   /// the sentence keeps its words in the width the print leaves it.
   static const double _ledeBesidePrint = 20;
 
+  // ── Start watching, on the watchlist band (Print Room P2-2) ──
+  // The mockup's washi button under tonight's pick, built as a stage of its
+  // own (Shahid, 2026-11-05: "go with your recommendations"). It puts the
+  // pick on Watching, as the status sheet's "Watching" does, so the show
+  // moves onto the Continue shelf. Off, the band is P2's as built.
+  static const bool _startWatching = true;
+
+  /// The pick's Watching write is on its way: the button says so.
+  bool _starting = false;
+
+  /// Puts [entry] on Watching through the same write as the status sheet's
+  /// "Watching" (FirestoreService.addAnimeToList: a merge of the status, its
+  /// addedAt and lastWatched, and the entry's own facts, with the activity
+  /// event), so nothing else on the entry changes. Awaited and caught: a
+  /// refused write says so, and the list is read again either way, which
+  /// moves the show onto the shelf, or leaves it on the band.
+  Future<void> _start(Map<String, dynamic> entry) async {
+    final id = entry['animeId']?.toString() ?? '';
+    if (_starting || id.isEmpty) return;
+    setState(() => _starting = true);
+    try {
+      await _firestoreService.addAnimeToList(
+        anime: Anime(
+          id: id,
+          title: entry['title'] as String? ?? 'Unknown',
+          imageUrl: entry['imageUrl'] as String?,
+          episodes: entry['episodes'] as int?,
+          averageScore: (entry['averageScore'] as num?)?.toDouble(),
+          genres: [
+            ...?(entry['genres'] as List<dynamic>?)?.whereType<String>(),
+          ],
+        ),
+        status: 'WATCHING',
+      );
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Couldn’t start it just now. Try again.'),
+        ));
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _starting = false);
+        _reloadList();
+      }
+    }
+  }
+
   // ── The airing batch, lifted out of Coming up (Stage 2 item a) ──
   // One AniList request for every show you're watching: its next episode
   // and when it airs. Coming up lists the soonest three, and each Continue
@@ -934,6 +982,11 @@ class _HomeScreenState extends State<HomeScreen> {
                       newest: _planToWatch.length > 1 &&
                           identical(pick, _planToWatch.first),
                       onOpen: () => _openEntry(pick),
+                      // Print Room's washi action (P2-2), on its band only.
+                      onStart: _printRoom && _startWatching
+                          ? () => _start(pick)
+                          : null,
+                      starting: _starting,
                       // Up next folds in here (question 45): the rest of
                       // your watchlist is one tap away, on My List's
                       // watchlist filter. Only when there is more than the
@@ -2871,6 +2924,8 @@ class _WatchlistPick extends StatelessWidget {
     required this.entry,
     required this.newest,
     required this.onOpen,
+    this.onStart,
+    this.starting = false,
     this.footer,
   });
 
@@ -2879,6 +2934,12 @@ class _WatchlistPick extends StatelessWidget {
   /// The pick is the watchlist's newest entry, of two or more.
   final bool newest;
   final VoidCallback onOpen;
+
+  /// Puts the pick on Watching (Print Room P2-2). Null draws no button.
+  final VoidCallback? onStart;
+
+  /// [onStart]'s write is on its way.
+  final bool starting;
 
   /// The watchlist link, under the pick.
   final Widget? footer;
@@ -2897,6 +2958,7 @@ class _WatchlistPick extends StatelessWidget {
     final score = _HomeScreenState._isMalImport(entry)
         ? null
         : entry['averageScore'] as num?;
+    final onStart = this.onStart;
     return _PickBand(
       heading: 'From your watchlist tonight',
       imageUrl: entry['imageUrl'] as String?,
@@ -2905,6 +2967,9 @@ class _WatchlistPick extends StatelessWidget {
       score: score == null ? null : (score / 10).toStringAsFixed(1),
       note: newest ? 'Newest on your watchlist' : null,
       onOpen: onOpen,
+      action: onStart == null
+          ? null
+          : _StartWatching(title: title, starting: starting, onTap: onStart),
       footer: footer,
     );
   }
@@ -2930,6 +2995,7 @@ class _PickBand extends StatelessWidget {
     this.score,
     this.note,
     this.trailing,
+    this.action,
     this.footer,
   });
 
@@ -2943,7 +3009,17 @@ class _PickBand extends StatelessWidget {
   final String? score;
   final String? note;
   final Widget? trailing;
+
+  /// The band's own action (Print Room P2-2: Start watching), under the
+  /// words and beside the print, as the mockup lays it. A button of its own,
+  /// so it lies over the band's button, in room the words keep for it
+  /// ([actionRoom]), never inside the button's excluded semantics.
+  final Widget? action;
   final Widget? footer;
+
+  /// The room under the words for [action]: its 48 dp target, 10 under the
+  /// note, so the 40 dp button drawn in it sits 14 under, as the mockup's.
+  static const double actionRoom = 10 + AppTheme.hankoTouch;
 
   /// The print: 96 × 136, from the old pick's 72 × 102.
   static const double printWidth = 96;
@@ -3048,9 +3124,29 @@ class _PickBand extends StatelessWidget {
     );
   }
 
-  /// The print and the words, one button, and [trailing] beside them.
+  /// The print and the words, one button, and [trailing] beside them. An
+  /// [action] lies over the words' foot, in the room they keep for it.
   Widget _row(TextStyle meta, String? facts, String? score, String? note,
       Widget? trailing) {
+    final action = this.action;
+    if (action != null) {
+      return Stack(
+        children: [
+          _buttonRow(meta, facts, score, note, trailing),
+          Positioned(
+            left: printWidth + 16,
+            right: 0,
+            bottom: 0,
+            child: Align(alignment: Alignment.bottomLeft, child: action),
+          ),
+        ],
+      );
+    }
+    return _buttonRow(meta, facts, score, note, trailing);
+  }
+
+  Widget _buttonRow(TextStyle meta, String? facts, String? score,
+      String? note, Widget? trailing) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -3113,7 +3209,23 @@ class _PickBand extends StatelessWidget {
 
   /// The title, the facts, AniList's score and the note, at least the
   /// print's height, so the note sits at its foot, as Detail's caption.
+  /// With an [action], the note keeps [actionRoom] under it for the action.
   Widget _words(TextStyle meta, String? facts, String? score, String? note) {
+    final noteText = note == null
+        ? null
+        : Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: Text(
+              note,
+              style: AppTheme.hankoSans(
+                  fontSize: AppTheme.hankoLabelSize,
+                  weight: FontWeight.w500,
+                  color: _HomeScreenState._printRoom
+                      ? AppTheme.hankoWashi
+                      : AppTheme.hankoStoneHi,
+                  height: 1.3),
+            ),
+          );
     return ConstrainedBox(
       constraints: const BoxConstraints(minHeight: printHeight),
       child: Column(
@@ -3159,21 +3271,121 @@ class _PickBand extends StatelessWidget {
               ],
             ],
           ),
-          if (note != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 10),
-              child: Text(
-                note,
-                style: AppTheme.hankoSans(
-                    fontSize: AppTheme.hankoLabelSize,
-                    weight: FontWeight.w500,
-                    color: _HomeScreenState._printRoom
-                        ? AppTheme.hankoWashi
-                        : AppTheme.hankoStoneHi,
-                    height: 1.3),
+          if (action != null)
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                ?noteText,
+                const SizedBox(height: actionRoom),
+              ],
+            )
+          else
+            ?noteText,
+        ],
+      ),
+    );
+  }
+}
+
+/// "Start watching" (Print Room P2-2; Shahid, 2026-11-05: "go with your
+/// recommendations"): the watchlist band's one main action, as the mockup
+/// draws it, in washi with sumi words, Hanko's fill for a screen's one main
+/// action (15.3:1). It puts the pick on Watching ([onTap]); while that write
+/// is on its way it says "Starting…" and takes no taps.
+///
+/// Drawn 40 high inside a 48 dp target, as +1 is. The InkWell keeps the
+/// whole target, so its tap and focus stay in the button's own node, and
+/// the drawn button shows its own washes: sumi at 8% while pressed or
+/// hovered, and for keyboard focus the seal's ring, a 2 px sumi line inside
+/// its edge and a 2 px washi ring outside it (a washi outline alone would
+/// only look like a bigger button).
+class _StartWatching extends StatefulWidget {
+  const _StartWatching({
+    required this.title,
+    required this.starting,
+    required this.onTap,
+  });
+
+  /// The show's title, for what a screen reader hears.
+  final String title;
+  final bool starting;
+  final VoidCallback onTap;
+
+  @override
+  State<_StartWatching> createState() => _StartWatchingState();
+}
+
+class _StartWatchingState extends State<_StartWatching> {
+  bool _pressed = false;
+  bool _hovered = false;
+  bool _focused = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final starting = widget.starting;
+    final fill = _pressed || _hovered
+        ? Color.alphaBlend(
+            AppTheme.hankoSumi.withValues(alpha: 0.08), AppTheme.hankoWashi)
+        : AppTheme.hankoWashi;
+    return Semantics(
+      container: true,
+      button: true,
+      enabled: !starting,
+      label: starting
+          ? 'Starting ${widget.title}'
+          : 'Start watching ${widget.title}',
+      child: Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          onTap: starting ? null : widget.onTap,
+          onHighlightChanged: (v) => setState(() => _pressed = v),
+          onHover: (v) => setState(() => _hovered = v),
+          onFocusChange: (v) => setState(() => _focused = v),
+          splashFactory: NoSplash.splashFactory,
+          overlayColor: const WidgetStatePropertyAll(Colors.transparent),
+          child: ExcludeSemantics(
+            child: SizedBox(
+              height: AppTheme.hankoTouch,
+              child: Align(
+                alignment: Alignment.centerLeft,
+                widthFactor: 1,
+                child: Container(
+                  height: 40,
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: fill,
+                    borderRadius:
+                        BorderRadius.circular(AppTheme.hankoRadius),
+                    border: _focused
+                        ? Border.all(color: AppTheme.hankoSumi, width: 2)
+                        : null,
+                    boxShadow: _focused
+                        ? const [
+                            BoxShadow(
+                                color: AppTheme.hankoWashi, spreadRadius: 2),
+                          ]
+                        : null,
+                  ),
+                  // At very large text the words shrink to fit the room
+                  // beside the print, rather than spill out of the button.
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      starting ? 'Starting…' : 'Start watching',
+                      maxLines: 1,
+                      style: AppTheme.hankoSans(
+                          fontSize: 15,
+                          weight: FontWeight.w600,
+                          color: AppTheme.hankoSumi,
+                          height: 1),
+                    ),
+                  ),
+                ),
               ),
             ),
-        ],
+          ),
+        ),
       ),
     );
   }
