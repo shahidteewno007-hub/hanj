@@ -198,7 +198,7 @@ What each covers:
   - `PageWidth` is a wrapper widget, deliberately not `MaterialApp.builder`. Today it wraps only the five tab roots, in `main_screen.dart`, so pushed screens such as detail, collection and search are uncapped on wide windows.
   - It also covers the desktop navigation rail, the hover policy, the web loading shell, font-loading costs, and the landscape overflows on Pulse and Search (§10).
   - `card_share`'s 340×604 canvas is an export format, not a responsive layout.
-- **`MARK-SIZES.md`** covers the wing-mark cuts and sizes.
+- **`MARK-SIZES.md`** covers the mark's cuts and sizes: Clean Cut since 2026-11 (§0), and the wing before it.
 - **`AUDIT.md`** (UI sections) covers the share-card offsets, the doubled top inset under the offline banner, and the missing screens.
 - **`ANILIST-OFFLINE-0908-REPORT.md`** covers the SAVED DATA stale-data marker. Its copy rule: failure copy never names a cause the app can't verify.
 - **`screenshots/`** holds web captures of the five tabs at 390, 768, 1024, 1440 and 1920 px.
@@ -221,10 +221,10 @@ What each covers:
   - Cover and banner art comes from AniList URLs, displayed at runtime. Most sites use `CachedNetworkImage`, and about ten use plain `Image.network`. `share_card.dart` is among those; it bakes cover art into exported images.
   - Display-time treatment is ordinary design work, within the frame budget. That covers new crops, sizes and placements, scrims and overlays, and using `bannerImage` where a screen already fetches it.
   - Flag any new *kind* of use to Shahid rather than assuming it's fine: re-hosting, saved edited or generated derivatives, or art in marketing or the store listing.
-  - The only runtime brand asset is `assets/images/hanj_wing_transparent.png`. The SVGs in `assets/icon/` are source masters. The app has no SVG renderer, so using them would add a dependency.
+  - The only runtime brand assets are `assets/images/hanj_cut.png` and `hanj_cut_small.png` (`MARK-SIZES.md` §0). The SVGs in `assets/icon/` are source masters. The app has no SVG renderer, so using them would add a dependency.
 - **One codebase, two targets.** Web and Android run the same widgets, and web hides device-only bugs (`CLAUDE.md`). A layout isn't verified until it has been seen on the phone, or you have said that it hasn't.
 - **Brand colours outside Dart.** A palette change isn't finished until all of these match:
-  - `pubspec.yaml` (`flutter_native_splash`, `flutter_launcher_icons`) and `tools/regenerate_brand.py` (`NEARBLACK_HEX`), which generate the splash and launcher assets.
+  - `pubspec.yaml` (`flutter_native_splash`, `flutter_launcher_icons`) and `tools/regenerate_brand.mjs` (`SUMI`), which generate the splash and launcher assets.
   - `android/app/src/main/res/values*/`.
   - `web/index.html`, `web/manifest.json` and `web/favicon.svg`.
   - `functions/index.js`. Every FCM payload sets `color: '#E8624A'`, which overrides the Android default. It only takes effect after a deploy.
