@@ -480,6 +480,12 @@ class _ListRow extends StatelessWidget {
 
   const _ListRow({super.key, required this.data, required this.firestoreService});
 
+  /// The bar beside "9/12" on a show you're watching, switched off. Shahid,
+  /// 2026-11-05: "I don't like the episode count lines that show like how
+  /// many episodes you have watched, remove that just have 9 of 12". The
+  /// count stays, and says "watched" to a screen reader.
+  static const bool _progressBar = false;
+
   Color _statusColor(String s) {
     switch (s) {
       case 'WATCHING':      return AppTheme.watching;
@@ -667,27 +673,31 @@ class _ListRow extends StatelessWidget {
                           ],
                         ],
                       ),
-                      // Progress bar (watching only)
+                      // Progress bar (watching only). Since 2026-11-05 only
+                      // its count shows (_progressBar).
                       if (status == 'WATCHING' && total != null) ...[
                         const SizedBox(height: 8),
                         Row(
                           children: [
-                            Expanded(
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(2),
-                                child: LinearProgressIndicator(
-                                  value: progress,
-                                  backgroundColor: AppTheme.border,
-                                  valueColor:
-                                      AlwaysStoppedAnimation<Color>(
-                                          statusColor),
-                                  minHeight: 3,
+                            if (_progressBar) ...[
+                              Expanded(
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(2),
+                                  child: LinearProgressIndicator(
+                                    value: progress,
+                                    backgroundColor: AppTheme.border,
+                                    valueColor:
+                                        AlwaysStoppedAnimation<Color>(
+                                            statusColor),
+                                    minHeight: 3,
+                                  ),
                                 ),
                               ),
-                            ),
-                            const SizedBox(width: 8),
+                              const SizedBox(width: 8),
+                            ],
                             Text(
                               '$current/$total',
+                              semanticsLabel: '$current of $total watched',
                               style: AppTheme.mono(
                                   fontSize: 10,
                                   color: AppTheme.textMuted),

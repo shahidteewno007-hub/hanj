@@ -3078,6 +3078,12 @@ class _ContinueCard extends StatefulWidget {
 }
 
 class _ContinueCardState extends State<_ContinueCard> {
+  /// The reel after "9 of 12" (HankoReel), switched off. Shahid, 2026-11-05:
+  /// "I don't like the episode count lines that show like how many episodes
+  /// you have watched, remove that just have 9 of 12". The words then carry
+  /// what a screen reader hears.
+  static const bool _reel = false;
+
   late int _current;
   bool _saving = false;
 
@@ -3164,9 +3170,11 @@ class _ContinueCardState extends State<_ContinueCard> {
     // wait for you, which is what "2 NEW" said. When the airing batch knows
     // nothing (finished, not scheduled, failed, offline, or a MyAnimeList
     // import), the reel claims nothing past your episode, and its spoken
-    // label says only how far you are.
+    // label says only how far you are. Since 2026-11-05 the reel is off
+    // (_reel): the words alone, "9 of 12" or "1 watched".
     final progressWords =
         hasTotal ? '$_current of $total' : '$_current watched';
+    final spokenProgress = hasTotal ? '$progressWords watched' : progressWords;
     final progressStyle = AppTheme.hankoSans(
       fontSize: AppTheme.hankoLabelSize,
       weight: FontWeight.w500,
@@ -3216,27 +3224,34 @@ class _ContinueCardState extends State<_ContinueCard> {
                 Row(
                   children: [
                     // progressWords, with its count rolling to the new one
-                    // when +1 lands (round seven).
-                    ExcludeSemantics(
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          _RollingCount(value: _current, style: progressStyle),
-                          Text(hasTotal ? ' of $total' : ' watched',
-                              style: progressStyle),
-                        ],
+                    // when +1 lands (round seven). With the reel off they
+                    // say the count to a screen reader, as the reel did.
+                    Semantics(
+                      container: !_reel,
+                      label: _reel ? null : spokenProgress,
+                      child: ExcludeSemantics(
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _RollingCount(
+                                value: _current, style: progressStyle),
+                            Text(hasTotal ? ' of $total' : ' watched',
+                                style: progressStyle),
+                          ],
+                        ),
                       ),
                     ),
-                    const SizedBox(width: 10),
-                    Flexible(
-                      child: HankoReel(
-                        watched: _current,
-                        total: hasTotal ? total : null,
-                        aired: aired ?? _current,
-                        semanticLabel:
-                            aired == null ? '$progressWords watched' : null,
+                    if (_reel) ...[
+                      const SizedBox(width: 10),
+                      Flexible(
+                        child: HankoReel(
+                          watched: _current,
+                          total: hasTotal ? total : null,
+                          aired: aired ?? _current,
+                          semanticLabel: aired == null ? spokenProgress : null,
+                        ),
                       ),
-                    ),
+                    ],
                   ],
                 ),
               ],

@@ -1991,8 +1991,8 @@ class _HankoStatusButton extends StatelessWidget {
 }
 
 /// Where you are in the show: "Episode", then "7 of 28" (the number in
-/// Mincho, the total in Jost), the reel, and when the next episode airs,
-/// with the +1 beside it while you're watching.
+/// Mincho, the total in Jost), the reel (off, _reel), and when the next
+/// episode airs, with the +1 beside it while you're watching.
 class _HankoEpisodes extends StatelessWidget {
   const _HankoEpisodes({
     required this.watched,
@@ -2001,6 +2001,12 @@ class _HankoEpisodes extends StatelessWidget {
     required this.nextLine,
     required this.action,
   });
+
+  /// The reel under "7 of 28" (HankoReel), switched off. Shahid, 2026-11-05:
+  /// "I don't like the episode count lines that show like how many episodes
+  /// you have watched, remove that just have 9 of 12". The count then says
+  /// "watched" to a screen reader, as the reel did.
+  static const bool _reel = false;
 
   final int watched;
   final int? total;
@@ -2042,12 +2048,20 @@ class _HankoEpisodes extends StatelessWidget {
                       ),
                   ],
                 ),
+                semanticsLabel: _reel
+                    ? null
+                    : total != null
+                        ? '$watched of $total watched'
+                        : '$watched watched',
                 style: AppTheme.hankoSerif(fontSize: 30, height: 1),
               ),
               // The reel: one tick per episode, watched solid, aired and
-              // waiting outlined, still to air short (a line past 30).
-              const SizedBox(height: 10),
-              HankoReel(watched: watched, total: total, aired: aired),
+              // waiting outlined, still to air short (a line past 30). Off
+              // since 2026-11-05 (_reel).
+              if (_reel) ...[
+                const SizedBox(height: 10),
+                HankoReel(watched: watched, total: total, aired: aired),
+              ],
               if (nextLine != null) ...[
                 const SizedBox(height: 8),
                 Text(
