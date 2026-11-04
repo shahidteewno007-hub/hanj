@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import '../../core/responsive.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/anime_model.dart';
+import '../../models/hanj_shelves.dart';
 import '../../widgets/hanko_seal.dart';
 import '../../widgets/hanko_seal_register.dart';
 import '../../services/auth_service.dart';
@@ -1034,9 +1035,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
   /// entries are readable by any signed-in user (firestore.rules,
   /// animeList).
   ///
-  /// Biggest shelf first, then by name; three shelves at most, each drawn
-  /// as a reel of all its covers on a ledge (_shelfReel), then how many
-  /// more shelves there are.
+  /// Since 2026-11-05 only Masterpiece and Favourites, in that order
+  /// (_shelves), each drawn as a reel of all its covers on a ledge
+  /// (_shelfReel). The line counting more shelves past three no longer
+  /// shows.
   Widget _buildShelves(List<_Shelf> shelves) {
     final quiet = AppTheme.hankoSans(
       fontSize: AppTheme.hankoLabelSize,
@@ -1247,29 +1249,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  /// The two shelves (HanjShelves), Masterpiece then Favourites, each with
+  /// its entries in the list's order. An entry sits on one at most. Tags
+  /// from before that rule are read, not rewritten: any spelling of
+  /// Favourites counts as it, every other name is hidden, and an entry
+  /// tagged with both is under Masterpiece only. An empty shelf isn't shown.
   static List<_Shelf> _shelves(List<Map<String, dynamic>> entries) {
-    final byTag = <String, List<Map<String, dynamic>>>{};
+    final byShelf = {
+      for (final name in HanjShelves.all) name: <Map<String, dynamic>>[],
+    };
     for (final e in entries) {
-      final tags = e['tags'];
-      if (tags is! List) continue;
-      final names = {
-        for (final t in tags.whereType<String>())
-          if (t.trim().isNotEmpty) t.trim(),
-      };
-      for (final name in names) {
-        byTag.putIfAbsent(name, () => []).add(e);
-      }
+      final shelf = HanjShelves.shelfOf(e['tags']);
+      if (shelf != null) byShelf[shelf]!.add(e);
     }
-    final shelves = [
-      for (final s in byTag.entries) _Shelf(s.key, s.value),
+    return [
+      for (final name in HanjShelves.all)
+        if (byShelf[name]!.isNotEmpty) _Shelf(name, byShelf[name]!),
     ];
-    shelves.sort((a, b) {
-      final bySize = b.entries.length.compareTo(a.entries.length);
-      return bySize != 0
-          ? bySize
-          : a.name.toLowerCase().compareTo(b.name.toLowerCase());
-    });
-    return shelves;
   }
 
   /// Whether a stored rating lands on Hanj's 1–10 scale at its nearest

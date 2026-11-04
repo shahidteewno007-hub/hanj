@@ -18,6 +18,7 @@ import '../../services/firestore_service.dart';
 import '../../services/offline_cache_service.dart';
 import '../../services/connectivity_service.dart';
 import '../../models/anime_model.dart';
+import '../../models/hanj_shelves.dart';
 import '../anime_detail/anime_detail_screen.dart';
 import 'tonight_watch.dart';
 import 'upcoming_anime.dart';
@@ -1864,12 +1865,14 @@ Future<String?> showHanjListSheet({
   );
 }
 
-/// Saves shelves picked in the status sheet for a show that wasn't on the
+/// Saves the shelf picked in the status sheet for a show that wasn't on the
 /// list (round seven), once a status has been chosen for it: one update of
 /// the new entry's tags, sent after the status write, so it lands after the
-/// entry exists. Awaited and caught: uncaught, a refused write would reach
-/// Crashlytics as fatal. A failure says so on the page the sheet was opened
-/// from, naming no cause; offline, the write waits for the connection.
+/// entry exists. Since 2026-11-05 [names] holds one shelf at most, and the
+/// tags become exactly it (HanjShelves). Awaited and caught: uncaught, a
+/// refused write would reach Crashlytics as fatal. A failure says so on the
+/// page the sheet was opened from, naming no cause; offline, the write
+/// waits for the connection.
 Future<void> _saveDraftShelves(
     BuildContext context, String animeId, List<String> names) async {
   final uid = FirebaseAuth.instance.currentUser?.uid;
@@ -1881,7 +1884,7 @@ Future<void> _saveDraftShelves(
         .collection('animeList')
         .doc(animeId)
         .update({
-      'tags': FieldValue.arrayUnion(names),
+      'tags': names,
       'tagsUpdatedAt': FieldValue.serverTimestamp(),
     });
   } catch (_) {
@@ -1892,8 +1895,9 @@ Future<void> _saveDraftShelves(
   }
 }
 
-/// Shelves picked in the status sheet before the show is on the list
+/// The shelf picked in the status sheet before the show is on the list
 /// (round seven): kept for the sheet's life, then saved with the status.
+/// One at most since 2026-11-05.
 class _ShelfDraft {
   final Set<String> staged = {};
 }
@@ -1905,19 +1909,22 @@ class _ShelfDraft {
 /// FirestoreService.updateTags writes. The rules let the owner write the
 /// entry (firestore.rules, animeList), so no new rule is needed.
 ///
-/// Every shelf you have shows as a chip, biggest first as Profile orders
-/// them, to put the show on or take it off, with "New shelf" to name one
-/// (a name you already have, in any case, is that shelf). On the list, a
-/// chip's change is written at once (arrayUnion or arrayRemove on tags,
-/// with tagsUpdatedAt as updateTags stamps it), awaited and caught: a
-/// refused write puts the chip back and says so. Off the list there is no
-/// entry to tag yet, so picks wait in [draft] and are saved with the show
-/// when a status is chosen (_saveDraftShelves), and the sheet says so.
+/// Since 2026-11-05 there are two shelves, Masterpiece and Favourites, and
+/// a show sits on one at most (HanjShelves; Shahid: "masterpiece and
+/// favourites should be the only shelves"). Picking one takes the show off
+/// the other, and picking the one it's on takes it off, so it can sit on
+/// neither. "New shelf" is switched off (_newShelves). On the list, a pick
+/// is written at once: the entry's tags become that one name, or none, with
+/// tagsUpdatedAt as updateTags stamps it, awaited and caught; a refused
+/// write puts the chips back and says so. That write is also what cleans
+/// an entry's names from before the rule, which are otherwise only read
+/// (HanjShelves.shelfOf). Off the list there is no entry to tag yet, so the
+/// pick waits in [draft] and is saved with the show when a status is
+/// chosen (_saveDraftShelves), and the sheet says so.
 ///
-/// It reads once, as the sheet opens: the show's entry, for its shelves and
-/// whether it is on the list, and the entries that have tags, for every
-/// shelf's name and size. Shelves are readable by any signed-in user, as
-/// Profile says, so the sheet says it too.
+/// It reads once, as the sheet opens: the show's entry, for its shelf and
+/// whether it is on the list. Shelves are readable by any signed-in user,
+/// as Profile says, so the sheet says it too.
 class _ShelfPicker extends StatefulWidget {
   const _ShelfPicker({required this.animeId, required this.draft});
 
@@ -1929,21 +1936,27 @@ class _ShelfPicker extends StatefulWidget {
 }
 
 class _ShelfPickerState extends State<_ShelfPicker> {
+  /// "New shelf" and its name field, switched off since there are only the
+  /// two shelves (2026-11-05). Kept, as the app keeps its other unused
+  /// parts.
+  static const bool _newShelves = false;
+
   bool _loading = true;
   bool _failed = false;
   bool _onList = false;
   bool _naming = false;
   String? _error;
 
-  /// This show's shelves: as saved, or as picked while it is off the list.
+  /// This show's shelf, one at most: as saved, or as picked while it is
+  /// off the list.
   final Set<String> _mine = {};
 
   /// Every shelf, in the order the chips show them.
   final List<String> _all = [];
 
-  /// Per shelf, the number of its newest write, so a failed write only
-  /// puts back a chip that no later tap has changed.
-  final Map<String, int> _writes = {};
+  /// The number of the newest write, so a failed write only puts back
+  /// chips that no later tap has changed.
+  int _write = 0;
 
   final _name = TextEditingController();
   final _nameFocus = FocusNode(debugLabel: 'new shelf name');
@@ -1989,40 +2002,26 @@ class _ShelfPickerState extends State<_ShelfPicker> {
             if (t.trim().isNotEmpty) t.trim(),
       };
 
-  /// Reads the show's entry and every tagged entry. Called from initState,
-  /// so it changes nothing before its first await; Retry sets the spinner.
+  /// Reads the show's entry. Called from initState, so it changes nothing
+  /// before its first await; Retry sets the spinner. An entry tagged before
+  /// the rule shows on the one shelf HanjShelves.shelfOf gives it, and
+  /// nothing is written until a shelf is picked.
   Future<void> _load() async {
     final list = _list;
     if (list == null || widget.animeId.isEmpty) return;
     try {
-      final (entry, tagged) = await (
-        list.doc(widget.animeId).get(),
-        list.where('tags', isNull: false).get(),
-      ).wait;
+      final entry = await list.doc(widget.animeId).get();
       if (!mounted) return;
-      final sizes = <String, int>{};
-      for (final doc in tagged.docs) {
-        for (final name in _names(doc.data()['tags'])) {
-          sizes[name] = (sizes[name] ?? 0) + 1;
-        }
-      }
-      final order = sizes.keys.toList()
-        ..sort((a, b) {
-          final bySize = sizes[b]!.compareTo(sizes[a]!);
-          return bySize != 0
-              ? bySize
-              : a.toLowerCase().compareTo(b.toLowerCase());
-        });
-      final mine = {..._names(entry.data()?['tags']), ...widget.draft.staged};
+      final saved = HanjShelves.shelfOf(_names(entry.data()?['tags']));
+      final staged = widget.draft.staged;
       setState(() {
         _onList = entry.exists;
         _mine
           ..clear()
-          ..addAll(mine);
+          ..addAll(staged.isNotEmpty ? staged : {?saved});
         _all
           ..clear()
-          ..addAll(order)
-          ..addAll(mine.where((name) => !sizes.containsKey(name)));
+          ..addAll(HanjShelves.all);
         _loading = false;
       });
     } catch (_) {
@@ -2035,35 +2034,42 @@ class _ShelfPickerState extends State<_ShelfPicker> {
     }
   }
 
+  /// Puts the show on [name], or takes it off when it's there already. One
+  /// shelf at a time, so the show leaves the other. On the list, its tags
+  /// become just [name], or none.
   Future<void> _toggle(String name) async {
+    final before = {..._mine};
     final on = !_mine.contains(name);
     setState(() {
-      on ? _mine.add(name) : _mine.remove(name);
+      _mine
+        ..clear()
+        ..addAll({if (on) name});
       if (!_all.contains(name)) _all.add(name);
       _error = null;
     });
     if (!_onList) {
-      on ? widget.draft.staged.add(name) : widget.draft.staged.remove(name);
+      widget.draft.staged
+        ..clear()
+        ..addAll(_mine);
       return;
     }
     final list = _list;
     if (list == null) return;
-    final write = (_writes[name] ?? 0) + 1;
-    _writes[name] = write;
+    final write = ++_write;
     try {
       await list.doc(widget.animeId).update({
-        'tags': on
-            ? FieldValue.arrayUnion([name])
-            : FieldValue.arrayRemove([name]),
+        'tags': [if (on) name],
         'tagsUpdatedAt': FieldValue.serverTimestamp(),
       });
     } catch (_) {
-      // Refused, or the entry has gone: the chip goes back unless a later
-      // tap has changed it since, and the line says so, naming no cause.
+      // Refused, or the entry has gone: the chips go back unless a later
+      // tap has changed them since, and the line says so, naming no cause.
       // Offline, the write waits for the connection and the chip stays.
-      if (!mounted || _writes[name] != write) return;
+      if (!mounted || _write != write) return;
       setState(() {
-        on ? _mine.remove(name) : _mine.add(name);
+        _mine
+          ..clear()
+          ..addAll(before);
         _error = 'Couldn’t save that shelf. Try again.';
       });
     }
@@ -2158,7 +2164,7 @@ class _ShelfPickerState extends State<_ShelfPicker> {
                   selected: _mine.contains(name),
                   onTap: () => _toggle(name),
                 ),
-              if (!_naming)
+              if (_newShelves && !_naming)
                 _ShelfChip(
                   label: 'New shelf',
                   icon: Icons.add_sharp,
@@ -2166,7 +2172,7 @@ class _ShelfPickerState extends State<_ShelfPicker> {
                 ),
             ],
           ),
-          if (_naming)
+          if (_newShelves && _naming)
             Padding(
               padding: const EdgeInsets.only(top: 4),
               child: Row(
@@ -2180,7 +2186,7 @@ class _ShelfPickerState extends State<_ShelfPicker> {
           if (!_onList && _mine.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 6),
-              child: Text('Choose where it lives to save its shelves.',
+              child: Text('Choose where it lives to save its shelf.',
                   style: said),
             ),
           if (error != null)
