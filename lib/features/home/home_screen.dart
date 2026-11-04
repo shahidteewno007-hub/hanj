@@ -3850,7 +3850,7 @@ class _ContinueCardState extends State<_ContinueCard> {
     final lines = _ContinueCard.titleLines(scaler);
     final still = MediaQuery.disableAnimationsOf(context);
     // Under the print on sumi: stone hi, the mockup's, a step brighter than
-    // the rows' stone so the count reads under a big print (11.6:1).
+    // the rows' stone (6.9:1) so the count reads under a big print (10.7:1).
     final countStyle = AppTheme.hankoSans(
       fontSize: AppTheme.hankoLabelSize,
       weight: FontWeight.w500,
