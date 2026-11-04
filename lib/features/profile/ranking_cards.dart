@@ -2092,7 +2092,8 @@ class _PrintCover extends StatelessWidget {
 /// needs 3:1). The titles move off the art into a legend under the grid,
 /// one per column, so the posters stay clean and a viewer can still tell
 /// what #4 is. Round six's seal over each corner, and its covers-only grid,
-/// were this card's "letters on black".
+/// were this card's "letters on black". Since 2026-11-05 the legend is off
+/// (_legend): posters only.
 ///
 /// Until you pick your own (the editor), the nine are your highest ratings
 /// on the 1-10 scale (question 96). With fewer than nine, the rest are
@@ -2109,6 +2110,14 @@ class _Top9Print extends StatelessWidget {
 
   /// Your own order, or your highest ratings: the print says which.
   final bool pickedByYou;
+
+  /// The titles under the grid (_Top9Legend), switched off. Shahid,
+  /// 2026-11-05: "on top 9 card, don't have the anime names on it just the
+  /// posters, most of the fandom knows every anime if they don't they'll
+  /// ask but adding names at bottom didn't look as good". Off on the page
+  /// and in the saved image alike, since Save card renders this print. Each
+  /// poster's screen-reader label still names its show.
+  static const bool _legend = false;
 
   static const double gap = 6;
   static const double coverWidth = (_Print.inner - 2 * gap) / 3;
@@ -2151,7 +2160,7 @@ class _Top9Print extends StatelessWidget {
               ],
             ),
           ],
-          if (items.isNotEmpty) ...[
+          if (_legend && items.isNotEmpty) ...[
             const SizedBox(height: 12),
             _Top9Legend(items: items),
           ],
@@ -2163,7 +2172,8 @@ class _Top9Print extends StatelessWidget {
 
 /// One place in the Top 9: the cover with your place for it inside, at its
 /// foot; or a dashed empty place. A cover that can't load leaves sumi 3 and
-/// the number, and the legend still names it.
+/// the number; its label still names it to a screen reader (the legend that
+/// named it on the print is off, _Top9Print._legend).
 class _Top9Place extends StatelessWidget {
   const _Top9Place({required this.rank, required this.entry});
 
