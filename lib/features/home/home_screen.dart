@@ -10,6 +10,9 @@ import 'dart:math' as math;
 
 import '../../core/theme/app_theme.dart';
 import '../../widgets/anilist_saved_note.dart';
+import '../../widgets/hanko_cover_colour.dart';
+import '../../widgets/hanko_field.dart';
+import '../../widgets/hanko_print.dart';
 import '../../widgets/hanko_reel.dart';
 import '../../widgets/hanko_seal.dart';
 import '../../core/responsive.dart';
@@ -64,6 +67,19 @@ class _HomeScreenState extends State<HomeScreen> {
   // classic 140 px cards (_TrendingCard), with their rank and coral NEW
   // badges, are kept intact and switched off here.
   static const bool _classicRecs = false;
+
+  // ── Print Room, stage P2 (DESIGN.md §9; Shahid chose it 2026-11-03) ──
+  // Home in prints (§9.5, frame 02): the hero show's colour field from the
+  // top of Home, its print beside the lede with your seal pressed on it;
+  // Continue as a shelf of prints on mats of their own colour; and
+  // tonight's pick on a band of its colour. Round seven's Home (the lede's
+  // inline seal, the Continue rows and the art wash) is kept intact behind
+  // this switch.
+  static const bool _printRoom = true;
+
+  /// The lede's size beside the hero print: 20, the mockup's, from 22, so
+  /// the sentence keeps its words in the width the print leaves it.
+  static const double _ledeBesidePrint = 20;
 
   // ── The airing batch, lifted out of Coming up (Stage 2 item a) ──
   // One AniList request for every show you're watching: its next episode
@@ -572,10 +588,36 @@ class _HomeScreenState extends State<HomeScreen> {
         _getTodayLabel(),
         style: AppTheme.hankoSans(
             fontSize: AppTheme.hankoMetaSize,
-            color: AppTheme.hankoStone,
+            // On the hero's field all text is washi: stone would fall to
+            // about 2.5:1 on the lightest fields (Print Room, P2).
+            color: _heroCover() != null
+                ? AppTheme.hankoWashi
+                : AppTheme.hankoStone,
             height: 1.3),
       ),
     );
+  }
+
+  /// The cover the hero prints and takes its colour from (Print Room, P2):
+  /// the lede show's, or with no rating in 14 days the first show you're
+  /// watching (DESIGN.md §9.5). Null, so no print and no field, with Print
+  /// Room off, while the list loads or when it couldn't be read, and when
+  /// that show has no cover.
+  String? _heroCover() {
+    if (!_printRoom || _isLoading || _listFailed) return null;
+    final entry = _newestRating() ??
+        (_continueWatching.isEmpty ? null : _continueWatching.first);
+    final url = (entry?['imageUrl'] as String?)?.trim() ?? '';
+    return url.isEmpty ? null : url;
+  }
+
+  /// The header on the hero's field (Print Room, P2): the colour runs from
+  /// the top of Home and fades out under the lede, and comes from the cover
+  /// itself, since list entries keep no AniList colour (HankoCoverColour).
+  /// With no hero cover the field is clear, and the header is as before.
+  Widget _heroField(Widget header) {
+    if (!_printRoom) return header;
+    return HankoField(coverUrl: _heroCover(), solidTo: 0.72, child: header);
   }
 
   /// Item (i): on a wide window the record blocks (the lede, the Continue
@@ -733,7 +775,7 @@ class _HomeScreenState extends State<HomeScreen> {
             // ── Top line, date and headline ─────────────────
             SliverToBoxAdapter(
               key: const ValueKey('home-header'),
-              child: Padding(
+              child: _heroField(Padding(
                 padding: const EdgeInsets.only(top: 4, bottom: 20),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -741,14 +783,15 @@ class _HomeScreenState extends State<HomeScreen> {
                     _buildTopLine(),
                     _buildDateline(),
                     _recordColumn(Padding(
-                      padding: const EdgeInsets.fromLTRB(
-                          AppTheme.hankoGutter, 6, AppTheme.hankoGutter, 0),
+                      // 10 under the date beside the print, the mockup's.
+                      padding: const EdgeInsets.fromLTRB(AppTheme.hankoGutter,
+                          _printRoom ? 10 : 6, AppTheme.hankoGutter, 0),
                       // Dynamic headline
                       child: _buildHeadline(),
                     )),
                   ],
                 ),
-              ),
+              )),
             ),
 
             // ── Import Pending Banner ────────────────────────
@@ -770,8 +813,14 @@ class _HomeScreenState extends State<HomeScreen> {
             // Hanko's rows (item b), right under the headline: the thing you
             // do most is the easiest to reach, so +1 sits in the top half of
             // the screen instead of below the fold. Three rows, then "See
-            // all", which opens My List's Watching filter.
-            if (_continueWatching.isNotEmpty)
+            // all", which opens My List's Watching filter. With Print Room
+            // (P2) it's a shelf of prints instead (_buildShelf).
+            if (_continueWatching.isNotEmpty && _printRoom)
+              SliverToBoxAdapter(
+                key: const ValueKey('home-continue-row'),
+                child: _buildShelf(),
+              )
+            else if (_continueWatching.isNotEmpty)
               SliverToBoxAdapter(
                 key: const ValueKey('home-continue-row'),
                 child: _recordColumn(Padding(
@@ -1229,6 +1278,94 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // ── Continue as a shelf (Print Room, P2; question 158) ─────
+  // The shows you're watching as prints on mats of their own colour, in a
+  // shelf that scrolls sideways (DESIGN.md §9.5, frame 02), under
+  // "Continue" and their count. "See all" opens My List's Watching filter
+  // once a phone's first screen can't show the whole shelf, as the rows'
+  // "See all" did past three. Each print has its title under it, then
+  // "9 of 12" and +1 (_ContinueCard). It runs the width of the page, as
+  // Home's other strips do, rather than the record's column.
+  Widget _buildShelf() {
+    final count = _continueWatching.length;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding:
+              const EdgeInsets.symmetric(horizontal: AppTheme.hankoGutter),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Expanded(
+                child: Semantics(
+                  header: true,
+                  label: 'Continue, $count show${count == 1 ? '' : 's'}',
+                  child: ExcludeSemantics(
+                    child: Text.rich(
+                      TextSpan(
+                        text: 'Continue',
+                        style: AppTheme.hankoSerif(height: 1.3),
+                        children: [
+                          TextSpan(
+                            text: ' $count',
+                            style: AppTheme.hankoSans(
+                              fontSize: AppTheme.hankoMetaSize,
+                              weight: FontWeight.w500,
+                              color: AppTheme.hankoStone,
+                              tabular: true,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              if (count > 2) ...[
+                const SizedBox(width: 12),
+                _QuietLink(
+                  label: 'See all',
+                  onTap: () => _open(MaterialPageRoute(
+                      builder: (_) => const MyListScreen(
+                          initialStatus: 'WATCHING', showBackButton: true))),
+                ),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: 2),
+        SizedBox(
+          height: _ContinueCard.shelfHeight(MediaQuery.textScalerOf(context)),
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            padding:
+                const EdgeInsets.symmetric(horizontal: AppTheme.hankoGutter),
+            physics: const BouncingScrollPhysics(),
+            itemCount: count,
+            itemBuilder: (context, index) {
+              final data = _continueWatching[index];
+              return Padding(
+                padding: EdgeInsets.only(left: index == 0 ? 0 : 12),
+                // Keyed by animeId, not index, as the rows were: see there.
+                child: _ContinueCard(
+                  key: ValueKey(
+                      data['animeId']?.toString() ?? 'continue-$index'),
+                  data: data,
+                  firestoreService: _firestoreService,
+                  onUpdated: _reloadList,
+                  aired: _airedFor(data),
+                  open: _open,
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
   /// AniList's season for today, the way the rest of the app works it out.
   static String _currentSeason() {
     final month = DateTime.now().month;
@@ -1391,6 +1528,21 @@ class _HomeScreenState extends State<HomeScreen> {
       // An empty list keeps the discovery-led headline.
       line = 'Discover something new tonight.';
     }
+    // Print Room (P2): with no rating in 14 days the hero takes the first
+    // show you're watching, its print beside the line and its colour behind
+    // (DESIGN.md §9.5's fallback). No seal: it isn't a verdict. The print
+    // opens that show; the line, about all of them, isn't a button.
+    final cover = _heroCover();
+    if (cover != null && count > 0) {
+      final first = _continueWatching.first;
+      return _HeroRow(
+        sentence: Text(line,
+            style: style.copyWith(fontSize: _ledeBesidePrint)),
+        url: cover,
+        printLabel: (first['title'] as String? ?? '').trim(),
+        onPrint: () => _openEntry(first),
+      );
+    }
     return Text(line, style: style);
   }
 
@@ -1409,6 +1561,11 @@ class _HomeScreenState extends State<HomeScreen> {
         lastWatched != null &&
         ratedAt.difference(lastWatched).inMinutes.abs() <= 6 * 60;
 
+    // Print Room (P2) presses the seal onto the show's print, beside the
+    // sentence, where the show has a cover to print (_heroCover).
+    final cover = _heroCover();
+    final onPrint = cover != null;
+
     final when = _whenRated(ratedAt);
     // The sentence, with three ways of keeping words together: a short
     // title on one line ([wholeTitle], as the mockup's no-break span does),
@@ -1418,6 +1575,17 @@ class _HomeScreenState extends State<HomeScreen> {
       final title =
           wholeTitle ? rawTitle.replaceAll(' ', ' ') : rawTitle;
       final you = bindVerb ? 'you ' : 'you ';
+      // On the print (Print Room) the seal leaves the sentence, so "sealed
+      // it" keeps together instead, as the mockup's sealed&nbsp;it does.
+      if (onPrint) {
+        if (finishedThen && episodes != null && episodes >= 2) {
+          return '$when ${you}finished $title, all ${_inWords(episodes)} '
+              'episodes, and sealed it';
+        } else if (finishedThen) {
+          return '$when ${you}finished $title and sealed it';
+        }
+        return '$when ${you}sealed $title';
+      }
       if (finishedThen && episodes != null && episodes >= 2) {
         return '$when ${you}finished $title, all ${_inWords(episodes)} '
             'episodes, and sealed it ';
@@ -1431,8 +1599,48 @@ class _HomeScreenState extends State<HomeScreen> {
     final score = HankoSeal.formatScore(rating);
     // The seal sits inline at the sentence's size: 32 x 28 with 14 px
     // numerals at 22 px, as the mockup's .seal--in. Its box follows the
-    // text size setting; HankoSeal shrinks the numerals to fit.
-    final seal = Size(scaler.scale(32), scaler.scale(28));
+    // text size setting; HankoSeal shrinks the numerals to fit. On the
+    // print it's the print's, and the sentence sets at 20 beside it.
+    final seal = onPrint ? null : Size(scaler.scale(32), scaler.scale(28));
+    final sentenceStyle =
+        onPrint ? style.copyWith(fontSize: _ledeBesidePrint) : style;
+    Widget words() => LayoutBuilder(builder: (context, constraints) {
+          // Q54: a short title kept whole can leave the word before it
+          // alone on a line. At 1.3x "On Monday you / finished / Cowboy
+          // Bebop, all ..." left "finished" by itself. So the first of
+          // these that leaves no word alone wins: the title whole; the
+          // title whole with "you" kept by its verb; the title free to
+          // break. A long title may always break, as before.
+          final candidates = rawTitle.length <= 18
+              ? [
+                  compose(wholeTitle: true),
+                  compose(wholeTitle: true, bindVerb: true),
+                  compose(wholeTitle: false),
+                ]
+              : [compose(wholeTitle: false)];
+          final sentence = candidates.firstWhere(
+              (s) => !_leavesAWordAlone(
+                  s, sentenceStyle, scaler, seal, constraints.maxWidth),
+              orElse: () => candidates.first);
+          return Text.rich(
+            TextSpan(
+              style: sentenceStyle,
+              children: [
+                TextSpan(text: sentence),
+                if (seal != null)
+                  WidgetSpan(
+                    alignment: PlaceholderAlignment.middle,
+                    child: HankoSeal.score(
+                      rating,
+                      size: seal.height,
+                      width: seal.width,
+                      fontSize: 14,
+                    ),
+                  ),
+              ],
+            ),
+          );
+        });
     // Its own semantics node (container), named by the sentence and its
     // seal, with the InkWell's tap and focus inside it (question 119, as
     // Profile's rows since dafb7c5). A tap given to the node over excluded
@@ -1445,78 +1653,63 @@ class _HomeScreenState extends State<HomeScreen> {
       label: '${compose(wholeTitle: false).replaceAll(' ', ' ').trim()} '
           '$score',
       onTapHint: 'open ${rawTitle.trim()}',
-      child: InkWell(
-        onTap: () => _openEntry(entry),
-        splashFactory: NoSplash.splashFactory,
-        highlightColor: AppTheme.hankoPressWash,
-        hoverColor: AppTheme.hankoPressWash,
-        child: ExcludeSemantics(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: AppTheme.hankoTouch),
-            child: LayoutBuilder(builder: (context, constraints) {
-              // Q54: a short title kept whole can leave the word before it
-              // alone on a line. At 1.3x "On Monday you / finished / Cowboy
-              // Bebop, all ..." left "finished" by itself. So the first of
-              // these that leaves no word alone wins: the title whole; the
-              // title whole with "you" kept by its verb; the title free to
-              // break. A long title may always break, as before.
-              final candidates = rawTitle.length <= 18
-                  ? [
-                      compose(wholeTitle: true),
-                      compose(wholeTitle: true, bindVerb: true),
-                      compose(wholeTitle: false),
-                    ]
-                  : [compose(wholeTitle: false)];
-              final sentence = candidates.firstWhere(
-                  (s) => !_leavesAWordAlone(
-                      s, style, scaler, seal, constraints.maxWidth),
-                  orElse: () => candidates.first);
-              return Text.rich(
-                TextSpan(
-                  style: style,
-                  children: [
-                    TextSpan(text: sentence),
-                    WidgetSpan(
-                      alignment: PlaceholderAlignment.middle,
-                      child: HankoSeal.score(
-                        rating,
-                        size: seal.height,
-                        width: seal.width,
-                        fontSize: 14,
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            }),
+      child: _inkOnField(
+        onPrint,
+        InkWell(
+          onTap: () => _openEntry(entry),
+          splashFactory: NoSplash.splashFactory,
+          highlightColor: AppTheme.hankoPressWash,
+          hoverColor: AppTheme.hankoPressWash,
+          child: ExcludeSemantics(
+            child: ConstrainedBox(
+              constraints:
+                  const BoxConstraints(minHeight: AppTheme.hankoTouch),
+              // On the print (Print Room) the whole hero, the sentence and
+              // the print with your seal, is the one button.
+              child: onPrint
+                  ? _HeroRow(sentence: words(), url: cover, rating: rating)
+                  : words(),
+            ),
           ),
         ),
       ),
     );
   }
 
+  /// [button] on a transparent Material of its own when it sits on a colour
+  /// field ([onField]): ink is drawn under a Material's children, so on the
+  /// page's Material the field would hide the press and focus washes, as
+  /// _PickBand found. Off a field it's [button] as it was.
+  static Widget _inkOnField(bool onField, Widget button) => onField
+      ? Material(type: MaterialType.transparency, child: button)
+      : button;
+
   /// Whether [sentence], followed by the seal and laid out at [maxWidth],
   /// leaves one word alone on a line before the last. Words joined by a
   /// no-break space count as more than one word, so a short title on a
   /// line of its own is fine. Each line's first character comes from x = 0
   /// on that line, as _FadeTitle finds it (getLineBoundary misreports a
-  /// line's start on the web).
+  /// line's start on the web). With no [seal] (it's on the hero print),
+  /// the sentence is laid out alone.
   bool _leavesAWordAlone(String sentence, TextStyle style, TextScaler scaler,
-      Size seal, double maxWidth) {
+      Size? seal, double maxWidth) {
     final painter = TextPainter(
       text: TextSpan(style: style, children: [
         TextSpan(text: sentence),
-        const WidgetSpan(
-            alignment: PlaceholderAlignment.middle, child: SizedBox.shrink()),
+        if (seal != null)
+          const WidgetSpan(
+              alignment: PlaceholderAlignment.middle, child: SizedBox.shrink()),
       ]),
       textDirection: Directionality.of(context),
       textScaler: scaler,
-    )
-      ..setPlaceholderDimensions([
+    );
+    if (seal != null) {
+      painter.setPlaceholderDimensions([
         PlaceholderDimensions(
             size: seal, alignment: PlaceholderAlignment.middle),
-      ])
-      ..layout(maxWidth: maxWidth);
+      ]);
+    }
+    painter.layout(maxWidth: maxWidth);
     final lines = painter.computeLineMetrics();
     int startOf(LineMetrics line) => painter
         .getPositionForOffset(Offset(0, line.baseline - line.ascent / 2))
@@ -2717,15 +2910,22 @@ class _PickBand extends StatelessWidget {
   Widget build(BuildContext context) {
     // On the wash, quiet words are stone-hi, Hanko's colour for them on a
     // cover's tint; the panel behind them keeps 89% sumi under the words.
+    // On Print Room's field (P2) every word is washi, 5.69:1 or better on
+    // any field, where stone-hi falls to 3.96:1 on the lightest.
     final meta = AppTheme.hankoSans(
         fontSize: AppTheme.hankoMetaSize,
-        color: AppTheme.hankoStoneHi,
+        color: _HomeScreenState._printRoom
+            ? AppTheme.hankoWashi
+            : AppTheme.hankoStoneHi,
         height: 1.4);
     final facts = this.facts;
     final score = this.score;
     final note = this.note;
     final trailing = this.trailing;
     final footer = this.footer;
+    if (_HomeScreenState._printRoom) {
+      return _onField(meta, facts, score, note, trailing, footer);
+    }
     return Stack(
       children: [
         Positioned.fill(
@@ -2778,6 +2978,67 @@ class _PickBand extends StatelessWidget {
     );
   }
 
+  /// Print Room's band (P2; DESIGN.md §9.5, frame 02): the show's own colour
+  /// as a flat field instead of the art wash, fading in from the page over
+  /// its first 56 dp and out at its foot, with the cover as a print lying on
+  /// it. Every word on it is washi, so the darker panel goes; AniList's
+  /// score is washi too, since the crowd's ai would fall to about 2.5:1 on
+  /// the lightest fields. Its buttons sit on a transparent Material of the
+  /// band's own, so their press and focus washes show over the field.
+  Widget _onField(TextStyle meta, String? facts, String? score, String? note,
+      Widget? trailing, Widget? footer) {
+    return HankoField(
+      coverUrl: imageUrl,
+      solidTo: 0.75,
+      child: Stack(
+        children: [
+          Positioned(
+            left: 0,
+            top: 0,
+            right: 0,
+            height: 56,
+            child: IgnorePointer(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      AppTheme.hankoSumi,
+                      AppTheme.hankoSumi.withValues(alpha: 0),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Material(
+            type: MaterialType.transparency,
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(AppTheme.hankoGutter, 24,
+                  AppTheme.hankoGutter, footer == null ? 22 : 2),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Semantics(
+                    header: true,
+                    child:
+                        Text(heading, style: AppTheme.hankoSerif(height: 1.3)),
+                  ),
+                  const SizedBox(height: 14),
+                  _row(meta, facts, score, note, trailing),
+                  if (footer != null)
+                    Padding(
+                        padding: const EdgeInsets.only(top: 6), child: footer),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   /// The print and the words, one button, and [trailing] beside them.
   Widget _row(TextStyle meta, String? facts, String? score, String? note,
       Widget? trailing) {
@@ -2812,7 +3073,18 @@ class _PickBand extends StatelessWidget {
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _PickPrint(url: imageUrl),
+                      // Print Room's print (P2): its shadow shows on the
+                      // field, and it asks for the 460 px cover as
+                      // _PickPrint did.
+                      if (_HomeScreenState._printRoom)
+                        HankoPrint(
+                          url: imageUrl,
+                          width: printWidth,
+                          height: printHeight,
+                          sharp: true,
+                        )
+                      else
+                        _PickPrint(url: imageUrl),
                       const SizedBox(width: 16),
                       Expanded(child: _words(meta, facts, score, note)),
                     ],
@@ -2864,7 +3136,10 @@ class _PickBand extends StatelessWidget {
                         style: AppTheme.hankoSans(
                           fontSize: AppTheme.hankoMetaSize,
                           weight: FontWeight.w500,
-                          color: AppTheme.hankoAi,
+                          // Washi on Print Room's field (see _onField).
+                          color: _HomeScreenState._printRoom
+                              ? AppTheme.hankoWashi
+                              : AppTheme.hankoAi,
                           height: 1.4,
                           tabular: true,
                         ),
@@ -2883,7 +3158,9 @@ class _PickBand extends StatelessWidget {
                 style: AppTheme.hankoSans(
                     fontSize: AppTheme.hankoLabelSize,
                     weight: FontWeight.w500,
-                    color: AppTheme.hankoStoneHi,
+                    color: _HomeScreenState._printRoom
+                        ? AppTheme.hankoWashi
+                        : AppTheme.hankoStoneHi,
                     height: 1.3),
               ),
             ),
@@ -3053,6 +3330,234 @@ class _ArtWash extends StatelessWidget {
   }
 }
 
+// ── Print Room (stage P2) ────────────────────────────────────
+
+/// The hero's row (Print Room, P2; DESIGN.md §9.5, frame 02): [sentence] in
+/// the width the print leaves it, and beside it the show's print, 96 × 136,
+/// lying on the field with the large shadow and a pool of its colour behind
+/// it. Your [rating], if there is one, is pressed across the print's
+/// lower-left corner as a 44 dp seal, beside the sentence's last words
+/// ("sealed it"), so the layout finishes the sentence.
+///
+/// The print asks for the 460 px cover (question 167: heroes only) and
+/// shows the stored one until it arrives, or for good if it fails. With
+/// [onPrint] the print is a button of its own named [printLabel];
+/// otherwise it's part of whatever button holds the row.
+class _HeroRow extends StatelessWidget {
+  const _HeroRow({
+    required this.sentence,
+    required this.url,
+    this.rating,
+    this.printLabel,
+    this.onPrint,
+  });
+
+  final Widget sentence;
+  final String? url;
+  final double? rating;
+  final String? printLabel;
+  final VoidCallback? onPrint;
+
+  static const double printWidth = 96;
+  static const double printHeight = 136;
+
+  /// The print sits 4 under the top of the sentence's first line.
+  static const double printTop = 4;
+
+  /// Between the sentence and the print; the seal hangs 18 of its 44 into it.
+  static const double gap = 24;
+
+  /// The pool of colour: 240 × 220, centred 8 under the print's centre, as
+  /// the mockup's radial glow.
+  static const Size glow = Size(240, 220);
+
+  @override
+  Widget build(BuildContext context) {
+    final rating = this.rating;
+    final onPrint = this.onPrint;
+    Widget print = HankoPrint(
+      url: url,
+      width: printWidth,
+      height: printHeight,
+      lift: HankoPrintLift.large,
+      sharp: true,
+      seal: rating == null ? null : HankoSeal.score(rating, size: 44),
+      sealCorner: Alignment.bottomLeft,
+      sealOverhang: const Offset(18, 12),
+    );
+    if (onPrint != null) {
+      print = _PrintTap(label: printLabel ?? '', onTap: onPrint, child: print);
+    }
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        // First, so it lies under the words and the print, never over them.
+        Positioned(
+          right: printWidth / 2 - glow.width / 2,
+          top: printTop + printHeight / 2 + 8 - glow.height / 2,
+          width: glow.width,
+          height: glow.height,
+          child: IgnorePointer(
+            child: _CoverColour(
+              url: url,
+              builder: (context, colour) => _Glow(colour: colour),
+            ),
+          ),
+        ),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: sentence),
+            const SizedBox(width: gap),
+            Padding(
+              padding: const EdgeInsets.only(top: printTop),
+              child: print,
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+/// A pool of a show's colour behind its print (Print Room, P2): the field
+/// rule at its glow strength (AppTheme.hankoFieldGlowCap, for where no text
+/// sits), fading out from the centre. It is HankoField's glow, placed by the
+/// print rather than by the field's size, which grows with the lede. No
+/// colour, no glow; a colour arriving fades in with the field's, in 240 ms,
+/// or at once with Remove animations on.
+class _Glow extends StatelessWidget {
+  const _Glow({required this.colour});
+
+  final Color? colour;
+
+  @override
+  Widget build(BuildContext context) {
+    final glow = AppTheme.hankoField(colour,
+        cap: AppTheme.hankoFieldGlowCap, mix: AppTheme.hankoFieldGlowMix);
+    final clear = (glow ?? AppTheme.hankoSumi).withValues(alpha: 0);
+    return AnimatedContainer(
+      duration: MediaQuery.disableAnimationsOf(context)
+          ? Duration.zero
+          : const Duration(milliseconds: 240),
+      decoration: BoxDecoration(
+        gradient: RadialGradient(colors: [glow ?? clear, clear]),
+      ),
+    );
+  }
+}
+
+/// A cover's colour for Print Room (P2), read from the cover itself by
+/// HankoCoverColour, since list entries keep no AniList colour, and handed
+/// to [builder]: null until it's read, and for a grey cover or one that
+/// can't be read (on the web, a cover served without CORS). A colour read
+/// once is known at once after that, so a shelf scrolled back draws its
+/// mats in the first frame. Nothing here can throw: HankoCoverColour never
+/// does.
+class _CoverColour extends StatefulWidget {
+  const _CoverColour({required this.url, required this.builder});
+
+  final String? url;
+  final Widget Function(BuildContext context, Color? colour) builder;
+
+  @override
+  State<_CoverColour> createState() => _CoverColourState();
+}
+
+class _CoverColourState extends State<_CoverColour> {
+  Color? _colour;
+
+  @override
+  void initState() {
+    super.initState();
+    _read();
+  }
+
+  @override
+  void didUpdateWidget(_CoverColour oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.url != widget.url) _read();
+  }
+
+  void _read() {
+    final url = widget.url;
+    if (url == null || url.isEmpty) {
+      _colour = null;
+      return;
+    }
+    if (HankoCoverColour.knows(url)) {
+      _colour = HankoCoverColour.peek(url);
+      return;
+    }
+    _colour = null;
+    HankoCoverColour.ofUrl(url).then((colour) {
+      if (!mounted || widget.url != url) return;
+      setState(() => _colour = colour);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.builder(context, _colour);
+}
+
+/// A print that opens its show (Print Room, P2): one button named [label],
+/// with the InkWell's tap and keyboard focus in its own node and the print
+/// left out of the tree (question 119's pattern). An InkWell's washes are
+/// drawn under its child, where the art would hide them, so they're drawn
+/// over it instead: the 8% press wash while pressed or hovered, and for
+/// keyboard focus a 2 px washi outline, as +1 draws its own.
+class _PrintTap extends StatefulWidget {
+  const _PrintTap({
+    required this.label,
+    required this.onTap,
+    required this.child,
+  });
+
+  final String label;
+  final VoidCallback onTap;
+  final Widget child;
+
+  @override
+  State<_PrintTap> createState() => _PrintTapState();
+}
+
+class _PrintTapState extends State<_PrintTap> {
+  bool _pressed = false;
+  bool _hovered = false;
+  bool _focused = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      container: true,
+      button: true,
+      label: widget.label,
+      child: InkWell(
+        onTap: widget.onTap,
+        onHighlightChanged: (v) => setState(() => _pressed = v),
+        onHover: (v) => setState(() => _hovered = v),
+        onFocusChange: (v) => setState(() => _focused = v),
+        splashFactory: NoSplash.splashFactory,
+        overlayColor: const WidgetStatePropertyAll(Colors.transparent),
+        child: ExcludeSemantics(
+          child: DecoratedBox(
+            position: DecorationPosition.foreground,
+            decoration: BoxDecoration(
+              color: _pressed || _hovered ? AppTheme.hankoPressWash : null,
+              border: _focused
+                  ? Border.all(color: AppTheme.hankoWashi, width: 2)
+                  : null,
+              borderRadius:
+                  const BorderRadius.all(Radius.circular(AppTheme.hankoRadius)),
+            ),
+            child: widget.child,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 // ── Continue Watching Card ───────────────────────────────────
 class _ContinueCard extends StatefulWidget {
   final Map<String, dynamic> data;
@@ -3072,6 +3577,35 @@ class _ContinueCard extends StatefulWidget {
     required this.aired,
     required this.open,
   });
+
+  // ── As a print on Continue's shelf (Print Room, P2) ──
+  /// The print, 108 × 154, on its mat: 120 wide in all, the mockup's.
+  static const double printWidth = 108;
+  static const double printHeight = 154;
+  static const double itemWidth = printWidth + 2 * AppTheme.hankoMatPad;
+  static const double titleSize = 14;
+  static const double titleHeight = 1.25;
+
+  /// Lines a shelf title may take: two at 1.0x text, three at 1.3x. A limit
+  /// counted in lines grows with the text: held to two at 1.3x, "The
+  /// Apothecary Diaries Season 3" lost words (P1's finding).
+  static int titleLines(TextScaler scaler) =>
+      math.max(2, (2 * scaler.scale(titleSize) / titleSize).round());
+
+  /// Where a shelf item's row (the count and +1) starts: under the mat, 8,
+  /// the title's lines and 4. Every item keeps room for all the lines, so
+  /// the counts and +1s line up along the shelf.
+  static double rowTop(TextScaler scaler) =>
+      printHeight +
+      2 * AppTheme.hankoMatPad +
+      8 +
+      titleLines(scaler) * scaler.scale(titleSize) * titleHeight +
+      4;
+
+  /// The shelf's height: the row's top, its 48 dp, and 1 to spare for the
+  /// title's line metrics.
+  static double shelfHeight(TextScaler scaler) =>
+      rowTop(scaler) + AppTheme.hankoTouch + 1;
 
   @override
   State<_ContinueCard> createState() => _ContinueCardState();
@@ -3183,6 +3717,18 @@ class _ContinueCardState extends State<_ContinueCard> {
       tabular: true,
     );
 
+    if (_HomeScreenState._printRoom) {
+      return _buildShelfItem(
+        title: title,
+        imageUrl: imageUrl,
+        total: total,
+        animeId: animeId,
+        genres: genres,
+        hasTotal: hasTotal,
+        spokenProgress: spokenProgress,
+      );
+    }
+
     return InkWell(
       onTap: () {
         final anime = Anime(
@@ -3260,6 +3806,125 @@ class _ContinueCardState extends State<_ContinueCard> {
           const SizedBox(width: 14),
           Padding(
             padding: const EdgeInsets.only(top: 6),
+            child: _PlusOneTile(
+              nextEpisode: _current + 1,
+              saving: _saving,
+              onTap: animeId.isEmpty ? null : () => _bump(total ?? 0),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// The show as a print on Continue's shelf (Print Room, P2; DESIGN.md
+  /// §9.5, frame 02): its cover on a mat of its own colour, its title under
+  /// it, then "9 of 12" with +1, as round seven's row had them. The print,
+  /// the title and the count are one button that opens the show, named by
+  /// the title and how far you are; +1 is its own button, laid over the
+  /// row's right end. Its writes are the row's (_bump), awaited and caught.
+  Widget _buildShelfItem({
+    required String title,
+    required String imageUrl,
+    required int? total,
+    required String animeId,
+    required List<String> genres,
+    required bool hasTotal,
+    required String spokenProgress,
+  }) {
+    final scaler = MediaQuery.textScalerOf(context);
+    final lines = _ContinueCard.titleLines(scaler);
+    final still = MediaQuery.disableAnimationsOf(context);
+    // Under the print on sumi: stone hi, the mockup's, a step brighter than
+    // the rows' stone so the count reads under a big print (11.6:1).
+    final countStyle = AppTheme.hankoSans(
+      fontSize: AppTheme.hankoLabelSize,
+      weight: FontWeight.w500,
+      color: AppTheme.hankoStoneHi,
+      height: 1,
+      tabular: true,
+    );
+    void openShow() => widget.open(MaterialPageRoute(
+        builder: (_) => AnimeDetailScreen(
+              anime: Anime(
+                id: animeId,
+                title: title,
+                imageUrl: imageUrl,
+                episodes: total,
+                genres: genres,
+              ),
+            )));
+    final item = Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // The mat takes the cover's colour once it's read, fading into it;
+        // until then, and for good on a grey cover, it's sumi 2, so the
+        // shelf keeps one rhythm of prints on mats.
+        _CoverColour(
+          url: imageUrl,
+          builder: (context, colour) => TweenAnimationBuilder<Color?>(
+            tween: ColorTween(
+                end: AppTheme.hankoField(colour) ?? AppTheme.hankoSumi2),
+            duration:
+                still ? Duration.zero : const Duration(milliseconds: 240),
+            builder: (context, mat, _) => HankoPrint(
+              url: imageUrl,
+              width: _ContinueCard.printWidth,
+              height: _ContinueCard.printHeight,
+              mat: mat,
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        // Room for every line the title may take, so the rows line up. A
+        // minimum, not a fixed height: a box a hair short of the text would
+        // fade its last line at the bottom.
+        ConstrainedBox(
+          constraints: BoxConstraints(
+              minHeight: lines *
+                  scaler.scale(_ContinueCard.titleSize) *
+                  _ContinueCard.titleHeight),
+          child: _FadeTitle(
+            title,
+            maxLines: lines,
+            style: AppTheme.hankoSerif(
+                fontSize: _ContinueCard.titleSize,
+                height: _ContinueCard.titleHeight),
+          ),
+        ),
+        const SizedBox(height: 4),
+        SizedBox(
+          height: AppTheme.hankoTouch,
+          child: Align(
+            alignment: Alignment.centerLeft,
+            // The count rolls to the new one when +1 lands (round seven).
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _RollingCount(value: _current, style: countStyle),
+                Text(hasTotal ? ' of $total' : ' watched', style: countStyle),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+    return SizedBox(
+      width: _ContinueCard.itemWidth,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          _PrintTap(
+            label: '$title, $spokenProgress',
+            onTap: openShow,
+            child: item,
+          ),
+          // Its drawn square lines up with the mat's right edge, so the
+          // 48 dp target hangs 4 past it, into the gap between prints.
+          Positioned(
+            top: _ContinueCard.rowTop(scaler),
+            right: -(AppTheme.hankoTouch - _PlusOneTile.drawn) / 2,
             child: _PlusOneTile(
               nextEpisode: _current + 1,
               saving: _saving,
