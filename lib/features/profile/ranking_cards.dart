@@ -337,7 +337,7 @@ class _Top9Card extends StatelessWidget {
                 children: [
                   SizedBox(
                     width: 18, height: 18,
-                    child: Image.asset('assets/images/hanj_wing_transparent.png'),
+                    child: Image.asset('assets/images/hanj_cut_small.png'),
                   ),
                   const SizedBox(width: 8),
                   Text('Hanj',
@@ -635,7 +635,7 @@ class _TasteCard extends StatelessWidget {
                     children: [
                       SizedBox(
                         width: 18, height: 18,
-                        child: Image.asset('assets/images/hanj_wing_transparent.png'),
+                        child: Image.asset('assets/images/hanj_cut_small.png'),
                       ),
                       const SizedBox(width: 8),
                       Text('Hanj',
@@ -918,7 +918,7 @@ class _MonthlyAuraCard extends StatelessWidget {
                     children: [
                       SizedBox(
                         width: 18, height: 18,
-                        child: Image.asset('assets/images/hanj_wing_transparent.png'),
+                        child: Image.asset('assets/images/hanj_cut_small.png'),
                       ),
                       const SizedBox(width: 8),
                       Text('Hanj',
@@ -1434,7 +1434,7 @@ class _PrintPage extends StatelessWidget {
 /// the old cards grew with it, so one card saved differently on different
 /// phones. At Save card's pixel ratio of 3 the image is 960 px wide.
 ///
-/// Its parts: the masthead (the coral wing and "Hanj" in Shippori, the
+/// Its parts: the masthead (the coral mark and "Hanj" in Shippori, the
 /// card's name at the right in Jost), the print's one rule, the card's own
 /// content, and "hanj.app" at the foot. Sumi ground, washi and stone words,
 /// square corners like the Hanj Card's; no gradient, glow or pill. [tint]
@@ -1479,7 +1479,7 @@ class _Print extends StatelessWidget {
                 Row(
                   children: [
                     Image.asset(
-                      'assets/images/hanj_wing_transparent.png',
+                      'assets/images/hanj_cut_small.png',
                       width: 18,
                       height: 18,
                       fit: BoxFit.contain,

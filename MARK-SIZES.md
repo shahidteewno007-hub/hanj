@@ -7,6 +7,59 @@
 **This is a record, not a proposal. Nothing here has been implemented, and the open
 question in §5 should not be acted on without a decision.**
 
+**§0 supersedes it.** Since 2026-11-04 the mark is Clean Cut, and §1–§5 are the wing's
+record.
+
+---
+
+## 0. Since 2026-11-04: Clean Cut
+
+Shahid approved Clean Cut on 2026-11-04: Hanj's coral seal cut in one rising 45° stroke,
+with a washi flash in the cut. It replaced the wing everywhere the wing shipped.
+
+It comes in two optical cuts. Unlike the wing's, they are two files, so §5's split now
+exists:
+
+| Cut | Master (`assets/icon/`) | In-app asset (`assets/images/`, 96/192/288 px) | Sites |
+|---|---|---|---|
+| **Full**, with the flash | `hanj_cut.svg` (24-unit grid) | `hanj_cut.png` | 48, 56, 72 |
+| **Small**, no flash | `hanj_cut_small.svg` (16-unit grid) | `hanj_cut_small.png` | 18, 20, 22 |
+
+The threshold sits in the 22–48 gap §5 pointed to. Below about 24 px the flash and the two
+thin voids beside it fuse into one grey line, and the seal reads as crossed out. That holds
+on the CPH2573 too: 18 dp there is 72 px but only about 3 mm across, so it's the eye that
+does the blurring, not the pixel grid.
+
+These were the sites on `main` when the change was made. §2's table was out of date by then:
+Profile's 78 had gone in Hanko H5, when the pinned card replaced it.
+
+| dp | Site | Cut |
+|---|---|---|
+| 18 | `widgets/share_card.dart:292` (the share card) | small |
+| 18 | `features/profile/ranking_cards.dart:1482` (the prints' masthead) | small |
+| 18 | `ranking_cards.dart:340`, `:638`, `:921` (pre-Hanko cards, off behind `_preHanko`) | small |
+| 20 | `features/home/home_screen.dart:625` (Home's top line) | small |
+| 22 | `features/cards/hanj_card.dart:1028` (every card face: 15 on Profile's pinned card, 25 in card share) | small |
+| 48 | `features/auth/login_screen.dart:488` (over the poster wall) | full |
+| 56 | `features/cards/card_unlock_overlay.dart:284` (card back, tinted) | full |
+| 72 | `features/onboarding/onboarding_screen.dart:300` | full |
+
+The icons follow the same rule:
+- The launcher, PWA and legacy icons use `hanj_cut_icon.svg`.
+- The favicon uses `hanj_cut_icon_small.svg`, which has no flash.
+- The notification icon and the web-push badge are `hanj_cut_small.svg` as a white
+  silhouette.
+- `hanj_cut_mono.svg` and `hanj_cut_paper.svg` are the one-colour and paper masters.
+
+Every tile is sumi `#121110`. The adaptive foreground draws the icon master at 2/3, because
+the launcher shows only the central 72 of its 108 dp. In the mask, the seal is then 59% of
+the icon and the flash's tips stop 32 dp from centre, inside the 33 dp safe zone. A bigger
+seal would need a shorter flash.
+
+To regenerate everything, run `node tools/regenerate_brand.mjs`, then
+`dart run flutter_launcher_icons`. The script uses headless Chrome and no packages, and
+`--check` compares without writing. The wing's files and `tools/*.py` stay as its record.
+
 ---
 
 ## 1. The two cuts

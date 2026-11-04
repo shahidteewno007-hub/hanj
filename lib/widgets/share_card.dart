@@ -289,7 +289,7 @@ class _ShareCard extends StatelessWidget {
                               width: 18,
                               height: 18,
                               child: Image.asset(
-                                'assets/images/hanj_wing_transparent.png',
+                                'assets/images/hanj_cut_small.png',
                                 fit: BoxFit.contain,
                               ),
                             ),

@@ -5,10 +5,10 @@
          collision with @drawable/ic_launcher_background is deliberate and left
          alone: ic_launcher.xml uses the drawable, ic_launcher_round.xml uses this
          colour, and they now resolve to the same value.
-         Stage H2 moved splash_bg to sumi #121110. This one stays #0D0B09 until
-         the launcher icons are regenerated at #121110, so the two launcher
-         icons keep matching each other. -->
-    <color name="ic_launcher_background">#0D0B09</color>
+         Stage H2 moved splash_bg to sumi #121110, and this followed when the
+         launcher icons were regenerated at #121110 with the Clean Cut mark
+         (tools/regenerate_brand.mjs), so the two launcher icons still match. -->
+    <color name="ic_launcher_background">#121110</color>
     <color name="splash_bg">#121110</color>
     <!-- Tint FCM applies to the monochrome status-bar icon. -->
     <color name="notification_accent">#E8624A</color>

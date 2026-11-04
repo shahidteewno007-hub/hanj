@@ -29,7 +29,9 @@ messaging.onBackgroundMessage((payload) => {
   return self.registration.showNotification(title, {
     body,
     icon,
-    badge: "/icons/Icon-192.png",
+    // Android keeps only the badge's alpha, so it is the mark's white
+    // silhouette (tools/regenerate_brand.mjs), not the full-colour icon.
+    badge: "/icons/badge-96.png",
     tag,
     data: data,
     vibrate: [200, 100, 200],

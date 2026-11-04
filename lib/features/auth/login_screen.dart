@@ -480,18 +480,18 @@ class _LoginScreenState extends State<LoginScreen>
   Widget _buildWordmark() {
     return Column(
       children: [
-        // Wing mark
+        // The mark, with its flash
         SizedBox(
           width: 48,
           height: 48,
           child: Image.asset(
-            'assets/images/hanj_wing_transparent.png',
+            'assets/images/hanj_cut.png',
             fit: BoxFit.contain,
           ),
         ),
         const SizedBox(height: 16),
         // The wordmark (stage H2): "Hanj" in Shippori Mincho, washi, under
-        // the coral wing. One span: Shippori has no italic, and the three
+        // the coral mark. One span: Shippori has no italic, and the three
         // spans were all white already. RichText keeps it at its drawn size
         // whatever the text-size setting, as before.
         RichText(

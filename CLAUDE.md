@@ -315,6 +315,13 @@ crowd's ratings; it replaced the bar charts) and `HankoRatingRuler` (rating inpu
 `lib/hanko_dev.dart` is a dev-only specimen (`flutter run -t lib/hanko_dev.dart`),
 unreferenced **by design** — not an orphan.
 
+The mark is **Clean Cut** (since 2026-11-04): the coral seal cut in one rising stroke, with a
+washi flash in the cut, on sumi tiles. It has two optical cuts: `hanj_cut.png`, with the
+flash, at 48 px and up, and `hanj_cut_small.png`, without it, at 18–22 px, where a flash
+reads as a strike-through. The masters are `assets/icon/hanj_cut*.svg`. Rebuild every icon,
+fill and favicon with `node tools/regenerate_brand.mjs`, then `dart run
+flutter_launcher_icons` (`MARK-SIZES.md` §0). The wing's files stay on disk as its record.
+
 A custom control's tap **and** keyboard focus must live in the node a screen reader lands on:
 `Semantics(container: true, button: true, label: …)` around the `InkWell`, with the visual
 content inside it under `ExcludeSemantics`. `excludeSemantics: true` on the outer node drops
