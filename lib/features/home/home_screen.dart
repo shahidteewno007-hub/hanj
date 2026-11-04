@@ -1377,13 +1377,14 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
         ),
-        const SizedBox(height: 2),
         SizedBox(
           height: _ContinueCard.shelfHeight(MediaQuery.textScalerOf(context)),
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
-            padding:
-                const EdgeInsets.symmetric(horizontal: AppTheme.hankoGutter),
+            // 4 above and below: room for a focused print's outline, which
+            // lies outside it (_PrintTap), inside the list's clip.
+            padding: const EdgeInsets.symmetric(
+                horizontal: AppTheme.hankoGutter, vertical: 4),
             physics: const BouncingScrollPhysics(),
             itemCount: count,
             itemBuilder: (context, index) {
@@ -3513,7 +3514,9 @@ class _CoverColourState extends State<_CoverColour> {
 /// left out of the tree (question 119's pattern). An InkWell's washes are
 /// drawn under its child, where the art would hide them, so they're drawn
 /// over it instead: the 8% press wash while pressed or hovered, and for
-/// keyboard focus a 2 px washi outline, as +1 draws its own.
+/// keyboard focus a 2 px washi outline, as +1 draws its own. The outline
+/// lies just outside the box, so it never cuts into a title's first letter;
+/// whatever holds a _PrintTap leaves it 2 px of room.
 class _PrintTap extends StatefulWidget {
   const _PrintTap({
     required this.label,
@@ -3553,7 +3556,10 @@ class _PrintTapState extends State<_PrintTap> {
             decoration: BoxDecoration(
               color: _pressed || _hovered ? AppTheme.hankoPressWash : null,
               border: _focused
-                  ? Border.all(color: AppTheme.hankoWashi, width: 2)
+                  ? Border.all(
+                      color: AppTheme.hankoWashi,
+                      width: 2,
+                      strokeAlign: BorderSide.strokeAlignOutside)
                   : null,
               borderRadius:
                   const BorderRadius.all(Radius.circular(AppTheme.hankoRadius)),
@@ -3610,10 +3616,10 @@ class _ContinueCard extends StatefulWidget {
       titleLines(scaler) * scaler.scale(titleSize) * titleHeight +
       4;
 
-  /// The shelf's height: the row's top, its 48 dp, and 1 to spare for the
-  /// title's line metrics.
+  /// The shelf's height: the row's top, its 48 dp, 1 to spare for the
+  /// title's line metrics, and the list's 4 above and below.
   static double shelfHeight(TextScaler scaler) =>
-      rowTop(scaler) + AppTheme.hankoTouch + 1;
+      rowTop(scaler) + AppTheme.hankoTouch + 1 + 2 * 4;
 
   @override
   State<_ContinueCard> createState() => _ContinueCardState();
