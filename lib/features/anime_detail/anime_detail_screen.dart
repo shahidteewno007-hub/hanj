@@ -4290,24 +4290,18 @@ class _FadeLines extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        var scaler = MediaQuery.textScalerOf(context);
-        TextPainter lay() => TextPainter(
-              text: TextSpan(text: text, style: style),
-              textDirection: Directionality.of(context),
-              textScaler: scaler,
-              maxLines: maxLines,
-            )..layout(maxWidth: constraints.maxWidth);
-        var painter = lay();
         // Every word whole: a name wider than the box is set a little
-        // smaller rather than broken between its letters. The layout's
-        // minimum intrinsic width is its widest word, so this costs a second
-        // layout only when a word doesn't fit.
-        final fitted = _fitWidest(scaler, style, painter.minIntrinsicWidth, constraints.maxWidth);
-        if (fitted != null) {
-          painter.dispose();
-          scaler = fitted;
-          painter = lay();
-        }
+        // smaller rather than broken between its letters. Measured on a
+        // layout of its own with no width: in the box's layout a word too
+        // wide is already broken, and that layout reports its pieces (seen
+        // on the web at 1.3×, "Evergarde / n").
+        final scaler = _wholeWords(MediaQuery.textScalerOf(context), text, style, constraints.maxWidth);
+        final painter = TextPainter(
+          text: TextSpan(text: text, style: style),
+          textDirection: Directionality.of(context),
+          textScaler: scaler,
+          maxLines: maxLines,
+        )..layout(maxWidth: constraints.maxWidth);
         final overflows = painter.didExceedMaxLines;
         final lines = overflows ? painter.computeLineMetrics() : null;
         // The last line's first character, found by its position on that
