@@ -1769,7 +1769,11 @@ class _HankoDetailHeaderState extends State<HankoDetailHeader> {
                                                 caption,
                                                 style: AppTheme.hankoSans(
                                                   fontSize: AppTheme.hankoDataSmallSize,
-                                                  color: AppTheme.hankoStoneHi,
+                                                  // On Print Room's field all
+                                                  // text is washi (P4).
+                                                  color: printRoom
+                                                      ? AppTheme.hankoWashi
+                                                      : AppTheme.hankoStoneHi,
                                                   height: 1.35,
                                                 ),
                                               ),
@@ -2677,6 +2681,9 @@ class _HankoColophon extends StatelessWidget {
   Widget build(BuildContext context) {
     final studio = this.studio;
     final director = this.director;
+    // On Print Room's field all text is washi (P4; DESIGN.md §9.3 rule 2):
+    // stone hi falls to 3.96:1 on the lightest fields.
+    const ink = _AnimeDetailScreenState._printRoom ? AppTheme.hankoWashi : AppTheme.hankoStoneHi;
     return _ClearOfSeal(
       sealTop: sealTop,
       children: [
@@ -2689,7 +2696,7 @@ class _HankoColophon extends StatelessWidget {
               fact,
               style: AppTheme.hankoSans(
                 fontSize: AppTheme.hankoMetaSize,
-                color: AppTheme.hankoStoneHi,
+                color: ink,
                 height: 1.3,
               ),
             ),
@@ -2700,7 +2707,7 @@ class _HankoColophon extends StatelessWidget {
             'Directed by',
             style: AppTheme.hankoSans(
               fontSize: AppTheme.hankoLabelSize,
-              color: AppTheme.hankoStoneHi,
+              color: ink,
               height: 1.3,
             ),
           ),
@@ -2903,6 +2910,13 @@ class _HankoTitle extends StatelessWidget {
 
   static const double _maxWidth = 280;
 
+  /// Print Room's title (P4; DESIGN.md §9.3 rule 6, "bigger moments for the
+  /// type"): Shippori at 28, in the column's whole width up to 320, the
+  /// mockup's measure at 360 dp. The colon rule and the line limits follow
+  /// the new size.
+  static const double _printRoomSize = 28;
+  static const double _printRoomMaxWidth = 320;
+
   /// Lines at the default text size. "As a Reincarnated Aristocrat, I'll Use
   /// My Appraisal Skill to Rise in the World Season 3" fits four exactly, so
   /// six leave two spare; the subtitle's three get one more.
@@ -2918,12 +2932,14 @@ class _HankoTitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final style = AppTheme.hankoSerif(fontSize: AppTheme.hankoDisplaySize, height: 1.18);
+    const printRoom = _AnimeDetailScreenState._printRoom;
+    final style = AppTheme.hankoSerif(
+        fontSize: printRoom ? _printRoomSize : AppTheme.hankoDisplaySize, height: 1.18);
     final subStyle = AppTheme.hankoSans(color: AppTheme.hankoStone, height: 1.4);
     final scaler = MediaQuery.textScalerOf(context);
     return LayoutBuilder(
       builder: (context, constraints) {
-        final width = math.min(_maxWidth, constraints.maxWidth);
+        final width = math.min(printRoom ? _printRoomMaxWidth : _maxWidth, constraints.maxWidth);
         var main = title;
         String? sub;
         final colon = title.indexOf(': ');
