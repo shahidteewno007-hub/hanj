@@ -991,10 +991,28 @@ class _MonthlyAuraTab extends StatelessWidget {
     return 'Coral Fire';
   }
 
+  /// Monthly Aura as a paper print (Print Room P3, _AuraPaper). Off, the tab
+  /// shows round seven's dark print (_AuraPrint) again, so each card's
+  /// version can be kept on its own (question 165).
+  static const bool _paper = true;
+
   @override
   Widget build(BuildContext context) {
     final month = DateFormat('MMMM yyyy').format(DateTime.now());
     if (_RankingCardsScreenState._preHanko) return _buildPreHanko(month);
+    if (_paper) {
+      return _PaperPage(
+        repaintKey: repaintKey,
+        filename: 'hanj_monthly_aura',
+        card: _AuraPaper(
+          username: username,
+          anime: anime,
+          auraColor: _auraColor,
+          auraName: _auraName,
+          leadGenre: _leadGenre,
+        ),
+      );
+    }
     return _PrintPage(
       repaintKey: repaintKey,
       filename: 'hanj_monthly_aura',
@@ -4886,6 +4904,339 @@ class _PaperDna extends StatelessWidget {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Monthly Aura as a paper print (Print Room P3). DESIGN.md §9.5 gives it one
+/// line: "the same paper, with the month's covers on a field blended from
+/// their colours. The colour comes from the shows, not from a box." So a
+/// plate is printed on the paper, its field blended from the covers you
+/// added this month, each cover's colour pooling behind it, and those
+/// covers lie on it as prints, fanned with the newest in front. Under the
+/// plate: the aura's name in Shippori 30 beside a chip of its colour (round
+/// seven's dot, square on paper, since things are square), how many titles
+/// you added and which genre led the month, and the covers' colours as a
+/// printer's colour bar. The aura's name and colour still come from the
+/// genre that led the month, as before.
+///
+/// An empty month keeps its named aura (question 98), on a plate of sumi 2
+/// with the dashed place where a cover will go.
+class _AuraPaper extends StatelessWidget {
+  const _AuraPaper({
+    required this.username,
+    required this.anime,
+    required this.auraColor,
+    required this.auraName,
+    required this.leadGenre,
+  });
+
+  final String username;
+  final List<_AnimeEntry> anime;
+  final Color auraColor;
+  final String auraName;
+
+  /// The genre the month's titles share most; null for an empty month.
+  final String? leadGenre;
+
+  @override
+  Widget build(BuildContext context) {
+    final n = anime.length;
+    // Newest first, so the newest stands in front.
+    final shown = ([...anime]
+          ..sort((a, b) => (b.addedAt ?? DateTime(0))
+              .compareTo(a.addedAt ?? DateTime(0))))
+        .take(_AuraPlate.fanMax)
+        .toList();
+    final lead = leadGenre;
+    return _PaperTones(
+      urls: [for (final a in shown) a.imageUrl ?? ''],
+      builder: (context, tones) => _Paper(
+        kind: 'Monthly Aura',
+        foot: _PaperSignature(
+          text: 'Sealed by ${_firstNameOf(username)}',
+          initial: _initialOf(username),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const SizedBox(height: 12),
+            Text(username,
+                maxLines: 1,
+                softWrap: false,
+                overflow: TextOverflow.fade,
+                style: AppTheme.hankoSans(
+                    fontSize: AppTheme.hankoMetaSize,
+                    weight: FontWeight.w500,
+                    color: _Paper.ink2,
+                    height: 1.2)),
+            const SizedBox(height: 10),
+            Expanded(child: _AuraPlate(covers: shown, tones: tones)),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: auraColor,
+                    borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+                    border: Border.all(color: const Color(0x4D121110)),
+                  ),
+                  child: const SizedBox.square(dimension: 14),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(auraName,
+                      maxLines: 1,
+                      softWrap: false,
+                      overflow: TextOverflow.fade,
+                      style: AppTheme.hankoSerif(
+                          fontSize: 30, color: _Paper.ink, height: 1.15)),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              n == 0 || lead == null
+                  ? 'Nothing added yet this month.'
+                  : '${n == 1 ? '1 title' : '$n titles'} added. '
+                      '$lead led the month.',
+              style: AppTheme.hankoSans(
+                  fontSize: AppTheme.hankoMetaSize,
+                  color: _Paper.ink2,
+                  height: 1.4),
+            ),
+            if (shown.isNotEmpty) ...[
+              const SizedBox(height: 14),
+              Text('The month’s colours',
+                  style: AppTheme.hankoSans(
+                      fontSize: AppTheme.hankoLabelSize,
+                      weight: FontWeight.w500,
+                      color: _Paper.ink2,
+                      height: 1.2)),
+              const SizedBox(height: 6),
+              _ColourBar(tones: tones),
+            ],
+            const SizedBox(height: 12),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The Monthly Aura's plate: a field printed on the paper, blended from the
+/// month's covers' colours (_AuraPlatePainter), with up to [fanMax] of those
+/// covers fanned on it as P1's prints, with P1's own shadow on the kind of
+/// field it was made for. The newest is in front at the middle and the next
+/// ones alternate out to each side, each turned a little more and set a
+/// little lower, as round seven's fan holds them; the fan is sized to the
+/// plate. The covers name their titles to a screen reader as one image.
+/// With none, a sumi 2 plate holds the dashed place where a cover will go.
+class _AuraPlate extends StatelessWidget {
+  const _AuraPlate({required this.covers, required this.tones});
+
+  /// Newest first.
+  final List<_AnimeEntry> covers;
+
+  /// Their colours, in the same order.
+  final List<Color?> tones;
+
+  static const int fanMax = 7;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+      child: LayoutBuilder(builder: (context, constraints) {
+        final size = constraints.biggest;
+        final n = covers.length;
+        if (n == 0) {
+          return const ColoredBox(
+            color: AppTheme.hankoSumi2,
+            child: Center(
+              child: HankoSeal.unrated(
+                size: 132,
+                width: 94,
+                showAdd: false,
+                semanticLabel: 'No covers yet this month',
+              ),
+            ),
+          );
+        }
+        final w0 = n == 1 ? 132.0 : (n <= 3 ? 112.0 : (n <= 5 ? 98.0 : 88.0));
+        // Fit the plate's height, with room for the turn and the shadow.
+        final scale = math.min(1.0, (size.height - 40) / (w0 * 325 / 230));
+        final w = w0 * scale, h = w * 325 / 230;
+        final spread =
+            n == 1 ? 0.0 : math.min(50.0, (size.width - w - 28) / (n - 1));
+        final turn = (n <= 3 ? 7.0 : 5.0) * math.pi / 180;
+        final middle = (n - 1) / 2;
+        // Places from the middle out, the right side first: the newest
+        // cover takes the first.
+        final places = List<int>.generate(n, (i) => i)
+          ..sort((a, b) {
+            final d = (a - middle).abs().compareTo((b - middle).abs());
+            return d != 0 ? d : b.compareTo(a);
+          });
+        // Each place sits lower by 2.4 px times the square of its distance
+        // from the middle; the fan is lifted by half the lowest drop.
+        double drop(int place) => (place - middle) * (place - middle) * 2.4;
+        final lift = drop(0) / 2;
+        final centre = size.center(Offset.zero);
+        final centres = [
+          for (var i = 0; i < n; i++)
+            centre +
+                Offset((places[i] - middle) * spread, drop(places[i]) - lift),
+        ];
+        return Semantics(
+          image: true,
+          label: 'Covers of the titles you added this month: '
+              '${covers.map((a) => a.title).join(', ')}',
+          excludeSemantics: true,
+          child: CustomPaint(
+            painter: _AuraPlatePainter(
+              tones: tones,
+              centres: centres,
+              radius: math.max(w, spread * 1.6) * 1.15,
+            ),
+            child: Stack(
+              children: [
+                // The outermost first, so the newest is drawn last, on top.
+                for (var i = n - 1; i >= 0; i--)
+                  Positioned(
+                    left: centres[i].dx - w / 2,
+                    top: centres[i].dy - h / 2,
+                    width: w,
+                    height: h,
+                    child: Transform.rotate(
+                      angle: (places[i] - middle) * turn,
+                      child: HankoPrint(
+                        url: covers[i].imageUrl,
+                        width: w,
+                        height: h,
+                        sharp: true,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        );
+      }),
+    );
+  }
+}
+
+/// The aura plate's field. Its ground is the covers' colours blended (their
+/// mean, mixed into sumi by Print Room's field rule, AppTheme.hankoField);
+/// over it each cover's own colour pools behind that cover at the glow cap,
+/// the newest on top; and the plate darkens a little at its top and foot,
+/// so the prints seem to lie in light. One gradient per cover and no blur
+/// or layer, so it's cheap to draw (PERF.md S2-2). Sumi 2 until a colour is
+/// read.
+class _AuraPlatePainter extends CustomPainter {
+  const _AuraPlatePainter({
+    required this.tones,
+    required this.centres,
+    required this.radius,
+  });
+
+  /// The covers' colours, newest first, with their centres in the same
+  /// order.
+  final List<Color?> tones;
+  final List<Offset> centres;
+  final double radius;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Offset.zero & size;
+    final known = tones.whereType<Color>().toList();
+    var ground = AppTheme.hankoSumi2;
+    if (known.isNotEmpty) {
+      double r = 0, g = 0, b = 0;
+      for (final c in known) {
+        r += c.r;
+        g += c.g;
+        b += c.b;
+      }
+      final mean = Color.from(
+          alpha: 1,
+          red: r / known.length,
+          green: g / known.length,
+          blue: b / known.length);
+      ground = AppTheme.hankoField(mean) ?? AppTheme.hankoSumi2;
+    }
+    canvas.drawRect(rect, Paint()..color = ground);
+    // The oldest first, so the newest cover's pool lies on top, behind it.
+    for (var i = math.min(tones.length, centres.length) - 1; i >= 0; i--) {
+      final tone = tones[i];
+      if (tone == null) continue;
+      final pool = AppTheme.hankoField(tone,
+              cap: AppTheme.hankoFieldGlowCap,
+              mix: AppTheme.hankoFieldGlowMix) ??
+          ground;
+      canvas.drawRect(
+          rect,
+          Paint()
+            ..shader = ui.Gradient.radial(centres[i], radius,
+                [pool, pool.withValues(alpha: 0)], const [0.15, 1]));
+    }
+    canvas.drawRect(
+        rect,
+        Paint()
+          ..shader = ui.Gradient.linear(
+            rect.topCenter,
+            rect.bottomCenter,
+            const [
+              Color(0x59121110),
+              Color(0x00121110),
+              Color(0x00121110),
+              Color(0x73121110),
+            ],
+            const [0, 0.25, 0.7, 1],
+          ));
+  }
+
+  @override
+  bool shouldRepaint(_AuraPlatePainter oldDelegate) =>
+      !listEquals(oldDelegate.tones, tones) ||
+      !listEquals(oldDelegate.centres, centres) ||
+      oldDelegate.radius != radius;
+}
+
+/// The month's colours as a printer's colour bar, the strip a press proof
+/// carries: one chip per cover in its colour, held to 3:1 on washi
+/// (_inkFor), 2 apart; the paper ink at 25% until a colour is read, and for
+/// a grey cover. Decoration only: the fan names the titles.
+class _ColourBar extends StatelessWidget {
+  const _ColourBar({required this.tones});
+
+  final List<Color?> tones;
+
+  @override
+  Widget build(BuildContext context) {
+    return ExcludeSemantics(
+      child: SizedBox(
+        height: 12,
+        child: Row(
+          children: [
+            for (var i = 0; i < tones.length; i++) ...[
+              if (i > 0) const SizedBox(width: 2),
+              Expanded(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: switch (tones[i]) {
+                      final Color c => _inkFor(c, 3),
+                      null => _Paper.ink2.withValues(alpha: 0.25),
+                    },
+                    borderRadius: BorderRadius.circular(1),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
