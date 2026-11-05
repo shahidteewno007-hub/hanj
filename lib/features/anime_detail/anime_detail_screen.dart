@@ -3651,6 +3651,10 @@ class _OverviewTab extends StatelessWidget {
   final ValueListenable<Duration> timeUntilAiring;
   final List<String> characterImages;
 
+  /// AniList's recommendations, the ones the You May Like tab shows: on
+  /// Overview as prints on mats (Print Room, P4).
+  final List<Anime> relatedAnime;
+
   const _OverviewTab({
     required this.anime,
     required this.staffData,
@@ -3661,6 +3665,7 @@ class _OverviewTab extends StatelessWidget {
     this.nextEpisodeNum,
     required this.timeUntilAiring,
     this.characterImages = const [],
+    required this.relatedAnime,
   });
 
   @override
@@ -3669,6 +3674,7 @@ class _OverviewTab extends StatelessWidget {
         ? (staffData!['studios']['nodes'] as List)[0]['name'] as String?
         : null;
     final cast = _AnimeDetailScreenState._printRoom ? _cast : const <({String name, String? image})>[];
+    final mayLike = _AnimeDetailScreenState._printRoom ? relatedAnime : const <Anime>[];
 
     // The sections carry keys (question 115), so the list matches them by
     // key, not by place. The countdown card arrives with the staff answer
@@ -3702,10 +3708,16 @@ class _OverviewTab extends StatelessWidget {
         ],
 
         // Print Room (P4; DESIGN.md §9.5, frame 04): after the synopsis, as
-        // the mockup has it, the cast as round portraits.
+        // the mockup has them, the cast as round portraits and You may like
+        // as prints on mats.
         if (cast.isNotEmpty) ...[
           const _HankoSectionHead(key: ValueKey('cast head'), title: 'Cast', aside: null),
           _CastPortraits(key: const ValueKey('cast'), cast: cast),
+          const SizedBox(height: 28),
+        ],
+        if (mayLike.isNotEmpty) ...[
+          const _HankoSectionHead(key: ValueKey('may like head'), title: 'You may like', aside: null),
+          _MayLike(key: const ValueKey('may like'), anime: mayLike),
           const SizedBox(height: 28),
         ],
 
@@ -3998,6 +4010,164 @@ class _CastPortraits extends StatelessWidget {
       fit: BoxFit.cover,
       alignment: const Alignment(0, -0.64),
       errorWidget: (_, _, _) => initial,
+    );
+  }
+}
+
+/// You may like on Overview as prints on mats (Print Room, P4; DESIGN.md
+/// §9.5, frame 04): AniList's recommendations, the ones the You May Like tab
+/// shows, in a strip that scrolls sideways. Each is P1's HankoPrint at
+/// 92 × 130 (the whole cover) with its small shadow, on a mat of its own
+/// colour (AppTheme.hankoMatPad), 104 wide and 12 apart, with its title
+/// under it in Shippori 14 washi, three lines (four at 1.3×), fading past
+/// that. Each opens its own page.
+class _MayLike extends StatelessWidget {
+  const _MayLike({super.key, required this.anime});
+
+  final List<Anime> anime;
+
+  static const double _printWidth = 92;
+  static const double _printHeight = 130;
+  static const double _gap = 12;
+  static const double _titleSize = AppTheme.hankoBodySize;
+
+  @override
+  Widget build(BuildContext context) {
+    final scaler = MediaQuery.textScalerOf(context);
+    final lines = math.max(3, (3 * scaler.scale(_titleSize) / _titleSize).round());
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      clipBehavior: Clip.none,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (final (i, show) in anime.indexed) ...[
+            if (i > 0) const SizedBox(width: _gap),
+            _MayLikePrint(key: ValueKey(show.id), anime: show, lines: lines),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// One of You may like's prints (P4). Recommendations carry no AniList
+/// colour, so its mat reads the cover's own (HankoCoverColour, from the
+/// cover it shows, as Home's shelf does): sumi 2 until it's read, then
+/// fading into it in 240 ms (at once with Remove animations), and sumi 2 for
+/// good on a grey cover, so the strip keeps one rhythm of prints on mats.
+/// One button named by the title, with the InkWell's tap and keyboard focus
+/// in its own node and the art left out of the tree (question 119's
+/// pattern). The InkWell's own washes would be drawn under the art, so they
+/// are drawn over the mat instead, as Home's shelf does: the 8% press wash
+/// while pressed or hovered, and a 2 px washi outline just outside the mat
+/// for keyboard focus.
+class _MayLikePrint extends StatefulWidget {
+  const _MayLikePrint({super.key, required this.anime, required this.lines});
+
+  final Anime anime;
+  final int lines;
+
+  @override
+  State<_MayLikePrint> createState() => _MayLikePrintState();
+}
+
+class _MayLikePrintState extends State<_MayLikePrint> {
+  Color? _colour;
+  bool _pressed = false;
+  bool _hovered = false;
+  bool _focused = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _read();
+  }
+
+  @override
+  void didUpdateWidget(_MayLikePrint oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.anime.imageUrl != widget.anime.imageUrl) _read();
+  }
+
+  /// HankoCoverColour never throws (Crashlytics reports an unhandled async
+  /// error as fatal), and shares the cover's own download.
+  void _read() {
+    final url = widget.anime.imageUrl;
+    if (url == null || url.isEmpty) {
+      _colour = null;
+      return;
+    }
+    if (HankoCoverColour.knows(url)) {
+      _colour = HankoCoverColour.peek(url);
+      return;
+    }
+    _colour = null;
+    HankoCoverColour.ofUrl(url).then((colour) {
+      if (!mounted || widget.anime.imageUrl != url) return;
+      setState(() => _colour = colour);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final show = widget.anime;
+    final title = show.titleEnglish ?? show.title;
+    final still = MediaQuery.disableAnimationsOf(context);
+    final print = TweenAnimationBuilder<Color?>(
+      tween: ColorTween(end: AppTheme.hankoField(_colour) ?? AppTheme.hankoSumi2),
+      duration: still ? Duration.zero : const Duration(milliseconds: 240),
+      builder: (context, mat, _) => HankoPrint(
+        url: show.imageUrl,
+        width: _MayLike._printWidth,
+        height: _MayLike._printHeight,
+        mat: mat,
+      ),
+    );
+    return SizedBox(
+      width: _MayLike._printWidth + 2 * AppTheme.hankoMatPad,
+      child: Semantics(
+        container: true,
+        button: true,
+        label: title,
+        hint: 'Opens its page',
+        child: InkWell(
+          onTap: () => Navigator.push(
+              context, MaterialPageRoute(builder: (_) => AnimeDetailScreen(anime: show))),
+          onHighlightChanged: (v) => setState(() => _pressed = v),
+          onHover: (v) => setState(() => _hovered = v),
+          onFocusChange: (v) => setState(() => _focused = v),
+          splashFactory: NoSplash.splashFactory,
+          overlayColor: const WidgetStatePropertyAll(Colors.transparent),
+          child: ExcludeSemantics(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                DecoratedBox(
+                  position: DecorationPosition.foreground,
+                  decoration: BoxDecoration(
+                    color: _pressed || _hovered ? AppTheme.hankoPressWash : null,
+                    border: _focused
+                        ? Border.all(
+                            color: AppTheme.hankoWashi,
+                            width: 2,
+                            strokeAlign: BorderSide.strokeAlignOutside)
+                        : null,
+                    borderRadius: const BorderRadius.all(Radius.circular(AppTheme.hankoRadius)),
+                  ),
+                  child: print,
+                ),
+                const SizedBox(height: 8),
+                _FadeLines(
+                  title,
+                  style: AppTheme.hankoSerif(fontSize: _MayLike._titleSize, height: 1.25),
+                  maxLines: widget.lines,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -4819,6 +4989,7 @@ class _TabContent extends StatelessWidget {
           nextEpisodeNum: nextEpisodeNum,
           timeUntilAiring: timeUntilAiring,
           characterImages: characterImages,
+          relatedAnime: relatedAnime,
         );
       case 1:
         return _EpisodesTab(anime: anime, currentEpisode: currentEpisode);
