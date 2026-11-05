@@ -3732,16 +3732,30 @@ class _OverviewTab extends StatelessWidget {
         // Print Room (P4; DESIGN.md §9.5, frame 04): after the synopsis, as
         // the mockup has them, the cast as round portraits and You may like
         // as prints on mats.
-        if (cast.isNotEmpty) ...[
-          const _HankoSectionHead(key: ValueKey('cast head'), title: 'Cast', aside: null),
-          _CastPortraits(key: const ValueKey('cast'), cast: cast),
-          const SizedBox(height: 28),
-        ],
-        if (mayLike.isNotEmpty) ...[
-          const _HankoSectionHead(key: ValueKey('may like head'), title: 'You may like', aside: null),
-          _MayLike(key: const ValueKey('may like'), anime: mayLike),
-          const SizedBox(height: 28),
-        ],
+        if (cast.isNotEmpty)
+          _NextFrame(
+            key: const ValueKey('cast'),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const _HankoSectionHead(title: 'Cast', aside: null),
+                _CastPortraits(cast: cast),
+                const SizedBox(height: 28),
+              ],
+            ),
+          ),
+        if (mayLike.isNotEmpty)
+          _NextFrame(
+            key: const ValueKey('may like'),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const _HankoSectionHead(title: 'You may like', aside: null),
+                _MayLike(anime: mayLike),
+                const SizedBox(height: 28),
+              ],
+            ),
+          ),
 
         // Stat tiles (hidden, see _showStatTiles)
         if (_showStatTiles) ...[
@@ -3953,6 +3967,35 @@ class _HankoWatchLinks extends StatelessWidget {
   }
 }
 
+/// Builds [child] a frame after it first appears (Print Room, P4).
+/// Overview's two strips come with the staff answer, in a frame that already
+/// rebuilds the header and the tab; on the phone that frame took about twice
+/// as long with them in it. They sit below the first screen when the answer
+/// lands, so a frame later looks the same and the work is split in two.
+class _NextFrame extends StatefulWidget {
+  const _NextFrame({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  State<_NextFrame> createState() => _NextFrameState();
+}
+
+class _NextFrameState extends State<_NextFrame> {
+  bool _ready = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) setState(() => _ready = true);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => _ready ? widget.child : const SizedBox.shrink();
+}
+
 /// The cast on Overview as round portraits (Print Room, P4; DESIGN.md §9.5,
 /// frame 04): people are round, things square. The staff answer's
 /// characters, up to eight, in a strip that scrolls sideways: 66 dp circles
@@ -3964,7 +4007,7 @@ class _HankoWatchLinks extends StatelessWidget {
 /// has their voices. The strip starts at the gutter and runs out to the
 /// page's edges as it scrolls.
 class _CastPortraits extends StatelessWidget {
-  const _CastPortraits({super.key, required this.cast});
+  const _CastPortraits({required this.cast});
 
   final List<({String name, String? image})> cast;
 
@@ -4044,7 +4087,7 @@ class _CastPortraits extends StatelessWidget {
 /// under it in Shippori 14 washi, three lines (four at 1.3×), fading past
 /// that. Each opens its own page.
 class _MayLike extends StatelessWidget {
-  const _MayLike({super.key, required this.anime});
+  const _MayLike({required this.anime});
 
   final List<Anime> anime;
 
@@ -4202,19 +4245,24 @@ class _MayLikePrintState extends State<_MayLikePrint> {
 /// otherwise [scaler] is returned as it is.
 TextScaler _wholeWords(TextScaler scaler, String text, TextStyle style, double maxWidth) {
   if (!maxWidth.isFinite || maxWidth <= 0) return scaler;
-  var widest = 0.0;
-  for (final word in text.split(RegExp(r'\s+'))) {
-    if (word.isEmpty) continue;
-    final painter = TextPainter(
-      text: TextSpan(text: word, style: style),
-      textScaler: scaler,
-      textDirection: TextDirection.ltr,
-      maxLines: 1,
-    )..layout();
-    widest = math.max(widest, painter.width);
-    painter.dispose();
-  }
-  if (widest <= maxWidth) return scaler;
+  // One layout: a paragraph's minimum intrinsic width is its widest word.
+  // (Measured on the phone: a layout per word cost the frame the staff
+  // answer lands in about 50 of them.)
+  final painter = TextPainter(
+    text: TextSpan(text: text, style: style),
+    textScaler: scaler,
+    textDirection: TextDirection.ltr,
+  )..layout();
+  final widest = painter.minIntrinsicWidth;
+  painter.dispose();
+  return _fitWidest(scaler, style, widest, maxWidth) ?? scaler;
+}
+
+/// The scaler that brings a text whose widest word is [widest] (at
+/// [scaler]) within [maxWidth], never below 80% of the reader's own size,
+/// or null when it fits already (_wholeWords).
+TextScaler? _fitWidest(TextScaler scaler, TextStyle style, double widest, double maxWidth) {
+  if (!maxWidth.isFinite || maxWidth <= 0 || widest <= maxWidth) return null;
   final size = style.fontSize ?? AppTheme.hankoBodySize;
   final factor = scaler.scale(size) / size;
   return TextScaler.linear(math.max(0.8 * factor, factor * maxWidth / widest * 0.995));
@@ -4242,15 +4290,24 @@ class _FadeLines extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
+        var scaler = MediaQuery.textScalerOf(context);
+        TextPainter lay() => TextPainter(
+              text: TextSpan(text: text, style: style),
+              textDirection: Directionality.of(context),
+              textScaler: scaler,
+              maxLines: maxLines,
+            )..layout(maxWidth: constraints.maxWidth);
+        var painter = lay();
         // Every word whole: a name wider than the box is set a little
-        // smaller rather than broken between its letters.
-        final scaler = _wholeWords(MediaQuery.textScalerOf(context), text, style, constraints.maxWidth);
-        final painter = TextPainter(
-          text: TextSpan(text: text, style: style),
-          textDirection: Directionality.of(context),
-          textScaler: scaler,
-          maxLines: maxLines,
-        )..layout(maxWidth: constraints.maxWidth);
+        // smaller rather than broken between its letters. The layout's
+        // minimum intrinsic width is its widest word, so this costs a second
+        // layout only when a word doesn't fit.
+        final fitted = _fitWidest(scaler, style, painter.minIntrinsicWidth, constraints.maxWidth);
+        if (fitted != null) {
+          painter.dispose();
+          scaler = fitted;
+          painter = lay();
+        }
         final overflows = painter.didExceedMaxLines;
         final lines = overflows ? painter.computeLineMetrics() : null;
         // The last line's first character, found by its position on that
