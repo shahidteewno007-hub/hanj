@@ -4488,6 +4488,7 @@ class _TastePaper extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            const SizedBox(height: 10),
             // The fan runs the paper's full width, past its margins, as the
             // mockup's does.
             Expanded(
@@ -4668,8 +4669,11 @@ class _TasteFan extends StatelessWidget {
                             sealOverhang: const Offset(18, 16),
                           ),
                         )
+                      // Only the front proof is labelled: the others are
+                      // mostly hidden under it, and their cut titles read
+                      // as broken.
                       : _ColourProof(
-                          title: shows[i].title,
+                          title: i == 0 ? shows[i].title : null,
                           tone: i < tones.length ? tones[i] : null,
                           seal: i == 0 ? seal : null,
                         ),
@@ -4684,15 +4688,16 @@ class _TasteFan extends StatelessWidget {
 
 /// A title as a printer's colour proof, the Taste Card's fan while question
 /// 13 keeps AniList's art out of new exports: a block of the show's own
-/// colour, read from its cover (none of the art is printed), over a strip
-/// of proof paper with its title in Shippori 11 sumi, up to two lines. The
-/// paper ink until the colour is read, and for a grey cover; the colour
-/// fades in over 240 ms, at once with Remove animations on. [seal], if
-/// given, is pressed across its lower right corner, as on the cover.
+/// colour, read from its cover (none of the art is printed), and, with a
+/// [title], a strip of proof paper under it with the title in Shippori 11
+/// sumi, up to three lines. The paper ink until the colour is read, and for
+/// a grey cover; the colour fades in over 240 ms, at once with Remove
+/// animations on. [seal], if given, is pressed across its lower right
+/// corner, as on the cover.
 class _ColourProof extends StatelessWidget {
-  const _ColourProof({required this.title, required this.tone, this.seal});
+  const _ColourProof({this.title, required this.tone, this.seal});
 
-  final String title;
+  final String? title;
   final Color? tone;
   final Widget? seal;
 
@@ -4711,6 +4716,7 @@ class _ColourProof extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final title = this.title;
     final tone = this.tone;
     final seal = this.seal;
     return Stack(
@@ -4734,22 +4740,23 @@ class _ColourProof extends StatelessWidget {
                           ColoredBox(color: colour ?? _Paper.ink2),
                     ),
                   ),
-                  ColoredBox(
-                    color: _stock,
-                    child: SizedBox(
-                      height: 40,
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(7, 6, 7, 5),
-                        child: Text(title,
-                            maxLines: 2,
-                            overflow: TextOverflow.fade,
-                            style: AppTheme.hankoSerif(
-                                fontSize: 11,
-                                color: _Paper.ink,
-                                height: 1.2)),
+                  if (title != null)
+                    ColoredBox(
+                      color: _stock,
+                      child: SizedBox(
+                        height: 52,
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(7, 6, 7, 5),
+                          child: Text(title,
+                              maxLines: 3,
+                              overflow: TextOverflow.fade,
+                              style: AppTheme.hankoSerif(
+                                  fontSize: 11,
+                                  color: _Paper.ink,
+                                  height: 1.2)),
+                        ),
                       ),
                     ),
-                  ),
                 ],
               ),
             ),
@@ -4845,6 +4852,7 @@ class _PaperDna extends StatelessWidget {
             child: SizedBox(
               height: 14,
               child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   for (var i = 0; i < genres.length; i++)
                     Expanded(
@@ -4972,7 +4980,9 @@ class _AuraPaper extends StatelessWidget {
                     color: _Paper.ink2,
                     height: 1.2)),
             const SizedBox(height: 10),
-            Expanded(child: _AuraPlate(covers: shown, tones: tones)),
+            Expanded(
+                child:
+                    _AuraPlate(covers: shown, tones: tones, aura: auraColor)),
             const SizedBox(height: 16),
             Row(
               children: [
@@ -5025,22 +5035,30 @@ class _AuraPaper extends StatelessWidget {
   }
 }
 
-/// The Monthly Aura's plate: a field printed on the paper, blended from the
-/// month's covers' colours (_AuraPlatePainter), with up to [fanMax] of those
-/// covers fanned on it as P1's prints, with P1's own shadow on the kind of
-/// field it was made for. The newest is in front at the middle and the next
-/// ones alternate out to each side, each turned a little more and set a
-/// little lower, as round seven's fan holds them; the fan is sized to the
-/// plate. The covers name their titles to a screen reader as one image.
-/// With none, a sumi 2 plate holds the dashed place where a cover will go.
+/// The Monthly Aura's plate: a field printed on the paper, the aura's glow
+/// with the month's covers' own colours blended into it
+/// (_AuraPlatePainter), and up to [fanMax] of those covers fanned on it as
+/// P1's prints, with P1's own shadow on the kind of field it was made for.
+/// The newest is in front at the middle and the next ones alternate out to
+/// each side, each turned a little more and set a little lower, as round
+/// seven's fan holds them; the fan is sized to the plate. The covers name
+/// their titles to a screen reader as one image. With none, the glow holds
+/// the dashed place where a cover will go.
 class _AuraPlate extends StatelessWidget {
-  const _AuraPlate({required this.covers, required this.tones});
+  const _AuraPlate({
+    required this.covers,
+    required this.tones,
+    required this.aura,
+  });
 
   /// Newest first.
   final List<_AnimeEntry> covers;
 
   /// Their colours, in the same order.
   final List<Color?> tones;
+
+  /// The aura's colour, named from the genre that led the month.
+  final Color aura;
 
   static const int fanMax = 7;
 
@@ -5052,9 +5070,10 @@ class _AuraPlate extends StatelessWidget {
         final size = constraints.biggest;
         final n = covers.length;
         if (n == 0) {
-          return const ColoredBox(
-            color: AppTheme.hankoSumi2,
-            child: Center(
+          return CustomPaint(
+            painter: _AuraPlatePainter(
+                aura: aura, tones: const [], centres: const [], radius: 0),
+            child: const Center(
               child: HankoSeal.unrated(
                 size: 132,
                 width: 94,
@@ -5064,7 +5083,8 @@ class _AuraPlate extends StatelessWidget {
             ),
           );
         }
-        final w0 = n == 1 ? 132.0 : (n <= 3 ? 112.0 : (n <= 5 ? 98.0 : 88.0));
+        final w0 =
+            n == 1 ? 140.0 : (n <= 3 ? 120.0 : (n <= 5 ? 104.0 : 92.0));
         // Fit the plate's height, with room for the turn and the shadow.
         final scale = math.min(1.0, (size.height - 40) / (w0 * 325 / 230));
         final w = w0 * scale, h = w * 325 / 230;
@@ -5096,6 +5116,7 @@ class _AuraPlate extends StatelessWidget {
           excludeSemantics: true,
           child: CustomPaint(
             painter: _AuraPlatePainter(
+              aura: aura,
               tones: tones,
               centres: centres,
               radius: math.max(w, spread * 1.6) * 1.15,
@@ -5128,19 +5149,24 @@ class _AuraPlate extends StatelessWidget {
   }
 }
 
-/// The aura plate's field. Its ground is the covers' colours blended (their
-/// mean, mixed into sumi by Print Room's field rule, AppTheme.hankoField);
-/// over it each cover's own colour pools behind that cover at the glow cap,
-/// the newest on top; and the plate darkens a little at its top and foot,
-/// so the prints seem to lie in light. One gradient per cover and no blur
-/// or layer, so it's cheap to draw (PERF.md S2-2). Sumi 2 until a colour is
-/// read.
+/// The aura plate's field. Its ground is the aura's glow, as round seven's
+/// print has it: the aura's colour (turned out of coral's hue, which means
+/// only your verdicts: _AuraGlowPainter._awayFromCoral) glowing from the
+/// plate's middle to a deep tone of it at the edges (_jewel). Into it each
+/// cover's own colour pools behind that cover, the newest on top, so the
+/// field is blended from the month's shows; and the plate darkens a little
+/// at its top and foot, so the prints seem to lie in light. No words sit on
+/// it. One gradient per cover and no blur or layer, so it's cheap to draw
+/// (PERF.md S2-2).
 class _AuraPlatePainter extends CustomPainter {
   const _AuraPlatePainter({
+    required this.aura,
     required this.tones,
     required this.centres,
     required this.radius,
   });
+
+  final Color aura;
 
   /// The covers' colours, newest first, with their centres in the same
   /// order.
@@ -5151,36 +5177,32 @@ class _AuraPlatePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final rect = Offset.zero & size;
-    final known = tones.whereType<Color>().toList();
-    var ground = AppTheme.hankoSumi2;
-    if (known.isNotEmpty) {
-      double r = 0, g = 0, b = 0;
-      for (final c in known) {
-        r += c.r;
-        g += c.g;
-        b += c.b;
-      }
-      final mean = Color.from(
-          alpha: 1,
-          red: r / known.length,
-          green: g / known.length,
-          blue: b / known.length);
-      ground = AppTheme.hankoField(mean) ?? AppTheme.hankoSumi2;
-    }
-    canvas.drawRect(rect, Paint()..color = ground);
+    final hue = _AuraGlowPainter._awayFromCoral(aura);
+    final core =
+        Color.alphaBlend(hue.withValues(alpha: 0.62), AppTheme.hankoSumi);
+    canvas.drawRect(
+        rect,
+        Paint()
+          ..shader = ui.Gradient.radial(
+            size.center(Offset.zero),
+            size.longestSide * 0.72,
+            [core, _jewel(hue, 0.07), _jewel(hue, 0.025)],
+            const [0, 0.55, 1],
+          ));
     // The oldest first, so the newest cover's pool lies on top, behind it.
     for (var i = math.min(tones.length, centres.length) - 1; i >= 0; i--) {
       final tone = tones[i];
       if (tone == null) continue;
-      final pool = AppTheme.hankoField(tone,
-              cap: AppTheme.hankoFieldGlowCap,
-              mix: AppTheme.hankoFieldGlowMix) ??
-          ground;
+      final pool =
+          Color.alphaBlend(tone.withValues(alpha: 0.7), AppTheme.hankoSumi);
       canvas.drawRect(
           rect,
           Paint()
-            ..shader = ui.Gradient.radial(centres[i], radius,
-                [pool, pool.withValues(alpha: 0)], const [0.15, 1]));
+            ..shader = ui.Gradient.radial(
+                centres[i],
+                radius,
+                [pool.withValues(alpha: 0.85), pool.withValues(alpha: 0)],
+                const [0.1, 1]));
     }
     canvas.drawRect(
         rect,
@@ -5200,6 +5222,7 @@ class _AuraPlatePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_AuraPlatePainter oldDelegate) =>
+      oldDelegate.aura != aura ||
       !listEquals(oldDelegate.tones, tones) ||
       !listEquals(oldDelegate.centres, centres) ||
       oldDelegate.radius != radius;
@@ -5220,6 +5243,7 @@ class _ColourBar extends StatelessWidget {
       child: SizedBox(
         height: 12,
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             for (var i = 0; i < tones.length; i++) ...[
               if (i > 0) const SizedBox(width: 2),
