@@ -13,6 +13,7 @@ import 'package:intl/intl.dart';
 import '../../widgets/gal_mobile.dart' if (dart.library.html) '../../widgets/gal_stub.dart' as galSaver;
 
 import '../../core/theme/app_theme.dart';
+import '../../widgets/hanko_print.dart';
 import '../../widgets/hanko_seal.dart';
 import 'taste_profile.dart';
 
@@ -349,6 +350,11 @@ class _Top9Tab extends StatelessWidget {
           : '$offScale imported ratings are on another scale, so they '
               'aren\'t ranked\u00A0here.';
 
+  /// The Top 9 as a paper print (Print Room P3, _Top9Paper). Off, the tab
+  /// shows round seven's dark print (_Top9Print) again, so each card's
+  /// version can be kept on its own (question 165).
+  static const bool _paper = true;
+
   @override
   Widget build(BuildContext context) {
     if (_RankingCardsScreenState._preHanko) return _buildPreHanko();
@@ -370,6 +376,16 @@ class _Top9Tab extends StatelessWidget {
       );
     }
     // The note explains the ranking by ratings, so your own order has none.
+    if (_paper) {
+      return _PaperPage(
+        repaintKey: repaintKey,
+        filename: 'hanj_top9',
+        header: _Top9Header(pickedByYou: pickedByYou, onEdit: onEdit),
+        card: _Top9Paper(
+            anime: anime, username: username, pickedByYou: pickedByYou),
+        note: pickedByYou ? null : _note,
+      );
+    }
     return _PrintPage(
       repaintKey: repaintKey,
       filename: 'hanj_top9',
@@ -1191,7 +1207,16 @@ class _MonthlyAuraCard extends StatelessWidget {
 class _SaveButton extends StatefulWidget {
   final GlobalKey repaintKey;
   final String filename;
-  const _SaveButton({required this.repaintKey, required this.filename});
+
+  /// The saved image's pixels per print pixel: 3 for round seven's 320 px
+  /// prints (960 px wide), [_Paper.saveRatio] for a paper print (1080 by
+  /// 1920).
+  final double pixelRatio;
+  const _SaveButton({
+    required this.repaintKey,
+    required this.filename,
+    this.pixelRatio = 3.0,
+  });
 
   @override
   State<_SaveButton> createState() => _SaveButtonState();
@@ -1212,7 +1237,7 @@ class _SaveButtonState extends State<_SaveButton> {
           ?.findRenderObject() as RenderRepaintBoundary?;
       if (boundary == null) throw StateError('No card to render.');
 
-      final image = await boundary.toImage(pixelRatio: 3.0);
+      final image = await boundary.toImage(pixelRatio: widget.pixelRatio);
       final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
       if (byteData == null) throw StateError('The card did not encode.');
 
@@ -3672,6 +3697,569 @@ class _Top9PickRow extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// Print Room P3: the cards as paper prints (DESIGN.md §9.5)
+// ─────────────────────────────────────────────────────────────
+
+/// A Ranking Card as a paper print (Print Room P3; DESIGN.md §9.3 rule 4,
+/// §9.5 and question 162): washi with a faint fibre grain, sumi type, the
+/// covers lying on it as prints, and your seal pressed on. It has one size,
+/// 324 by 576 (9:16), whatever the reader's text size or window, as round
+/// seven's prints (question 52), and Save card saves it at [saveRatio], so
+/// the image is 1080 by 1920.
+///
+/// Its parts: the masthead (the Clean Cut mark and "Hanj" in Shippori 16,
+/// the card's name and month at the right in Jost 500 11, tracked, as the
+/// mockup has them), the card's own content, which gets the paper's measure
+/// and the height left, and "hanj.app" at the foot with [foot] beside it.
+/// Secondary words are the paper ink, 6.07:1 on washi; stone would be
+/// 2.21:1.
+class _Paper extends StatelessWidget {
+  const _Paper({required this.kind, required this.foot, required this.child});
+
+  /// The card's name, at the masthead's right before the month.
+  final String kind;
+
+  /// Who sealed it, at the foot's right.
+  final Widget foot;
+
+  /// The card's content, between the masthead and the foot.
+  final Widget child;
+
+  static const double width = 324;
+  static const double height = 576;
+  static const double pad = 18;
+  static const double inner = width - 2 * pad;
+
+  /// Save card's pixel ratio for paper. 324 and 576 times it are exactly
+  /// 1080 and 1920, which toImage rounds up to, so the image is 1080 by
+  /// 1920 to the pixel.
+  static const double saveRatio = 1080 / width;
+
+  static const Color ink = AppTheme.hankoSumi;
+  static const Color ink2 = AppTheme.hankoPaperInk;
+
+  /// A print's shadow on paper: the mockup's warm one. P1's are black, made
+  /// for colour fields, and lie on washi like soot. Rectangle shadows, never
+  /// a MaskFilter blur (PERF.md S2-2).
+  static const List<BoxShadow> shadow = [
+    BoxShadow(
+        color: Color(0x8C281E14),
+        offset: Offset(0, 8),
+        blurRadius: 16,
+        spreadRadius: -6),
+    BoxShadow(color: Color(0x4D281E14), offset: Offset(0, 2), blurRadius: 4),
+  ];
+
+  /// Jost 500 11 in the paper ink: the masthead's name and the foot.
+  static TextStyle small({double letterSpacing = 0}) => AppTheme.hankoSans(
+      fontSize: AppTheme.hankoDataSmallSize,
+      weight: FontWeight.w500,
+      color: ink2,
+      height: 1.2,
+      letterSpacing: letterSpacing);
+
+  @override
+  Widget build(BuildContext context) {
+    final month = DateFormat('MMM yyyy').format(DateTime.now()).toUpperCase();
+    return MediaQuery.withNoTextScaling(
+      child: SizedBox(
+        width: width,
+        height: height,
+        child: Stack(
+          children: [
+            const Positioned.fill(
+                child: ColoredBox(color: AppTheme.hankoWashi)),
+            const Positioned.fill(
+                child: CustomPaint(painter: _PaperGrainPainter())),
+            Positioned.fill(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(pad, 16, pad, 14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    SizedBox(
+                      height: 18,
+                      child: Row(
+                        children: [
+                          Image.asset(
+                            'assets/images/hanj_cut_small.png',
+                            width: 18,
+                            height: 18,
+                            fit: BoxFit.contain,
+                          ),
+                          const SizedBox(width: 7),
+                          Text('Hanj',
+                              style: AppTheme.hankoSerif(
+                                  fontSize: 16,
+                                  color: ink,
+                                  height: 1,
+                                  letterSpacing: 0.2)),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              '${kind.toUpperCase()} · $month',
+                              textAlign: TextAlign.right,
+                              maxLines: 1,
+                              softWrap: false,
+                              overflow: TextOverflow.fade,
+                              style: small(letterSpacing: 0.66),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Expanded(child: child),
+                    Row(
+                      children: [
+                        Text('hanj.app', style: small()),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Align(
+                              alignment: Alignment.centerRight, child: foot),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The paper's fibre grain (question 163), drawn rather than shipped as an
+/// asset: about 620 short fibres lying mostly along the sheet, about 40
+/// longer, broader streaks and some 2,000 fine specks, in a warm paper ink
+/// at 2 to 9%, with light flecks among them. Like round seven's
+/// _GrainPainter they sit at fixed places (one seed), so a card saves the
+/// same on every phone, and they're laid under everything, so no fibre ever
+/// crosses a cover. Six draw calls.
+class _PaperGrainPainter extends CustomPainter {
+  const _PaperGrainPainter();
+
+  static const Color _fibre = Color(0xFF6B5E4C);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    var seed = 20261105;
+    double next() {
+      seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+      return seed / 0x7fffffff;
+    }
+
+    final area = size.width * size.height;
+    // Fibres as pairs of points (PointMode.lines), within about 10° of the
+    // sheet's grain, in three strengths.
+    final fine = [<Offset>[], <Offset>[], <Offset>[]];
+    for (var i = 0; i < area / 300; i++) {
+      final a = Offset(next() * size.width, next() * size.height);
+      final length = 3 + 24 * next() * next();
+      final turn = (next() - 0.5) * 0.36;
+      fine[i % 3]
+        ..add(a)
+        ..add(a + Offset(math.cos(turn), math.sin(turn)) * length);
+    }
+    final broad = <Offset>[];
+    for (var i = 0; i < area / 4500; i++) {
+      final a = Offset(next() * size.width, next() * size.height);
+      final length = 18 + 46 * next();
+      final turn = (next() - 0.5) * 0.12;
+      broad
+        ..add(a)
+        ..add(a + Offset(math.cos(turn), math.sin(turn)) * length);
+    }
+    canvas.drawPoints(
+        ui.PointMode.lines,
+        broad,
+        Paint()
+          ..color = _fibre.withValues(alpha: 0.025)
+          ..strokeWidth = 2.2
+          ..strokeCap = StrokeCap.round);
+    const alphas = [0.035, 0.055, 0.085];
+    for (var k = 0; k < 3; k++) {
+      canvas.drawPoints(
+          ui.PointMode.lines,
+          fine[k],
+          Paint()
+            ..color = _fibre.withValues(alpha: alphas[k])
+            ..strokeWidth = 0.55
+            ..strokeCap = StrokeCap.round);
+    }
+    final dark = <Offset>[], light = <Offset>[];
+    for (var i = 0; i < area / 90; i++) {
+      (i.isEven ? dark : light)
+          .add(Offset(next() * size.width, next() * size.height));
+    }
+    canvas.drawPoints(
+        ui.PointMode.points,
+        dark,
+        Paint()
+          ..color = _fibre.withValues(alpha: 0.09)
+          ..strokeWidth = 0.8
+          ..strokeCap = StrokeCap.round);
+    canvas.drawPoints(
+        ui.PointMode.points,
+        light,
+        Paint()
+          ..color = const Color(0x66FFFFFF)
+          ..strokeWidth = 0.9
+          ..strokeCap = StrokeCap.round);
+  }
+
+  @override
+  bool shouldRepaint(_PaperGrainPainter oldDelegate) => false;
+}
+
+/// A paper card's page (Print Room P3): the print, then Save card under it,
+/// as _PrintPage lays round seven's prints, with gutters of 18 so the 324 dp
+/// print sits at full size on a 360 dp phone, as the mockup has it. On a
+/// narrower phone the print is scaled down whole, never reflowed; on a wide
+/// window the column keeps the print's width and hangs on the left. No
+/// hairline trims it, since paper shows its own edge on sumi. [header] and
+/// [note] are as _PrintPage's.
+class _PaperPage extends StatelessWidget {
+  const _PaperPage({
+    required this.repaintKey,
+    required this.filename,
+    required this.card,
+    this.note,
+    this.header,
+  });
+
+  final GlobalKey repaintKey;
+  final String filename;
+  final Widget card;
+  final String? note;
+  final Widget? header;
+
+  static const double gutter = (360 - _Paper.width) / 2;
+
+  @override
+  Widget build(BuildContext context) {
+    final note = this.note;
+    final header = this.header;
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(gutter, 24, gutter, 32),
+      child: Align(
+        alignment: Alignment.topLeft,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: _Paper.width),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (header != null) ...[
+                header,
+                const SizedBox(height: 16),
+              ],
+              _PrintReveal(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.topLeft,
+                  child: RepaintBoundary(key: repaintKey, child: card),
+                ),
+              ),
+              if (note != null) ...[
+                const SizedBox(height: 12),
+                _PrintNote(note),
+              ],
+              const SizedBox(height: 20),
+              _SaveButton(
+                  repaintKey: repaintKey,
+                  filename: filename,
+                  pixelRatio: _Paper.saveRatio),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A print lying on the paper: [child] (P1's HankoPrint, laid flat) in a box
+/// that casts the paper's warm shadow (_Paper.shadow), with Hanko's 2 px
+/// corners.
+class _OnPaper extends StatelessWidget {
+  const _OnPaper({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => DecoratedBox(
+        decoration: const BoxDecoration(
+          borderRadius:
+              BorderRadius.all(Radius.circular(AppTheme.hankoRadius)),
+          boxShadow: _Paper.shadow,
+        ),
+        child: child,
+      );
+}
+
+/// An empty place on paper: Hanko's dashed "not yet" outline, 1 px in the
+/// paper ink at 70% (3.3:1 on washi). HankoSeal's own dashes are stone hi,
+/// which washi swallows (1.5:1).
+class _PaperSlotPainter extends CustomPainter {
+  const _PaperSlotPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = _Paper.ink2.withValues(alpha: 0.7)
+      ..strokeWidth = 1;
+    const dash = 3.0;
+    final r = (Offset.zero & size).deflate(0.5);
+    for (final (a, b) in [
+      (r.topLeft, r.topRight),
+      (r.topRight, r.bottomRight),
+      (r.bottomRight, r.bottomLeft),
+      (r.bottomLeft, r.topLeft),
+    ]) {
+      final length = (b - a).distance;
+      final n = math.max(2, ((length + dash) / (2 * dash)).round());
+      final gap = (length - n * dash) / (n - 1);
+      final step = (b - a) / length;
+      for (var i = 0; i < n; i++) {
+        final start = a + step * (i * (dash + gap));
+        canvas.drawLine(start, start + step * dash, paint);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_PaperSlotPainter oldDelegate) => false;
+}
+
+/// A Top 9 place's number on a paper tab at its print's top left corner,
+/// like a plate's number in a catalogue (the mockup's): Shippori 15 sumi on
+/// washi (15.3:1), with a 1 px shadow so the tab lies on the art.
+class _PaperTab extends StatelessWidget {
+  const _PaperTab(this.rank);
+
+  final int rank;
+
+  @override
+  Widget build(BuildContext context) => DecoratedBox(
+        decoration: const BoxDecoration(
+          color: AppTheme.hankoWashi,
+          borderRadius: BorderRadius.only(
+            topLeft: Radius.circular(AppTheme.hankoRadius),
+            bottomRight: Radius.circular(AppTheme.hankoRadius),
+          ),
+          boxShadow: [
+            BoxShadow(color: Color(0x40121110), offset: Offset(1, 1)),
+          ],
+        ),
+        child: SizedBox(
+          height: 24,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minWidth: 22),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 5),
+              child: Center(
+                widthFactor: 1,
+                child: Text('$rank',
+                    style: AppTheme.hankoSerif(
+                        fontSize: 15, color: _Paper.ink, height: 1)),
+              ),
+            ),
+          ),
+        ),
+      );
+}
+
+/// Who sealed a paper print, at its foot's right: [text] in the paper ink
+/// and, with an [initial], your seal beside it, 30 dp with your initial as
+/// Profile's monogram has it. Coral, because the card is yours; its 2 px
+/// sumi keyline keeps it apart from the washi. The words say who sealed it,
+/// so the seal itself is left out of the screen-reader tree.
+class _PaperSignature extends StatelessWidget {
+  const _PaperSignature({required this.text, this.initial});
+
+  final String text;
+  final String? initial;
+
+  @override
+  Widget build(BuildContext context) {
+    final initial = this.initial;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Flexible(
+          child: Text(text,
+              maxLines: 1,
+              softWrap: false,
+              overflow: TextOverflow.fade,
+              style: _Paper.small()),
+        ),
+        if (initial != null) ...[
+          const SizedBox(width: 8),
+          ExcludeSemantics(child: HankoSeal(label: initial, size: 30)),
+        ],
+      ],
+    );
+  }
+}
+
+/// Your initial as Profile's monogram presses it: your name's first letter,
+/// in capitals; "A" with no name, as Profile's.
+String _initialOf(String name) {
+  final t = name.trim();
+  return t.isEmpty ? 'A' : t.characters.first.toUpperCase();
+}
+
+/// The first word of your name, for a print's foot ("Sealed by Aki").
+String _firstNameOf(String name) {
+  final t = name.trim();
+  return t.isEmpty ? 'me' : t.split(RegExp(r'\s+')).first;
+}
+
+/// The Top 9 as a paper print (Print Room P3; DESIGN.md §9.5): your nine as
+/// three rows of three prints lying on washi, each numbered on a paper tab
+/// at its corner like a plate in a catalogue, under "Aki’s nine" and over
+/// your seal. Posters only, as Shahid asked on 2026-11-05 ("don't have the
+/// anime names on it just the posters"), and no ratings on the art
+/// (question 164). Each place still names its show to a screen reader.
+///
+/// The prints are 90 by 127 at the paper's full measure, AniList's own
+/// 230 : 325, so nothing is cropped, and each shows the 460 px cover
+/// (HankoPrint's sharp), about 300 px wide in the saved image. The room the
+/// titles left under the grid is shared above and below the title and the
+/// grid, so the paper's margins stay even. With fewer than nine, the rest
+/// are dashed empty places.
+class _Top9Paper extends StatelessWidget {
+  const _Top9Paper({
+    required this.anime,
+    required this.username,
+    required this.pickedByYou,
+  });
+
+  final List<_AnimeEntry> anime;
+  final String username;
+
+  /// Your own order, or your highest ratings: the foot says which.
+  final bool pickedByYou;
+
+  static const double gap = 9;
+  static const double printWidth = (_Paper.inner - 2 * gap) / 3;
+
+  /// AniList covers' own 230 : 325.
+  static const double printHeight = printWidth * 325 / 230;
+
+  @override
+  Widget build(BuildContext context) {
+    final items = anime.take(9).toList();
+    final first = _firstNameOf(username);
+    return _Paper(
+      kind: 'Top 9',
+      foot: _PaperSignature(
+        text: pickedByYou
+            ? 'Chosen and sealed by $first'
+            : 'Ranked by $first’s ratings',
+        initial: _initialOf(username),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const SizedBox(height: 10),
+          // The title and the grid as one block, centred in the room left,
+          // and scaled down whole if a long name ever needs more.
+          Expanded(
+            child: Center(
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: SizedBox(
+                  width: _Paper.inner,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('$username’s nine',
+                          maxLines: 2,
+                          overflow: TextOverflow.fade,
+                          style: AppTheme.hankoSerif(
+                              fontSize: 22, color: _Paper.ink, height: 1.15)),
+                      const SizedBox(height: 14),
+                      for (var row = 0; row < 3; row++) ...[
+                        if (row > 0) const SizedBox(height: gap),
+                        Row(
+                          children: [
+                            for (var col = 0; col < 3; col++) ...[
+                              if (col > 0) const SizedBox(width: gap),
+                              _Top9PaperPlace(
+                                rank: row * 3 + col + 1,
+                                entry: row * 3 + col < items.length
+                                    ? items[row * 3 + col]
+                                    : null,
+                              ),
+                            ],
+                          ],
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// One place in the paper Top 9: the cover as a print lying on the paper,
+/// with its number on a paper tab at the corner; or a dashed empty place,
+/// which keeps its tab. A cover that can't load leaves sumi 3 and the tab,
+/// as round seven's place does.
+class _Top9PaperPlace extends StatelessWidget {
+  const _Top9PaperPlace({required this.rank, required this.entry});
+
+  final int rank;
+  final _AnimeEntry? entry;
+
+  @override
+  Widget build(BuildContext context) {
+    const w = _Top9Paper.printWidth, h = _Top9Paper.printHeight;
+    final entry = this.entry;
+    return SizedBox(
+      width: w,
+      height: h,
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: entry == null
+                ? Semantics(
+                    label: 'Place $rank, empty',
+                    child: const CustomPaint(painter: _PaperSlotPainter()),
+                  )
+                : Semantics(
+                    image: true,
+                    label: '$rank. ${entry.title}',
+                    child: _OnPaper(
+                      child: HankoPrint(
+                        url: entry.imageUrl,
+                        width: w,
+                        height: h,
+                        lift: HankoPrintLift.none,
+                        sharp: true,
+                      ),
+                    ),
+                  ),
+          ),
+          Positioned(
+            left: 0,
+            top: 0,
+            child: ExcludeSemantics(child: _PaperTab(rank)),
+          ),
+        ],
       ),
     );
   }
