@@ -20,6 +20,11 @@ import 'package:flutter/painting.dart';
 /// unhandled async error as fatal (CLAUDE.md).
 ///
 /// Colours are kept by key, most recently used last, up to [_maxEntries].
+/// A grey cover's null is kept too: it is the cover's answer. A cover that
+/// couldn't be read (offline, a network error, a timeout) is not, so the
+/// next ask reads it again (question P4-8; Shahid, 2026-11-05: "Go with
+/// your recommendations"). Remembering a failure kept a mat sumi 2 for the
+/// rest of the run after one network drop.
 class HankoCoverColour {
   HankoCoverColour._();
 
@@ -53,29 +58,35 @@ class HankoCoverColour {
     }
     final reading = _reading[key];
     if (reading != null) return reading;
-    final future = _read(provider).then((colour) {
+    final future = _read(provider).then((read) {
       _reading.remove(key);
-      _known[key] = colour;
-      while (_known.length > _maxEntries) {
-        _known.remove(_known.keys.first);
+      // Only an answer is remembered: a cover that couldn't be read is read
+      // again the next time it's asked for.
+      if (read.read) {
+        _known[key] = read.colour;
+        while (_known.length > _maxEntries) {
+          _known.remove(_known.keys.first);
+        }
       }
-      return colour;
+      return read.colour;
     });
     _reading[key] = future;
     return future;
   }
 
-  static Future<Color?> _read(ImageProvider provider) async {
+  /// The cover's colour, and whether the cover was read at all: a grey
+  /// cover is read and has no colour; a failed download wasn't read.
+  static Future<({Color? colour, bool read})> _read(ImageProvider provider) async {
     ui.Image? image;
     try {
       image = await _decode(provider);
-      if (image == null) return null;
+      if (image == null) return (colour: null, read: false);
       final data =
           await image.toByteData(format: ui.ImageByteFormat.rawStraightRgba);
-      if (data == null) return null;
-      return _prominent(data);
+      if (data == null) return (colour: null, read: false);
+      return (colour: _prominent(data), read: true);
     } catch (_) {
-      return null;
+      return (colour: null, read: false);
     } finally {
       image?.dispose();
     }
