@@ -4070,12 +4070,27 @@ class _CastPortraits extends StatelessWidget {
     );
     final url = person.image;
     if (url == null || url.isEmpty) return initial;
-    return CachedNetworkImage(
-      imageUrl: url,
-      fit: BoxFit.cover,
-      alignment: const Alignment(0, -0.64),
-      errorWidget: (_, _, _) => initial,
-    );
+    Widget art(String src, Widget Function() fallback) => CachedNetworkImage(
+          imageUrl: src,
+          fit: BoxFit.cover,
+          alignment: const Alignment(0, -0.64),
+          errorWidget: (_, _, _) => fallback(),
+        );
+    final large = _largeArt(url);
+    if (large == null) return art(url, () => initial);
+    return art(large, () => art(url, () => initial));
+  }
+
+  /// The large character art (about 230 px wide) for AniList's `medium`
+  /// (about 100), which looked soft filling 66 dp on the phone (question
+  /// P4-2; Shahid, 2026-11-05: "Go with your recommendations"). It's the
+  /// image server's naming (`/character/medium/` becomes
+  /// `/character/large/`), as question 167 does for hero covers, not a
+  /// documented API: if it fails, the medium art shows, and then the
+  /// initial. Other hosts come back null.
+  static String? _largeArt(String url) {
+    const medium = '/character/medium/';
+    return url.contains(medium) ? url.replaceFirst(medium, '/character/large/') : null;
   }
 }
 
