@@ -4689,11 +4689,12 @@ class _TasteFan extends StatelessWidget {
 /// A title as a printer's colour proof, the Taste Card's fan while question
 /// 13 keeps AniList's art out of new exports: a block of the show's own
 /// colour, read from its cover (none of the art is printed), and, with a
-/// [title], a strip of proof paper under it with the title in Shippori 11
-/// sumi, up to three lines. The paper ink until the colour is read, and for
-/// a grey cover; the colour fades in over 240 ms, at once with Remove
-/// animations on. [seal], if given, is pressed across its lower right
-/// corner, as on the cover.
+/// [title], a strip of proof paper at its head with the title in Shippori 11
+/// sumi, up to three lines. The strip is at the head, not the foot, so the
+/// seal pressed across the lower right corner never hides it. The paper ink
+/// until the colour is read, and for a grey cover; the colour fades in over
+/// 240 ms, at once with Remove animations on. [seal], if given, is pressed
+/// across its lower right corner, as on the cover.
 class _ColourProof extends StatelessWidget {
   const _ColourProof({this.title, required this.tone, this.seal});
 
@@ -4729,6 +4730,23 @@ class _ColourProof extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  if (title != null)
+                    ColoredBox(
+                      color: _stock,
+                      child: SizedBox(
+                        height: 50,
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(7, 6, 7, 4),
+                          child: Text(title,
+                              maxLines: 3,
+                              overflow: TextOverflow.fade,
+                              style: AppTheme.hankoSerif(
+                                  fontSize: 11,
+                                  color: _Paper.ink,
+                                  height: 1.2)),
+                        ),
+                      ),
+                    ),
                   Expanded(
                     child: TweenAnimationBuilder<Color?>(
                       tween: ColorTween(
@@ -4740,23 +4758,6 @@ class _ColourProof extends StatelessWidget {
                           ColoredBox(color: colour ?? _Paper.ink2),
                     ),
                   ),
-                  if (title != null)
-                    ColoredBox(
-                      color: _stock,
-                      child: SizedBox(
-                        height: 52,
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(7, 6, 7, 5),
-                          child: Text(title,
-                              maxLines: 3,
-                              overflow: TextOverflow.fade,
-                              style: AppTheme.hankoSerif(
-                                  fontSize: 11,
-                                  color: _Paper.ink,
-                                  height: 1.2)),
-                        ),
-                      ),
-                    ),
                 ],
               ),
             ),
@@ -5084,7 +5085,7 @@ class _AuraPlate extends StatelessWidget {
           );
         }
         final w0 =
-            n == 1 ? 140.0 : (n <= 3 ? 120.0 : (n <= 5 ? 104.0 : 92.0));
+            n == 1 ? 150.0 : (n <= 3 ? 128.0 : (n <= 5 ? 116.0 : 104.0));
         // Fit the plate's height, with room for the turn and the shadow.
         final scale = math.min(1.0, (size.height - 40) / (w0 * 325 / 230));
         final w = w0 * scale, h = w * 325 / 230;
