@@ -962,8 +962,20 @@ class _MonthlyAuraTab extends StatelessWidget {
         ?.key;
   }
 
+  /// Round seven's three auras inside coral's hue (round seven's question 3):
+  /// Coral Fire (an empty month, and months led by a genre with no aura of
+  /// its own), Blazing Orange (Action, Sports) and Crimson Edge (Horror,
+  /// Thriller). Coral means only your own verdicts, so their glows already
+  /// turned 30° away while the dot and the name stayed coral-ish. They're
+  /// switched off (Shahid, 2026-11-05: "Go with your recommendations"): each
+  /// takes the colour its glow already had, Blazing Amber and Deep Rose; an
+  /// empty month is a washi Blank Page; and a month led by another genre
+  /// (Sci-Fi, Mecha, Supernatural, Music …) is Cosmic Teal. Kept, not
+  /// deleted (CLAUDE.md); true brings them back.
+  static const bool _coralBandAuras = false;
+
   Color get _auraColor {
-    if (anime.isEmpty) return AppTheme.primary;
+    if (anime.isEmpty) return _coralBandAuras ? AppTheme.primary : AppTheme.hankoWashi;
     final genres = anime.expand((a) => a.genres).toList();
     final genreCount = <String, int>{};
     for (final g in genres) genreCount[g] = (genreCount[g] ?? 0) + 1;
@@ -971,23 +983,31 @@ class _MonthlyAuraTab extends StatelessWidget {
           ..sort((a, b) => b.value.compareTo(a.value)))
         .firstOrNull?.key ?? '';
 
-    if (top == 'Action' || top == 'Sports') return const Color(0xFFFF6B35);
+    if (top == 'Action' || top == 'Sports') {
+      return _coralBandAuras ? const Color(0xFFFF6B35) : const Color(0xFFFFB935);
+    }
     if (top == 'Drama' || top == 'Romance') return const Color(0xFF4A7FB5);
     if (top == 'Comedy' || top == 'Slice of Life') return const Color(0xFFD4A96A);
     if (top == 'Mystery' || top == 'Psychological') return const Color(0xFF9B59B6);
     if (top == 'Fantasy' || top == 'Adventure') return const Color(0xFF4A9B6F);
-    if (top == 'Horror' || top == 'Thriller') return const Color(0xFFCF6679);
-    return AppTheme.primary;
+    if (top == 'Horror' || top == 'Thriller') {
+      return _coralBandAuras ? const Color(0xFFCF6679) : const Color(0xFFCF668B);
+    }
+    return _coralBandAuras ? AppTheme.primary : const Color(0xFF3A9E9B);
   }
 
   String get _auraName {
     final color = _auraColor;
     if (color == const Color(0xFFFF6B35)) return 'Blazing Orange';
+    if (color == const Color(0xFFFFB935)) return 'Blazing Amber';
     if (color == const Color(0xFF4A7FB5)) return 'Ocean Blue';
     if (color == const Color(0xFFD4A96A)) return 'Golden Warmth';
     if (color == const Color(0xFF9B59B6)) return 'Mystic Purple';
     if (color == const Color(0xFF4A9B6F)) return 'Forest Green';
     if (color == const Color(0xFFCF6679)) return 'Crimson Edge';
+    if (color == const Color(0xFFCF668B)) return 'Deep Rose';
+    if (color == AppTheme.hankoWashi) return 'Blank Page';
+    if (color == const Color(0xFF3A9E9B)) return 'Cosmic Teal';
     return 'Coral Fire';
   }
 
