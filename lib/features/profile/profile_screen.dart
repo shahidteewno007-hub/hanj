@@ -369,16 +369,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
               // ── The header (Hanko stage H5, item a) ──────
               // In Print Room (P5) the favourites lie on the wall with it
-              // (_onWall), so they leave their own sliver below.
+              // (_onWall), so they leave their own sliver below. Their
+              // quiet words are washi on the wall and stone without one.
               SliverToBoxAdapter(
                 key: const ValueKey('profile-header'),
                 child: _printRoom
                     ? _onWall(
                         wall: wall,
-                        header: _buildHeader(user, initial),
+                        header: _buildHeader(user, initial,
+                            onWall: wall != null),
                         favourites: favourites == null
                             ? null
-                            : _buildFavourites(favourites),
+                            : _buildFavourites(favourites,
+                                onWall: wall != null),
                       )
                     : _column(_buildHeader(user, initial)),
               ),
@@ -766,7 +769,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
   /// it when the column is narrower, so a long name never squeezes into a
   /// sliver beside the seal. A word too long for even the whole column sets
   /// the name a little smaller (_nameScaler), so it is never broken.
-  Widget _buildHeader(User? user, String initial) {
+  ///
+  /// [onWall]: it lies on Print Room's wall of covers (P5), where all text
+  /// is washi and the Founder badge is a stamp.
+  Widget _buildHeader(User? user, String initial, {bool onWall = false}) {
     final name = user?.displayName ?? 'Anime Fan';
     final since = user?.metadata.creationTime?.year;
     final founder = _founderStatus.isFounder && _founderStatus.number != null;
@@ -785,7 +791,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           if (founder) ...[
             const SizedBox(height: 8),
             // On the wall, a stamp that reads on the covers (Print Room P5).
-            FounderBadge(number: _founderStatus.number!, onWall: _printRoom),
+            FounderBadge(number: _founderStatus.number!, onWall: onWall),
           ],
           if (since != null) ...[
             const SizedBox(height: _printRoom ? 8 : 6),
@@ -795,8 +801,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 fontSize: AppTheme.hankoMetaSize,
                 // On the wall all text is washi (Print Room P5, §9.3 rule
                 // 2): stone falls to about 4.0:1 over a light cover under
-                // the veil, washi keeps 8.96:1.
-                color: _printRoom ? AppTheme.hankoWashi : AppTheme.hankoStone,
+                // the veil, washi keeps 9.2:1 or better. On sumi, stone.
+                color: onWall ? AppTheme.hankoWashi : AppTheme.hankoStone,
                 height: 1.3,
               ),
             ),
@@ -1021,20 +1027,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
   /// the rest are empty dashed slots, Hanko's mark for "not yet". None: the
   /// three slots and a line saying how to fill them. A cover opens its show.
   ///
-  /// In Print Room (P5; §9.5, frame 05) they lie on the wall as prints with
-  /// your seal pressed on each (_favourite), 10 apart, and the aside and the
-  /// line under empty slots are washi, as all text on the wall is.
-  Widget _buildFavourites(List<Map<String, dynamic>> favourites) {
+  /// In Print Room (P5; §9.5, frame 05) they are prints with your seal
+  /// pressed on each (_favourite), 10 apart. On the wall ([onWall]) the
+  /// aside and the line under empty slots are washi, as all text there is.
+  Widget _buildFavourites(List<Map<String, dynamic>> favourites,
+      {bool onWall = false}) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(
           AppTheme.hankoGutter, _printRoom ? 22 : 26, AppTheme.hankoGutter, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const _SectionHead('Favourites',
+          _SectionHead('Favourites',
               aside: 'Your highest rated',
-              asideColor:
-                  _printRoom ? AppTheme.hankoWashi : AppTheme.hankoStone),
+              asideColor: onWall ? AppTheme.hankoWashi : AppTheme.hankoStone),
           LayoutBuilder(builder: (context, constraints) {
             const gap = _printRoom ? 10.0 : 8.0;
             final width = (constraints.maxWidth - 2 * gap) / 3;
@@ -1063,7 +1069,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               'Rate shows on their pages to fill these.',
               style: AppTheme.hankoSans(
                 fontSize: AppTheme.hankoMetaSize,
-                color: _printRoom ? AppTheme.hankoWashi : AppTheme.hankoStone,
+                color: onWall ? AppTheme.hankoWashi : AppTheme.hankoStone,
                 height: 1.4,
               ),
             ),
