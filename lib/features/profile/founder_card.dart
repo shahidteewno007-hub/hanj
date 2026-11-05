@@ -322,25 +322,36 @@ class FounderCardPlaceholder extends StatelessWidget {
 /// "Founder #7" in Jost 500 washi (15.3:1) and the icon in stone. Coral
 /// marks only your verdicts now, so the pill no longer borrows it. Kept
 /// small and unfilled so it reads as a label, not as a chip to press.
+///
+/// [onWall] is for Profile's header on Print Room's wall of covers (P5;
+/// DESIGN.md §9.5, frame 05's stamp): a washi hairline at 60% on a sumi
+/// ground at 35%, with the icon in washi, so the stamp reads on the covers
+/// behind it, where the edge outline and the stone icon sink.
 class FounderBadge extends StatelessWidget {
   final int number;
-  const FounderBadge({super.key, required this.number});
+  final bool onWall;
+  const FounderBadge({super.key, required this.number, this.onWall = false});
 
   @override
   Widget build(BuildContext context) {
     if (_preHankoFounder) return _buildCoralPill();
     return DecoratedBox(
       decoration: BoxDecoration(
+        color: onWall ? AppTheme.hankoSumi.withValues(alpha: 0.35) : null,
         borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
-        border: Border.all(color: AppTheme.hankoEdge),
+        border: Border.all(
+            color: onWall
+                ? AppTheme.hankoWashi.withValues(alpha: 0.6)
+                : AppTheme.hankoEdge),
       ),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(6, 3, 8, 3),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.workspace_premium_sharp,
-                size: 14, color: AppTheme.hankoStone),
+            Icon(Icons.workspace_premium_sharp,
+                size: 14,
+                color: onWall ? AppTheme.hankoWashi : AppTheme.hankoStone),
             const SizedBox(width: 4),
             Flexible(
               child: Text(

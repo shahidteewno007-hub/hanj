@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -9,6 +10,7 @@ import '../../core/responsive.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/anime_model.dart';
 import '../../models/hanj_shelves.dart';
+import '../../widgets/hanko_print.dart';
 import '../../widgets/hanko_seal.dart';
 import '../../widgets/hanko_seal_register.dart';
 import '../../services/auth_service.dart';
@@ -49,6 +51,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
   // the card's footprint is reserved, so it fills in instead of popping in.
   bool _founderResolved = false;
   Map<String, dynamic>? _featuredCard;
+
+  // ── Print Room, stage P5 (DESIGN.md §9; Shahid chose it 2026-11-03) ──
+  // Profile in prints (§9.5, frames 05 and 15): your name and your
+  // favourites lie on a wall of covers from your list, under a dark veil
+  // (question 166), with the bar a window onto it; your name at 30, on the
+  // wall in washi; the three favourites as prints with your seal pressed on
+  // each. Round seven's Profile (the sumi bar, the name at 28, the flat
+  // favourites and the stone captions) is kept intact behind this switch.
+  static const bool _printRoom = true;
+
+  // The wall built from its covers (Print Room P5), kept while they stay
+  // the same, so Profile's rebuilds (every snapshot, the Founder status, the
+  // avatar) don't build its covers again, in the bar and on the page.
+  List<String> _wallCoversBuilt = const [];
+  int _wallDecodeBuilt = 0;
+  Widget? _wallBuilt;
 
   static const _avatarGradients = [
     [Color(0xFF7C3AED), Color(0xFFE91E8C)],
@@ -224,6 +242,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
               .map((e) => e.key)
               .toList();
           final shelves = _shelves(entries);
+          // Print Room (P5): the favourites lie on the wall with the
+          // header, and the wall takes its covers from the same list.
+          final favourites = _printRoom && listKnown && totalAnime > 0
+              ? _topRated(entries)
+              : null;
+          final wall = favourites == null
+              ? null
+              : _wallFor(_wallCovers(entries, favourites));
 
           return MediaQuery.removePadding(
             context: context,
@@ -232,9 +258,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
             slivers: [
               // ── AppBar ──────────────────────────────────
               // Name first (Hanko stage H5): the name below heads the page, so
-              // the bar keeps only its actions, as hanko.html draws it.
+              // the bar keeps only its actions, as hanko.html draws it. In
+              // Print Room (P5) the bar is a window onto the wall (_WallWindow),
+              // with no tint or lift when the page scrolls under it.
               SliverAppBar(
-                backgroundColor: AppTheme.background,
+                backgroundColor:
+                    _printRoom ? Colors.transparent : AppTheme.background,
+                surfaceTintColor: _printRoom ? Colors.transparent : null,
+                scrolledUnderElevation: _printRoom ? 0 : null,
+                flexibleSpace: _printRoom ? _WallWindow(wall: wall) : null,
                 floating: true,
                 snap: true,
                 actions: [
@@ -336,9 +368,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
 
               // ── The header (Hanko stage H5, item a) ──────
+              // In Print Room (P5) the favourites lie on the wall with it
+              // (_onWall), so they leave their own sliver below.
               SliverToBoxAdapter(
                 key: const ValueKey('profile-header'),
-                child: _column(_buildHeader(user, initial)),
+                child: _printRoom
+                    ? _onWall(
+                        wall: wall,
+                        header: _buildHeader(user, initial),
+                        favourites: favourites == null
+                            ? null
+                            : _buildFavourites(favourites),
+                      )
+                    : _column(_buildHeader(user, initial)),
               ),
 
               // ── The list couldn't be read ────────────────
@@ -349,7 +391,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
 
               // ── Favourites (Hanko stage H5, item c) ──────
-              if (listKnown && totalAnime > 0)
+              if (!_printRoom && listKnown && totalAnime > 0)
                 SliverToBoxAdapter(
                   key: const ValueKey('profile-favourites'),
                   child: _column(_buildFavourites(_topRated(entries))),
@@ -594,6 +636,124 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  /// Print Room's header (P5; DESIGN.md §9.5, frames 05 and 15): your name
+  /// and, once the list is read, your favourites, lying on the wall of your
+  /// list. The wall runs the page's width under the record's column, from
+  /// the bar's top (it starts [kToolbarHeight] above this block, which the
+  /// bar's window shows) and is cut at the block's foot, where its veil is
+  /// at 96% or more. A transparent Material lies between the wall and the
+  /// words, so the header's press wash shows over the covers: ink is drawn
+  /// on the Material below a widget. The wall is built a frame after the
+  /// list lands (_NextFrame), out of the frame that builds the rest of the
+  /// page. Without a wall the block is the header and favourites on sumi;
+  /// it stays in the Stack either way, so the wall arriving doesn't rebuild
+  /// the words from scratch.
+  Widget _onWall({
+    required Widget? wall,
+    required Widget header,
+    required Widget? favourites,
+  }) {
+    final record = _column(Material(
+      type: MaterialType.transparency,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          header,
+          if (favourites != null) ...[
+            favourites,
+            // The counts' own 22 make the mockup's 30 below the prints.
+            const SizedBox(height: 8),
+          ],
+        ],
+      ),
+    ));
+    return Stack(
+      children: [
+        if (wall != null)
+          Positioned(
+            left: 0,
+            right: 0,
+            top: -kToolbarHeight,
+            height: _Wall.height,
+            child: _NextFrame(child: wall),
+          ),
+        record,
+      ],
+    );
+  }
+
+  /// The wall for [covers] (Print Room P5), or null with fewer than
+  /// [_Wall.fewest]: three covers three times over read as wallpaper, not as
+  /// your list, so a short list keeps the header on sumi. The same wall is
+  /// returned while the covers and the screen's density stay the same.
+  Widget? _wallFor(List<String> covers) {
+    if (covers.length < _Wall.fewest) return null;
+    // Half the wall's resolution: under its veil the softness doesn't show,
+    // and 24 covers decode to about a quarter of the memory.
+    final decode = (_Wall.tileWidth *
+            MediaQuery.devicePixelRatioOf(context) / 2)
+        .round()
+        .clamp(48, 230);
+    final built = _wallBuilt;
+    if (built != null &&
+        decode == _wallDecodeBuilt &&
+        listEquals(covers, _wallCoversBuilt)) {
+      return built;
+    }
+    _wallCoversBuilt = covers;
+    _wallDecodeBuilt = decode;
+    return _wallBuilt = _Wall(covers: covers, decodeWidth: decode);
+  }
+
+  /// The covers on the wall (Print Room P5): your list's stored covers, the
+  /// shows you've started before your watchlist, each most recently active
+  /// first (the latest of lastWatched, ratedAt and addedAt), ties by title so
+  /// the wall never shuffles between visits. Your favourites go last, since
+  /// they lie on the wall as prints. Each cover once, at most [_Wall.most]:
+  /// the wall repeats them to fill its places. Every one is a URL the list
+  /// already shows, so nothing new is asked of AniList.
+  static List<String> _wallCovers(List<Map<String, dynamic>> entries,
+      List<Map<String, dynamic>> favourites) {
+    final ranked = <({String url, int rank, DateTime? at, String title})>[];
+    for (final e in entries) {
+      final url = (e['imageUrl'] as String?)?.trim() ?? '';
+      if (url.isEmpty) continue;
+      DateTime? at;
+      for (final key in const ['lastWatched', 'ratedAt', 'addedAt']) {
+        final when = _when(e[key]);
+        if (when != null && (at == null || when.isAfter(at))) at = when;
+      }
+      ranked.add((
+        url: url,
+        rank: favourites.contains(e)
+            ? 2
+            : e['status'] == 'PLAN_TO_WATCH'
+                ? 1
+                : 0,
+        at: at,
+        title: ((e['title'] as String?) ?? '').toLowerCase(),
+      ));
+    }
+    ranked.sort((a, b) {
+      if (a.rank != b.rank) return a.rank.compareTo(b.rank);
+      final aAt = a.at, bAt = b.at;
+      if (aAt != bAt) {
+        if (aAt == null) return 1;
+        if (bAt == null) return -1;
+        final byDate = bAt.compareTo(aAt);
+        if (byDate != 0) return byDate;
+      }
+      return a.title.compareTo(b.title);
+    });
+    final covers = <String>{};
+    for (final r in ranked) {
+      covers.add(r.url);
+      if (covers.length == _Wall.most) break;
+    }
+    return covers.toList();
+  }
+
   /// The header (Hanko stage H5, item a): your monogram, your name, the
   /// Founder pill under it, and "Logging anime since 2025" from the
   /// account's creation date. Hanj keeps no handle (no username field), so
@@ -622,15 +782,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
           if (founder) ...[
             const SizedBox(height: 8),
-            FounderBadge(number: _founderStatus.number!),
+            // On the wall, a stamp that reads on the covers (Print Room P5).
+            FounderBadge(number: _founderStatus.number!, onWall: _printRoom),
           ],
           if (since != null) ...[
-            const SizedBox(height: 6),
+            const SizedBox(height: _printRoom ? 8 : 6),
             Text(
               'Logging anime since $since',
               style: AppTheme.hankoSans(
                 fontSize: AppTheme.hankoMetaSize,
-                color: AppTheme.hankoStone,
+                // On the wall all text is washi (Print Room P5, §9.3 rule
+                // 2): stone falls to about 4.0:1 over a light cover under
+                // the veil, washi keeps 8.96:1.
+                color: _printRoom ? AppTheme.hankoWashi : AppTheme.hankoStone,
                 height: 1.3,
               ),
             ),
@@ -639,15 +803,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
       );
       final monogram = _Monogram(initial: initial, imageUrl: _avatarImageUrl);
       // Beside the monogram when there are 200 px there and the name's
-      // longest word fits them; otherwise under it.
-      final room = constraints.maxWidth - _Monogram.size - 14;
+      // longest word fits them; otherwise under it. In Print Room (P5) the
+      // two centre on each other, 16 apart, as frame 05 sets them.
+      const gap = _printRoom ? 16.0 : 14.0;
+      final room = constraints.maxWidth - _Monogram.size - gap;
       final beside = room >= 200 && _longestWord(context, name) <= room;
       return beside
           ? Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: _printRoom
+                  ? CrossAxisAlignment.center
+                  : CrossAxisAlignment.start,
               children: [
                 monogram,
-                const SizedBox(width: 14),
+                const SizedBox(width: gap),
                 Expanded(child: words),
               ],
             )
@@ -681,7 +849,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final card = _pinnedCardInHeader ? _featuredCard : null;
     return Padding(
       padding: const EdgeInsets.fromLTRB(
-          AppTheme.hankoGutter, 4, AppTheme.hankoGutter, 0),
+          AppTheme.hankoGutter, _printRoom ? 6 : 4, AppTheme.hankoGutter, 0),
       // Switched off (_pinnedCardInHeader): your pinned Hanj Card stood
       // beside your name (item b), as hanko.html places it, at the right of
       // the header. When the column left beside it couldn't hold the name's
@@ -761,9 +929,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return TextScaler.linear((fitted < 1 ? 1 : fitted) / size);
   }
 
-  /// The name's style: Shippori 28, as hanko.html sets it.
-  static final TextStyle _nameStyle =
-      AppTheme.hankoSerif(fontSize: 28, height: 1.15);
+  /// The name's style: Shippori 28, as hanko.html sets it. In Print Room
+  /// (P5) the name is at 30 (§9.3 rule 6), line height 1.1: the mockup's
+  /// 1.05 crowds a name on two lines.
+  static final TextStyle _nameStyle = _printRoom
+      ? AppTheme.hankoSerif(fontSize: 30, height: 1.1)
+      : AppTheme.hankoSerif(fontSize: 28, height: 1.15);
 
   /// Your pinned Hanj Card (Hanko stage H5, item b), drawn at 0.7 of its
   /// 200 x 300 (140 x 210), so its name sets at about 12.6 px; at the old
@@ -847,16 +1018,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
   /// covers' own 230 : 325, so nothing is cropped. Fewer than three rated:
   /// the rest are empty dashed slots, Hanko's mark for "not yet". None: the
   /// three slots and a line saying how to fill them. A cover opens its show.
+  ///
+  /// In Print Room (P5; §9.5, frame 05) they lie on the wall as prints with
+  /// your seal pressed on each (_favourite), 10 apart, and the aside and the
+  /// line under empty slots are washi, as all text on the wall is.
   Widget _buildFavourites(List<Map<String, dynamic>> favourites) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(
-          AppTheme.hankoGutter, 26, AppTheme.hankoGutter, 0),
+          AppTheme.hankoGutter, _printRoom ? 22 : 26, AppTheme.hankoGutter, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const _SectionHead('Favourites', aside: 'Your highest rated'),
+          const _SectionHead('Favourites',
+              aside: 'Your highest rated',
+              asideColor:
+                  _printRoom ? AppTheme.hankoWashi : AppTheme.hankoStone),
           LayoutBuilder(builder: (context, constraints) {
-            const gap = 8.0;
+            const gap = _printRoom ? 10.0 : 8.0;
             final width = (constraints.maxWidth - 2 * gap) / 3;
             final height = width * 325 / 230;
             return Row(
@@ -883,7 +1061,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               'Rate shows on their pages to fill these.',
               style: AppTheme.hankoSans(
                 fontSize: AppTheme.hankoMetaSize,
-                color: AppTheme.hankoStone,
+                color: _printRoom ? AppTheme.hankoWashi : AppTheme.hankoStone,
                 height: 1.4,
               ),
             ),
@@ -900,14 +1078,32 @@ class _ProfileScreenState extends State<ProfileScreen> {
   /// with neither. The cover is left out of the tree, since the label names
   /// the show. Its ink lies over the art, so focus shows (question 155;
   /// see _CoverButton).
+  ///
+  /// In Print Room (P5) the cover is P1's print, lying on the wall with the
+  /// hero's shadow (they are Profile's hero prints, §9.3 rule 1; question
+  /// 161), the 460 px cover asked for as Home's and Detail's heroes are
+  /// (question 167), and your seal pressed across its foot's right corner,
+  /// 8 past each edge, as frame 05 presses it: Hanko's seal at 30, coral
+  /// with its sumi keyline, so it stays clear of a cover near its hue. Every
+  /// favourite is one you rated, so every one carries your seal.
   Widget _favourite(Map<String, dynamic> entry, double width, double height) {
     final title = entry['title'] as String? ?? 'Unknown';
-    final rating = HankoSeal.formatScore((entry['userRating'] as num).toDouble());
+    final score = (entry['userRating'] as num).toDouble();
+    final rating = HankoSeal.formatScore(score);
     return _CoverButton(
       label: 'Favourite: $title, your rating $rating',
       onTap: () => _openEntry(entry),
-      child: _Cover(
-          url: entry['imageUrl'] as String?, width: width, height: height),
+      child: _printRoom
+          ? HankoPrint(
+              url: entry['imageUrl'] as String?,
+              width: width,
+              height: height,
+              lift: HankoPrintLift.large,
+              sharp: true,
+              seal: HankoSeal.score(score, size: 30),
+            )
+          : _Cover(
+              url: entry['imageUrl'] as String?, width: width, height: height),
     );
   }
 
@@ -1638,10 +1834,14 @@ class _Monogram extends StatelessWidget {
 /// under the head when the line is too short, so large text never pushes
 /// it off the edge.
 class _SectionHead extends StatelessWidget {
-  const _SectionHead(this.title, {this.aside, this.bottom = 12});
+  const _SectionHead(this.title,
+      {this.aside, this.asideColor = AppTheme.hankoStone, this.bottom = 12});
 
   final String title;
   final String? aside;
+
+  /// The aside's colour: stone on sumi; washi on Print Room's wall (P5).
+  final Color asideColor;
 
   /// Space below the head; 8 where a caption follows it.
   final double bottom;
@@ -1673,7 +1873,7 @@ class _SectionHead extends StatelessWidget {
                   Text(aside,
                       style: AppTheme.hankoSans(
                         fontSize: AppTheme.hankoLabelSize,
-                        color: AppTheme.hankoStone,
+                        color: asideColor,
                         height: 1.3,
                       )),
                 ],
@@ -1714,6 +1914,221 @@ class _Cover extends StatelessWidget {
       ),
     );
   }
+}
+
+/// The wall behind Profile's header (Print Room P5; DESIGN.md §9.5, frame
+/// 05; question 166): covers from your list in rows of 64 x 92, 3 apart,
+/// under a veil of sumi, so your name and your favourites lie on your list.
+///
+/// It is drawn in its own coordinates, from the bar's top at rest: the
+/// mockup's grid, from 14 left of the page and 42 above it, in four rows
+/// (six covers across at 360 dp, more on a wider window); and the veil,
+/// sumi at 82% from the top, 84% at 174, 96% at 304 and solid at [height]
+/// (frame 05's 0, 200, 330 and 410 from its screen's top, measured from its
+/// bar). It is fixed, as the mockup's is, so the bar's window (_WallWindow)
+/// and the page (_onWall) draw one wall with no seam, at any text size.
+///
+/// With fewer covers than places, each row starts a few covers on from the
+/// one above (_stride), so no cover ever touches itself. Each is decoded at
+/// [decodeWidth] (_wallFor) from its stored URL, so the download is the one
+/// the list's covers already make. Flat covers under a flat veil: the art
+/// is never blurred (§9.3). Its own layer, out of hit tests and the
+/// screen-reader tree.
+class _Wall extends StatelessWidget {
+  const _Wall({required this.covers, required this.decodeWidth});
+
+  final List<String> covers;
+  final int decodeWidth;
+
+  static const double tileWidth = 64;
+  static const double tileHeight = 92;
+  static const double gap = 3;
+  static const int rows = 4;
+
+  /// The wall's foot, where its veil is solid sumi.
+  static const double height = 384;
+
+  /// No more covers than this are decoded (question 166's 24).
+  static const int most = 24;
+
+  /// With fewer covers there is no wall (_wallFor).
+  static const int fewest = 8;
+
+  static final BoxDecoration _veil = BoxDecoration(
+    gradient: LinearGradient(
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+      colors: [
+        AppTheme.hankoSumi.withValues(alpha: 0.82),
+        AppTheme.hankoSumi.withValues(alpha: 0.84),
+        AppTheme.hankoSumi.withValues(alpha: 0.96),
+        AppTheme.hankoSumi,
+      ],
+      stops: const [0, 174 / height, 304 / height, 1],
+    ),
+  );
+
+  /// How many covers on each row starts from the row above: its own length,
+  /// or three more. With [count] covers, two places k apart in reading
+  /// order show the same cover when [count] divides k, and the places above
+  /// and at the corners are stride and stride ± 1 apart. With 8 covers or
+  /// more, one of the two keeps all three clear.
+  static int _stride(int count, int columns) {
+    bool clear(int stride) =>
+        stride % count != 0 &&
+        (stride - 1) % count != 0 &&
+        (stride + 1) % count != 0;
+    return clear(columns) ? columns : columns + 3;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return RepaintBoundary(
+      child: IgnorePointer(
+        child: ExcludeSemantics(
+          child: LayoutBuilder(builder: (context, constraints) {
+            const left = -14.0, top = -42.0;
+            final columns =
+                ((constraints.maxWidth - left) / (tileWidth + gap)).ceil();
+            final stride = _stride(covers.length, columns);
+            return Stack(
+              children: [
+                for (var r = 0; r < rows; r++)
+                  for (var c = 0; c < columns; c++)
+                    Positioned(
+                      left: left + c * (tileWidth + gap),
+                      top: top + r * (tileHeight + gap),
+                      width: tileWidth,
+                      height: tileHeight,
+                      child: _WallTile(
+                        url: covers[(r * stride + c) % covers.length],
+                        decodeWidth: decodeWidth,
+                      ),
+                    ),
+                Positioned.fill(child: DecoratedBox(decoration: _veil)),
+              ],
+            );
+          }),
+        ),
+      ),
+    );
+  }
+}
+
+/// One cover on the wall (_Wall), decoded [decodeWidth] px wide from the
+/// list's stored URL and cropped to its place. It fades in over 240 ms when
+/// it arrives (at once from memory, or with Remove animations on), so the
+/// covers don't flicker in one by one. A cover that can't load leaves its
+/// place to the veil; the Image handles the error, so nothing is reported.
+class _WallTile extends StatelessWidget {
+  const _WallTile({required this.url, required this.decodeWidth});
+
+  final String url;
+  final int decodeWidth;
+
+  @override
+  Widget build(BuildContext context) {
+    final still = MediaQuery.disableAnimationsOf(context);
+    return Image(
+      image: ResizeImage(CachedNetworkImageProvider(url), width: decodeWidth),
+      fit: BoxFit.cover,
+      gaplessPlayback: true,
+      excludeFromSemantics: true,
+      errorBuilder: (_, _, _) => const SizedBox.shrink(),
+      frameBuilder: (context, child, frame, loadedAtOnce) => loadedAtOnce
+          ? child
+          : AnimatedOpacity(
+              opacity: frame == null ? 0 : 1,
+              duration: still
+                  ? Duration.zero
+                  : const Duration(milliseconds: 240),
+              child: child,
+            ),
+    );
+  }
+}
+
+/// Print Room's bar on Profile (P5): a window onto the wall. Behind Import,
+/// Edit and the ⋮ menu it draws sumi and, over it, the wall at the place
+/// the bar covers. At rest the wall reads as one from Profile's top; once
+/// the page scrolls, the bar shows exactly what lies under it, the veiled
+/// wall and then sumi, and nothing scrolls through it.
+///
+/// The bar floats and snaps, so the place it covers is the page's offset
+/// less how far the bar has slid up out of view, which its settings'
+/// toolbarOpacity says: right whether it scrolls away with the page or
+/// floats back in over it. The wall is its own layer and only moves; past
+/// the wall's foot it isn't painted, but it stays built, so scrolling back
+/// up never waits for it. Without a wall the bar is sumi, as round seven's.
+class _WallWindow extends StatelessWidget {
+  const _WallWindow({required this.wall});
+
+  final Widget? wall;
+
+  @override
+  Widget build(BuildContext context) {
+    final wall = this.wall;
+    final settings =
+        context.dependOnInheritedWidgetOfExactType<FlexibleSpaceBarSettings>();
+    final position = Scrollable.maybeOf(context)?.position;
+    if (wall == null || settings == null || position == null) {
+      return const ColoredBox(color: AppTheme.hankoSumi);
+    }
+    final slid = settings.maxExtent * (1 - settings.toolbarOpacity);
+    return ClipRect(
+      child: ColoredBox(
+        color: AppTheme.hankoSumi,
+        child: AnimatedBuilder(
+          animation: position,
+          child: _NextFrame(child: wall),
+          builder: (context, wall) {
+            final from = position.pixels - slid;
+            final past = from >= _Wall.height;
+            return Stack(
+              children: [
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  top: past ? -_Wall.height : -from,
+                  height: _Wall.height,
+                  child: Offstage(offstage: past, child: wall),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+/// Builds [child] a frame after it first appears (Print Room, P5; P4's on
+/// Detail). The wall comes with your list, in a frame that already builds
+/// the favourites, the counts, the register, the diary and the shelves, so
+/// it is built a frame later, behind them, and the work is split in two.
+class _NextFrame extends StatefulWidget {
+  const _NextFrame({required this.child});
+
+  final Widget child;
+
+  @override
+  State<_NextFrame> createState() => _NextFrameState();
+}
+
+class _NextFrameState extends State<_NextFrame> {
+  bool _ready = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) setState(() => _ready = true);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      _ready ? widget.child : const SizedBox.shrink();
 }
 
 /// Art that opens something: a favourite's or a shelf's cover, or the
