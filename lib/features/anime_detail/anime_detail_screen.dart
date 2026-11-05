@@ -13,6 +13,9 @@ import 'package:gal/gal.dart';
 import 'package:http/http.dart' as http;
 
 import '../../widgets/anilist_saved_note.dart';
+import '../../widgets/hanko_cover_colour.dart';
+import '../../widgets/hanko_field.dart';
+import '../../widgets/hanko_print.dart';
 import '../../widgets/hanko_rating_ruler.dart';
 import '../../widgets/hanko_reel.dart';
 import '../../widgets/hanko_seal.dart';
@@ -46,6 +49,15 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
   // since Hanko's header replaced it in stage H3. Kept, not deleted
   // (CLAUDE.md); true brings it back as it was. See _classicHeader.
   static const bool _classicDetail = false;
+
+  // Print Room's Detail (DESIGN.md §9.5, stage P4; Shahid chose Print Room
+  // 2026-11-03): the show's colour always on behind the print, from the top
+  // of the screen, with a glow behind it; P1's print with its shadow and
+  // sharp cover; the colophon in washi and the title at 28; and, on
+  // Overview, the cast as round portraits and You may like as prints on
+  // mats. Round seven's Detail is kept, not deleted (CLAUDE.md): false
+  // brings it back as it was, the tint and all.
+  static const bool _printRoom = true;
 
   final _firestoreService = FirestoreService();
   final _aniListService   = AnilistService();
@@ -107,6 +119,19 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
   // rebuilds nothing else.
   final ValueNotifier<SeasonChain?> _seasons = ValueNotifier<SeasonChain?>(null);
 
+  // Print Room's field (P4). Its colour is AniList's coverImage.color, from
+  // the staff answer. Until that lands, a colour the Seasons walk already
+  // knows for this show (_knownColour), so a season opened from the strip
+  // has its field in the first frame. Without either, once AniList has
+  // answered or failed (_staffSettled), the cover's own colour, read from
+  // the cover by HankoCoverColour (_coverRead): waiting for the answer means
+  // the field never shows the cover's colour and then switches to AniList's.
+  // A MyAnimeList import reads its cover at once: AniList's data isn't its
+  // own (§6c). A grey cover has no colour, so the page stays sumi.
+  Color? _knownColour;
+  Color? _coverRead;
+  bool _staffSettled = false;
+
   @override
   void initState() {
     super.initState();
@@ -115,6 +140,12 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
     // opened from the strip shows the strip in its first frame.
     final id = int.tryParse(widget.anime.id);
     if (id != null && !_isMalImport) _seasons.value = AnilistService.knownSeasons(id);
+    if (_printRoom) {
+      for (final s in _seasons.value?.seasons ?? const <AnimeSeason>[]) {
+        if (s.id == id) _knownColour = _hexColor(s.coverColor);
+      }
+      if (_isMalImport) _readCover();
+    }
     _loadData();
     // Cache the anime for offline viewing later. Only a full entry (D18): a
     // stub from a list row has no synopsis or score, and caching it over a
@@ -325,7 +356,10 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
           // the top-scored shows of its first genre.
           _relatedAnime = _aniListService.recommendationsFrom(data);
           _isLoadingRelated = false;
+          _staffSettled = true;
         });
+        // Print Room's field: no colour from AniList, so the cover's own.
+        if (_printRoom && _coverColor == null && _knownColour == null) _readCover();
         // The Seasons strip (round seven): the answer carries this show's
         // relations. The walk starts from them after this frame, so the
         // strip adds nothing to the frame the answer lands in.
@@ -341,10 +375,36 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
         }
       }
     } catch (_) {
-      if (mounted) _staffChanged(() { _isLoadingStaff = false; _isLoadingRelated = false; });
+      if (mounted) _staffChanged(() { _isLoadingStaff = false; _isLoadingRelated = false; _staffSettled = true; });
       // The seasons known from before still show.
       if (mounted) _walkSeasonsSoon();
+      // Print Room's field, offline too: the cover is on screen already.
+      if (mounted && _printRoom && _knownColour == null) _readCover();
     }
+  }
+
+  /// Reads the cover's own colour for Print Room's field (P4), from the
+  /// cover Detail shows, with no request of its own: HankoCoverColour
+  /// decodes it small from the same image. It never throws (Crashlytics
+  /// reports an unhandled async error as fatal).
+  void _readCover() {
+    final url = widget.anime.imageUrl ?? _anime.imageUrl;
+    if (url == null || url.isEmpty) return;
+    if (HankoCoverColour.knows(url)) {
+      _staffChanged(() => _coverRead = HankoCoverColour.peek(url));
+      return;
+    }
+    unawaited(HankoCoverColour.ofUrl(url).then((colour) {
+      if (mounted && colour != null) _staffChanged(() => _coverRead = colour);
+    }));
+  }
+
+  /// Print Room's field colour (P4): AniList's, else what the Seasons walk
+  /// knew, else the cover's own once AniList has had its say.
+  Color? get _fieldColour {
+    final anilist = _coverColor ?? _knownColour;
+    if (anilist != null) return anilist;
+    return _staffSettled || _isMalImport ? _coverRead : null;
   }
 
   /// Walks this show's seasons after the current frame (round seven).
@@ -1202,12 +1262,19 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
         // own (question 115).
         flexibleSpace: ListenableBuilder(
           listenable: _staffVersion,
-          builder: (_, _) => _HankoBar(
-            scroll: _scroll,
-            tint: AppTheme.hankoCoverTint(_coverColor),
-            geometry: HankoDetailHeader.geometryFor(MediaQuery.sizeOf(context).width),
-            title: title,
-          ),
+          builder: (_, _) => _printRoom
+              ? _PrintRoomBar(
+                  scroll: _scroll,
+                  colour: _fieldColour,
+                  geometry: HankoDetailHeader.geometryFor(MediaQuery.sizeOf(context).width),
+                  title: title,
+                )
+              : _HankoBar(
+                  scroll: _scroll,
+                  tint: AppTheme.hankoCoverTint(_coverColor),
+                  geometry: HankoDetailHeader.geometryFor(MediaQuery.sizeOf(context).width),
+                  title: title,
+                ),
         ),
       ),
       SliverToBoxAdapter(
@@ -1221,7 +1288,8 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
               nativeTitle: _nativeTitle,
               coverUrl: cover,
               sharpCoverUrl: _sharpCover,
-              coverColor: _coverColor,
+              // Print Room's field colour (P4): AniList's, or the cover's own.
+              coverColor: _printRoom ? _fieldColour : _coverColor,
               // The studio and director links (H3 k): the pages Detail already
               // opened from its Information block and its Cast tab.
               studio: studio,
@@ -1340,7 +1408,9 @@ class HankoDetailHeader extends StatefulWidget {
   final String? sharpCoverUrl;
 
   /// AniList's `coverImage.color`: the print's colour until the art loads,
-  /// and at 20% the field behind it, neutral near the seal's hue.
+  /// and at 20% the field behind it, neutral near the seal's hue. In Print
+  /// Room (P4) the field's colour, AniList's or else the cover's own, mixed
+  /// by the field rule with no hue guard.
   final Color? coverColor;
 
   final String? studio;
@@ -1593,18 +1663,32 @@ class _HankoDetailHeaderState extends State<HankoDetailHeader> {
         final onList = widget.entryLoaded && widget.status != null;
         final watched = widget.currentEpisode ??
             (widget.status == 'COMPLETED' ? widget.episodes ?? 0 : 0);
+        final printRoom = _AnimeDetailScreenState._printRoom;
         return Stack(
           children: [
-            Positioned(
-              left: 0,
-              right: 0,
-              top: 0,
-              height: g.fieldHeight,
-              child: _HankoField(
-                tint: AppTheme.hankoCoverTint(widget.coverColor),
-                fadeFrom: g.fadeFrom / g.fieldHeight,
+            if (printRoom)
+              Positioned(
+                left: 0,
+                right: 0,
+                top: 0,
+                height: _PrintRoomField.end(g.printHeight),
+                child: _PrintRoomField(
+                  colour: widget.coverColor,
+                  printWidth: g.printWidth,
+                  printHeight: g.printHeight,
+                ),
+              )
+            else
+              Positioned(
+                left: 0,
+                right: 0,
+                top: 0,
+                height: g.fieldHeight,
+                child: _HankoField(
+                  tint: AppTheme.hankoCoverTint(widget.coverColor),
+                  fadeFrom: g.fadeFrom / g.fieldHeight,
+                ),
               ),
-            ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: AppTheme.hankoGutter),
               child: Column(
@@ -1617,16 +1701,27 @@ class _HankoDetailHeaderState extends State<HankoDetailHeader> {
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          _HankoPrint(
-                            width: g.printWidth,
-                            height: g.printHeight,
-                            title: widget.title,
-                            coverUrl: widget.coverUrl,
-                            sharpCoverUrl: widget.sharpCoverUrl,
-                            coverColor: widget.coverColor,
-                            nativeTitle: widget.nativeTitle,
-                            onTap: widget.onCover,
-                          ),
+                          if (printRoom)
+                            _PrintRoomPrint(
+                              width: g.printWidth,
+                              height: g.printHeight,
+                              title: widget.title,
+                              coverUrl: widget.coverUrl,
+                              coverColor: widget.coverColor,
+                              nativeTitle: widget.nativeTitle,
+                              onTap: widget.onCover,
+                            )
+                          else
+                            _HankoPrint(
+                              width: g.printWidth,
+                              height: g.printHeight,
+                              title: widget.title,
+                              coverUrl: widget.coverUrl,
+                              sharpCoverUrl: widget.sharpCoverUrl,
+                              coverColor: widget.coverColor,
+                              nativeTitle: widget.nativeTitle,
+                              onTap: widget.onCover,
+                            ),
                           const SizedBox(width: 20),
                           Expanded(
                             // At least the print's height, so the caption can
@@ -1706,7 +1801,8 @@ class _HankoDetailHeaderState extends State<HankoDetailHeader> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 12),
+                  // Print Room's title is larger (28) and needs the air.
+                  SizedBox(height: printRoom ? _PrintRoomField.titleGap : 12),
                   _HankoTitle(title: widget.title),
                   const SizedBox(height: 8),
                   // The status row (H3 g): "Add to list" as the screen's one
@@ -2173,6 +2269,263 @@ class _HankoBar extends StatelessWidget {
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+/// Print Room's field on Detail (stage P4; DESIGN.md §9.5, frame 03): the
+/// show's colour by the field rule (AppTheme.hankoField: at most 45% of it
+/// in sumi, capped at a luminance of 0.10 where text sits, no hue guard),
+/// always on, from the top of the screen, with a glow of the colour behind
+/// the print.
+///
+/// It's anchored to the print, not the title, so it's the same whatever the
+/// title's length or the text size: solid down to [_lead] above the print's
+/// foot, then fading over 150 dp to nothing [_tail] below it, the mockup's
+/// numbers for a two-line title. The glow is P1's (the field rule at the
+/// glow cap, for where no text sits), a circle of [_glowRadius] round the
+/// print's centre: the mockup's 170 × 210 ellipse, made round as
+/// HankoField's glow is.
+///
+/// It's P1's HankoField on a box of known size, in the header's coordinates
+/// (its top is the bar's foot). [above] reaches the box up past the
+/// header's top: the bar draws the same field from the top of the screen
+/// (_PrintRoomBar), so the two meet with no seam.
+class _PrintRoomField extends StatelessWidget {
+  const _PrintRoomField({
+    required this.colour,
+    required this.printWidth,
+    required this.printHeight,
+    this.above = 0,
+  });
+
+  final Color? colour;
+  final double printWidth;
+  final double printHeight;
+
+  /// How far the box reaches above the header's top.
+  final double above;
+
+  /// Where the print starts in the header (HankoDetailHeader's 4 dp).
+  static const double _printTop = 4;
+  static const double _lead = 49;
+  static const double _tail = 101;
+  static const double _glowRadius = 170;
+
+  /// From the print's foot to the title: the larger title needs the air.
+  static const double titleGap = 20;
+
+  /// Where the field ends, in the header: [_tail] below the print's foot.
+  static double end(double printHeight) => _printTop + printHeight + _tail;
+
+  /// Where the title starts, in the header.
+  static double titleTop(double printHeight) => _printTop + printHeight + titleGap;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        final height = above + end(printHeight);
+        final fadeFrom = above + _printTop + printHeight - _lead;
+        final glowX = AppTheme.hankoGutter + printWidth / 2;
+        final glowY = above + _printTop + printHeight / 2;
+        return HankoField(
+          colour: colour,
+          solidTo: fadeFrom / height,
+          glow: Alignment(2 * glowX / width - 1, 2 * glowY / height - 1),
+          glowRadius: _glowRadius / math.min(width, height),
+          child: SizedBox(width: width, height: height),
+        );
+      },
+    );
+  }
+}
+
+/// Print Room's top bar on Detail (P4), behind back and share: a window
+/// onto the header's field. It draws the same field, from the top of the
+/// screen, moved up as the page scrolls, over sumi. At rest the field reads
+/// as one from the top of the screen, its glow included, where a flat bar
+/// would cut the glow with a straight line; scrolled, the bar shows exactly
+/// what passes under it (the field, its fade, then sumi) and nothing scrolls
+/// through it. The field is its own layer and only moves as the page
+/// scrolls, so a scroll repaints nothing but the title. Once the header's
+/// title has gone, the title fades in, as round seven's bar does.
+class _PrintRoomBar extends StatelessWidget {
+  const _PrintRoomBar({
+    required this.scroll,
+    required this.colour,
+    required this.geometry,
+    required this.title,
+  });
+
+  final ScrollController scroll;
+  final Color? colour;
+  final ({double printWidth, double printHeight, double titleTop, double fieldHeight, double fadeFrom})
+      geometry;
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    final g = geometry;
+    final titleTop = _PrintRoomField.titleTop(g.printHeight);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // The bar's whole height: the status bar's and the toolbar's.
+        final bar = constraints.maxHeight;
+        final field = RepaintBoundary(
+          child: _PrintRoomField(
+            colour: colour,
+            printWidth: g.printWidth,
+            printHeight: g.printHeight,
+            above: bar,
+          ),
+        );
+        return ClipRect(
+          child: ColoredBox(
+            color: AppTheme.hankoSumi,
+            child: AnimatedBuilder(
+              animation: scroll,
+              child: field,
+              builder: (context, field) {
+                final offset = scroll.hasClients ? scroll.offset : 0.0;
+                final shown = ((offset - titleTop) / 24).clamp(0.0, 1.0);
+                return Stack(
+                  children: [
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      top: 0,
+                      height: bar + _PrintRoomField.end(g.printHeight),
+                      child: Transform.translate(offset: Offset(0, -offset), child: field),
+                    ),
+                    Positioned.fill(
+                      child: SafeArea(
+                        bottom: false,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 56),
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: shown == 0
+                                ? null
+                                : ExcludeSemantics(
+                                    child: Text(
+                                      title,
+                                      maxLines: 1,
+                                      softWrap: false,
+                                      overflow: TextOverflow.fade,
+                                      style: AppTheme.hankoSerif(
+                                        color: AppTheme.hankoWashi.withValues(alpha: shown),
+                                      ),
+                                    ),
+                                  ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Print Room's print on Detail (P4): P1's HankoPrint at 208 dp, with the
+/// hero's shadow (one rectangle shadow, question 161) and the 460 px cover
+/// from the first frame (question 167): the stored cover until it arrives,
+/// or for good if it can't, and a MyAnimeList import keeps its own. Kept
+/// from round seven: the 1 px washi ring, so a dark cover keeps its edge on
+/// a dark field, drawn over the shadow, which would dim it; the button that
+/// opens the gallery; and the native title's slip, off with round seven's
+/// own switch.
+class _PrintRoomPrint extends StatelessWidget {
+  const _PrintRoomPrint({
+    required this.width,
+    required this.height,
+    required this.title,
+    required this.coverUrl,
+    required this.coverColor,
+    required this.nativeTitle,
+    required this.onTap,
+  });
+
+  final double width;
+  final double height;
+  final String title;
+  final String? coverUrl;
+  final Color? coverColor;
+  final String? nativeTitle;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final art = Stack(
+      clipBehavior: Clip.none,
+      children: [
+        HankoPrint(
+          url: coverUrl,
+          width: width,
+          height: height,
+          lift: HankoPrintLift.large,
+          sharp: true,
+          placeholder: coverColor ?? AppTheme.hankoSumi3,
+        ),
+        Positioned(
+          left: -1,
+          top: -1,
+          right: -1,
+          bottom: -1,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              border: Border.all(color: AppTheme.hankoWashi.withValues(alpha: 0.12)),
+              borderRadius: const BorderRadius.all(Radius.circular(AppTheme.hankoRadius + 1)),
+            ),
+          ),
+        ),
+        if (_HankoPrint._showNativeTitle && HankoTitleSlip.shows(nativeTitle))
+          Positioned(
+            left: 10,
+            top: 10,
+            child: HankoTitleSlip(
+              nativeTitle: nativeTitle,
+              maxHeight: height - 25,
+              maxWidth: width - 20,
+            ),
+          ),
+      ],
+    );
+    // As round seven's print: its own semantics node with the InkWell's tap
+    // and focus inside it (question 139), the InkWell over the art on its
+    // own transparent Material, since the cover would hide ink drawn under
+    // it, and the art left out of the tree, since the label says it.
+    return Semantics(
+      container: true,
+      image: true,
+      button: onTap != null,
+      label: 'Cover of $title',
+      hint: onTap != null ? 'Opens the gallery' : null,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          ExcludeSemantics(child: art),
+          if (onTap != null)
+            Positioned.fill(
+              child: Material(
+                type: MaterialType.transparency,
+                child: InkWell(
+                  onTap: onTap,
+                  borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+                  splashFactory: NoSplash.splashFactory,
+                  highlightColor: AppTheme.hankoPressWash,
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
