@@ -607,6 +607,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
   /// route) is untouched.
   static const bool _cadreRow = false;
 
+  /// The three top-rated shows were headed "Favourites · Your highest
+  /// rated" until Shahid's answer of 2026-11-06 to question P5-1 ("go with
+  /// your recommendations"). Since 2026-11-05 the Favourites shelf is the
+  /// shows you choose yourself, so two things on Profile shared the name.
+  /// The section is now headed for what it is, "Highest rated", with no
+  /// aside (the seal on each print says why it's there), and its prints are
+  /// spoken without "Favourite:". The old name and words are kept here,
+  /// switched off.
+  static const bool _favouritesNamed = false;
+
   /// Space between the rows below the hairline: 4 between rows in a group,
   /// as H5 set it, and 16 between groups, so the groups read without
   /// headings.
@@ -1038,9 +1048,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _SectionHead('Favourites',
-              aside: 'Your highest rated',
-              asideColor: onWall ? AppTheme.hankoWashi : AppTheme.hankoStone),
+          // "Highest rated" since question P5-1 (_favouritesNamed).
+          _favouritesNamed
+              ? _SectionHead('Favourites',
+                  aside: 'Your highest rated',
+                  asideColor:
+                      onWall ? AppTheme.hankoWashi : AppTheme.hankoStone)
+              : const _SectionHead('Highest rated'),
           LayoutBuilder(builder: (context, constraints) {
             const gap = _printRoom ? 10.0 : 8.0;
             final width = (constraints.maxWidth - 2 * gap) / 3;
@@ -1057,7 +1071,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       size: height,
                       width: width,
                       showAdd: false,
-                      semanticLabel: 'Empty favourite',
+                      semanticLabel: _favouritesNamed
+                          ? 'Empty favourite'
+                          : 'Empty place, rate a show to fill it',
                     ),
                 ],
               ],
@@ -1099,7 +1115,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final score = (entry['userRating'] as num).toDouble();
     final rating = HankoSeal.formatScore(score);
     return _CoverButton(
-      label: 'Favourite: $title, your rating $rating',
+      // Under "Highest rated" (question P5-1) the head already says why
+      // the show is here.
+      label: _favouritesNamed
+          ? 'Favourite: $title, your rating $rating'
+          : '$title, your rating $rating',
       onTap: () => _openEntry(entry),
       child: _printRoom
           ? HankoPrint(
