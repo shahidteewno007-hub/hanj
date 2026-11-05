@@ -3816,8 +3816,12 @@ class _Paper extends StatelessWidget {
           children: [
             const Positioned.fill(
                 child: ColoredBox(color: AppTheme.hankoWashi)),
+            // Its own layer, so a cover arriving or a colour fading in
+            // doesn't draw the grain again.
             const Positioned.fill(
-                child: CustomPaint(painter: _PaperGrainPainter())),
+              child: RepaintBoundary(
+                  child: CustomPaint(painter: _PaperGrainPainter())),
+            ),
             Positioned.fill(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(pad, 16, pad, 14),
