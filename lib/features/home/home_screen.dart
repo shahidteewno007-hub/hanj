@@ -1669,7 +1669,12 @@ class _HomeScreenState extends State<HomeScreen> {
     // seal, a no-break space before it as the mockup's &nbsp; does.
     String compose({required bool wholeTitle, bool bindVerb = false}) {
       final title =
-          wholeTitle ? rawTitle.replaceAll(' ', ' ') : rawTitle;
+          wholeTitle ? rawTitle.replaceAll(' ', ' ')
+              // Nor at a hyphen: the phone broke "One-" / "Punch Man" in
+              // P2's narrower lede. A word joiner after it forbids that
+              // break and draws nothing.
+              .replaceAll('-', '-\u2060')
+          : rawTitle;
       final you = bindVerb ? 'you ' : 'you ';
       // On the print (Print Room) the seal leaves the sentence, so "sealed
       // it" keeps together instead, as the mockup's sealed&nbsp;it does.
