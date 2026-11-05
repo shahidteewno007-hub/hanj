@@ -4429,12 +4429,15 @@ class _TastePaper extends StatelessWidget {
   /// Your whole list, for the fan and the DNA's colours.
   final List<_AnimeEntry> entries;
 
-  /// Covers on the fan, or colour proofs (_ColourProof). Off while question
-  /// 13 stands: its answer (2026-10-26) keeps AniList's art out of new
-  /// exports until Shahid has heard from AniList, and the Taste Card never
-  /// had covers (round seven's open question 2). On, it's the mockup's fan
-  /// of covers; the rest of the card is the same either way.
-  static const bool _covers = false;
+  /// Covers on the fan (the mockup's), or colour proofs (_ColourProof). On
+  /// since Shahid's answer of 2026-11-05 to P3's recommendation: "Go with
+  /// your recommendations". The recommendation was covers on this card, as
+  /// the Top 9 and the Aura already put the same covers in saved images,
+  /// with the email to AniList that question 13 asks for (Shahid's step).
+  /// Question 13's answer (2026-10-26) had kept AniList's art out of new
+  /// exports, and this card never had covers. Off, the fan is colour proofs;
+  /// the rest of the card is the same either way.
+  static const bool _covers = true;
 
   /// The five titles that best show your taste: those with at least two of
   /// your top three genres first, then one, then none; within those, your
@@ -4690,15 +4693,16 @@ class _TasteFan extends StatelessWidget {
   }
 }
 
-/// A title as a printer's colour proof, the Taste Card's fan while question
-/// 13 keeps AniList's art out of new exports: a block of the show's own
-/// colour, read from its cover (none of the art is printed), and, with a
-/// [title], a strip of proof paper at its head with the title in Shippori 11
-/// sumi, up to three lines. The strip is at the head, not the foot, so the
-/// seal pressed across the lower right corner never hides it. The paper ink
-/// until the colour is read, and for a grey cover; the colour fades in over
-/// 240 ms, at once with Remove animations on. [seal], if given, is pressed
-/// across its lower right corner, as on the cover.
+/// A title as a printer's colour proof, the Taste Card's fan with
+/// _TastePaper._covers off (no AniList art in the export, question 13): a
+/// block of the show's own colour, read from its cover (none of the art is
+/// printed), and, with a [title], a strip of proof paper at its head with
+/// the title in Shippori 11 sumi, up to three lines. The strip is at the
+/// head, not the foot, so the seal pressed across the lower right corner
+/// never hides it. The paper ink until the colour is read, and for a grey
+/// cover; the colour fades in over 240 ms, at once with Remove animations
+/// on. [seal], if given, is pressed across its lower right corner, as on
+/// the cover.
 class _ColourProof extends StatelessWidget {
   const _ColourProof({this.title, required this.tone, this.seal});
 
