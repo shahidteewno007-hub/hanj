@@ -13,6 +13,7 @@ import 'package:intl/intl.dart';
 import '../../widgets/gal_mobile.dart' if (dart.library.html) '../../widgets/gal_stub.dart' as galSaver;
 
 import '../../core/theme/app_theme.dart';
+import '../../widgets/hanko_cover_colour.dart';
 import '../../widgets/hanko_print.dart';
 import '../../widgets/hanko_seal.dart';
 import 'taste_profile.dart';
@@ -644,6 +645,11 @@ class _TasteCardTab extends StatelessWidget {
   /// All-Rounder" on the Taste page.
   String get _archetype => taste?.archetype ?? '';
 
+  /// The Taste Card as a paper print (Print Room P3, _TastePaper). Off, the
+  /// tab shows round seven's dark print (_TastePrint) again, so each card's
+  /// version can be kept on its own (question 165).
+  static const bool _paper = true;
+
   @override
   Widget build(BuildContext context) {
     if (_RankingCardsScreenState._preHanko) return _buildPreHanko();
@@ -652,6 +658,23 @@ class _TasteCardTab extends StatelessWidget {
         title: 'Your taste card',
         line: 'Your archetype, your numbers and your top genres, as one '
             'image to save and share. It\'s made from the shows on your list.',
+      );
+    }
+    if (_paper) {
+      return _PaperPage(
+        repaintKey: repaintKey,
+        filename: 'hanj_taste_card',
+        card: _TastePaper(
+          username: username,
+          archetype: _archetype,
+          description: taste?.archetypeDesc ?? '',
+          genres: taste?.topGenres ?? const [],
+          avgRating: _avgRating,
+          completed: _completed,
+          total: allAnime.length,
+          entries: allAnime,
+        ),
+        note: _note,
       );
     }
     return _PrintPage(
@@ -4258,6 +4281,609 @@ class _Top9PaperPlace extends StatelessWidget {
             left: 0,
             top: 0,
             child: ExcludeSemantics(child: _PaperTab(rank)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Builds with the colours of [urls]' covers, in order, each null until it's
+/// read (or for a grey cover, or an empty address); rebuilds as each
+/// arrives. Round seven's _Tones, on P1's reader: HankoCoverColour decodes
+/// the stored cover 16 px wide, the file the prints load anyway, so it makes
+/// no request of its own and keeps nothing but the colour, in memory.
+class _PaperTones extends StatefulWidget {
+  const _PaperTones({required this.urls, required this.builder});
+
+  final List<String> urls;
+  final Widget Function(BuildContext context, List<Color?> tones) builder;
+
+  @override
+  State<_PaperTones> createState() => _PaperTonesState();
+}
+
+class _PaperTonesState extends State<_PaperTones> {
+  List<Color?> _tones = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    _read();
+  }
+
+  @override
+  void didUpdateWidget(_PaperTones oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!listEquals(oldWidget.urls, widget.urls)) _read();
+  }
+
+  void _read() {
+    final urls = widget.urls;
+    _tones = [for (final u in urls) HankoCoverColour.peek(u)];
+    for (var i = 0; i < urls.length; i++) {
+      if (urls[i].isEmpty || HankoCoverColour.knows(urls[i])) continue;
+      HankoCoverColour.ofUrl(urls[i]).then((c) {
+        if (!mounted || c == null || !listEquals(urls, widget.urls)) return;
+        setState(() => _tones = List.of(_tones)..[i] = c);
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.builder(context, _tones);
+}
+
+/// [c] darkened, keeping its hue and saturation, until it has [ratio] to 1
+/// on washi: 3 for a colour that marks something (a graphic's minimum, WCAG
+/// 1.4.11), so a pale cover's colour still holds its own on paper.
+Color _inkFor(Color c, double ratio) {
+  final washi = AppTheme.hankoWashi.computeLuminance();
+  var hsv = HSVColor.fromColor(c.withValues(alpha: 1));
+  var out = hsv.toColor();
+  while (hsv.value > 0.02 &&
+      (washi + 0.05) / (out.computeLuminance() + 0.05) < ratio) {
+    hsv = hsv.withValue(math.max(0, hsv.value - 0.02));
+    out = hsv.toColor();
+  }
+  return out;
+}
+
+/// Your rating on Hanj's 1-10 scale, for ordering; 0 with none, or with an
+/// imported one on another scale (question 96).
+double _scaleRating(_AnimeEntry a) {
+  final r = a.rating;
+  return r != null && _Top9Place._onScale(r) ? r : 0;
+}
+
+/// Highest rated first (on the 1-10 scale), then the newest.
+int _byRatingThenNewest(_AnimeEntry a, _AnimeEntry b) {
+  final r = _scaleRating(b).compareTo(_scaleRating(a));
+  if (r != 0) return r;
+  return (b.addedAt ?? DateTime(0)).compareTo(a.addedAt ?? DateTime(0));
+}
+
+/// The Taste Card as a paper print (Print Room P3; DESIGN.md §9.5), the
+/// answer to "just the letters and numbers on black": a fan of the five
+/// titles that best show your taste, your initial's seal pressed across the
+/// front one; under it your name, your archetype in Shippori 34, the Taste
+/// page's own words for it, three figures, and your Genre DNA as one bar of
+/// your shows' colours.
+///
+/// The archetype and its words are the Taste page's (question 95), so this
+/// card, Profile's Taste row and the Taste page agree. The mockup's sentence
+/// ("…61% of your 9s and 10s") isn't how the archetype is worked out (it
+/// reads your genres by count), so it isn't used. The average is on the
+/// 1-10 scale only (question 96).
+///
+/// The fan's box takes the room the words leave, so a two-line archetype
+/// and a three-line description still fit the paper; if even that's too
+/// little, the fan is scaled down whole rather than any words being cut.
+class _TastePaper extends StatelessWidget {
+  const _TastePaper({
+    required this.username,
+    required this.archetype,
+    required this.description,
+    required this.genres,
+    required this.avgRating,
+    required this.completed,
+    required this.total,
+    required this.entries,
+  });
+
+  final String username;
+  final String archetype;
+
+  /// The Taste page's sentences about the archetype.
+  final String description;
+
+  /// Your genres by how many of your titles have each, as the Taste page
+  /// counts them.
+  final List<GenreData> genres;
+  final double avgRating;
+  final int completed;
+  final int total;
+
+  /// Your whole list, for the fan and the DNA's colours.
+  final List<_AnimeEntry> entries;
+
+  /// Covers on the fan, or colour proofs (_ColourProof). Off while question
+  /// 13 stands: its answer (2026-10-26) keeps AniList's art out of new
+  /// exports until Shahid has heard from AniList, and the Taste Card never
+  /// had covers (round seven's open question 2). On, it's the mockup's fan
+  /// of covers; the rest of the card is the same either way.
+  static const bool _covers = false;
+
+  /// The five titles that best show your taste: those with at least two of
+  /// your top three genres first, then one, then none; within those, your
+  /// highest rated (1-10 scale), then the newest. Only titles with a cover.
+  static List<_AnimeEntry> _fanOf(
+      List<_AnimeEntry> all, List<GenreData> genres) {
+    final top = {for (final g in genres.take(3)) g.name};
+    int shared(_AnimeEntry a) =>
+        math.min(2, a.genres.where(top.contains).length);
+    final withCover = all.where((a) => (a.imageUrl ?? '').isNotEmpty).toList()
+      ..sort((a, b) {
+        final s = shared(b).compareTo(shared(a));
+        return s != 0 ? s : _byRatingThenNewest(a, b);
+      });
+    return withCover.take(_TasteFan.places.length).toList();
+  }
+
+  /// The title each DNA genre takes its colour from: your highest rated in
+  /// that genre, then the newest, that no genre before it has taken, so two
+  /// segments seldom share one show's colour. Null where there's none.
+  static List<_AnimeEntry?> _dnaShowsOf(
+      List<_AnimeEntry> all, List<GenreData> dna) {
+    final used = <String>{};
+    final out = <_AnimeEntry?>[];
+    for (final g in dna) {
+      final pick = (all
+              .where((a) =>
+                  a.genres.contains(g.name) &&
+                  (a.imageUrl ?? '').isNotEmpty &&
+                  !used.contains(a.id))
+              .toList()
+            ..sort(_byRatingThenNewest))
+          .firstOrNull;
+      if (pick != null) used.add(pick.id);
+      out.add(pick);
+    }
+    return out;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final dna = genres.take(5).toList();
+    final fan = _fanOf(entries, genres);
+    final dnaShows = _dnaShowsOf(entries, dna);
+    final first = _firstNameOf(username);
+    final today = DateFormat('d MMM yyyy').format(DateTime.now());
+    return _PaperTones(
+      urls: [
+        for (final a in fan) a.imageUrl ?? '',
+        for (final a in dnaShows) a?.imageUrl ?? '',
+      ],
+      builder: (context, tones) => _Paper(
+        kind: 'Taste Card',
+        foot: _PaperSignature(text: 'Sealed by $first · $today'),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // The fan runs the paper's full width, past its margins, as the
+            // mockup's does.
+            Expanded(
+              child: OverflowBox(
+                minWidth: _Paper.width,
+                maxWidth: _Paper.width,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: _TasteFan(
+                    shows: fan,
+                    tones: tones.take(fan.length).toList(),
+                    initial: _initialOf(username),
+                    covers: _covers,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
+            Text(username,
+                maxLines: 1,
+                softWrap: false,
+                overflow: TextOverflow.fade,
+                style: AppTheme.hankoSans(
+                    fontSize: AppTheme.hankoMetaSize,
+                    weight: FontWeight.w500,
+                    color: _Paper.ink2,
+                    height: 1.2)),
+            const SizedBox(height: 6),
+            Text(archetype,
+                style: AppTheme.hankoSerif(
+                    fontSize: 34, color: _Paper.ink, height: 1.05)),
+            if (description.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              // The Taste page's typewriter apostrophes, set typographic.
+              Text(description.replaceAll("'", '’'),
+                  style: AppTheme.hankoSans(
+                      fontSize: AppTheme.hankoMetaSize,
+                      color: _Paper.ink2,
+                      height: 1.45)),
+            ],
+            const SizedBox(height: 14),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                    child: _PaperFigure('$total', 'titles', rule: false)),
+                Expanded(
+                    child:
+                        _PaperFigure('$completed', 'completed', rule: true)),
+                Expanded(
+                  child: _PaperFigure(
+                      avgRating > 0 ? avgRating.toStringAsFixed(1) : '—',
+                      'average rating',
+                      rule: true),
+                ),
+              ],
+            ),
+            if (dna.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              _PaperDna(
+                genres: dna,
+                tones: [
+                  for (var i = 0; i < dna.length; i++)
+                    _inkFor(tones[fan.length + i] ?? _Paper.ink2, 3),
+                ],
+              ),
+            ],
+            const SizedBox(height: 12),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The Taste Card's fan, as the mockup holds it: up to five prints like
+/// cards in a hand, the front one straight with your seal pressed across
+/// its corner, the others turned 4° and 9° out to each side, inner over
+/// outer, each lying on the paper with its warm shadow. With [covers] off,
+/// each print is a colour proof of its show instead. Drawn in the mockup's
+/// 324 by 200 box; fewer than five are centred in it, and with none, a
+/// dashed place holds your seal.
+class _TasteFan extends StatelessWidget {
+  const _TasteFan({
+    required this.shows,
+    required this.tones,
+    required this.initial,
+    required this.covers,
+  });
+
+  /// Up to five, the most telling first.
+  final List<_AnimeEntry> shows;
+
+  /// Their colours, for the proofs.
+  final List<Color?> tones;
+  final String initial;
+  final bool covers;
+
+  static const double width = _Paper.width;
+  static const double height = 200;
+
+  /// The places in the box, most important first: the front print, the
+  /// inner pair, then the outer pair. Each is left, top, width, height and
+  /// its turn in degrees, the mockup's.
+  static const List<(double, double, double, double, double)> places = [
+    (112, 4, 100, 142, 0),
+    (166, 14, 96, 136, 4),
+    (62, 14, 96, 136, -4),
+    (208, 34, 96, 136, 9),
+    (20, 34, 96, 136, -9),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final n = math.min(shows.length, places.length);
+    final seal = HankoSeal(label: initial, size: 56);
+    if (n == 0) {
+      final (left, top, w, h, _) = places.first;
+      return SizedBox(
+        width: width,
+        height: height,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Positioned(
+              left: left,
+              top: top,
+              width: w,
+              height: h,
+              child: const CustomPaint(painter: _PaperSlotPainter()),
+            ),
+            Positioned(
+                left: left + w - 56 + 18,
+                top: top + h - 56 + 16,
+                child: ExcludeSemantics(child: seal)),
+          ],
+        ),
+      );
+    }
+    // Centre the places in use across the box.
+    var lo = double.infinity, hi = -double.infinity;
+    for (final (left, _, w, _, _) in places.take(n)) {
+      lo = math.min(lo, left);
+      hi = math.max(hi, left + w);
+    }
+    final shift = (width - lo - hi) / 2;
+    final titles = shows.take(n).map((a) => a.title).join(', ');
+    return Semantics(
+      image: true,
+      label: covers
+          ? 'Covers of the titles that shape your taste: $titles'
+          : 'Colours of the titles that shape your taste: $titles',
+      excludeSemantics: true,
+      child: SizedBox(
+        width: width,
+        height: height,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            // The outer places first, so the front print is drawn last.
+            for (var i = n - 1; i >= 0; i--)
+              Positioned(
+                left: places[i].$1 + shift,
+                top: places[i].$2,
+                width: places[i].$3,
+                height: places[i].$4,
+                child: Transform.rotate(
+                  angle: places[i].$5 * math.pi / 180,
+                  child: covers
+                      ? _OnPaper(
+                          child: HankoPrint(
+                            url: shows[i].imageUrl,
+                            width: places[i].$3,
+                            height: places[i].$4,
+                            lift: HankoPrintLift.none,
+                            sharp: true,
+                            seal: i == 0 ? seal : null,
+                            sealOverhang: const Offset(18, 16),
+                          ),
+                        )
+                      : _ColourProof(
+                          title: shows[i].title,
+                          tone: i < tones.length ? tones[i] : null,
+                          seal: i == 0 ? seal : null,
+                        ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// A title as a printer's colour proof, the Taste Card's fan while question
+/// 13 keeps AniList's art out of new exports: a block of the show's own
+/// colour, read from its cover (none of the art is printed), over a strip
+/// of proof paper with its title in Shippori 11 sumi, up to two lines. The
+/// paper ink until the colour is read, and for a grey cover; the colour
+/// fades in over 240 ms, at once with Remove animations on. [seal], if
+/// given, is pressed across its lower right corner, as on the cover.
+class _ColourProof extends StatelessWidget {
+  const _ColourProof({required this.title, required this.tone, this.seal});
+
+  final String title;
+  final Color? tone;
+  final Widget? seal;
+
+  /// Proof stock, a little lighter than the paper it lies on.
+  static const Color _stock = Color(0xFFF7F3EA);
+
+  /// A cover's colour as a proof shows it: saturated enough to read as
+  /// colour, and neither black nor white (round seven's _CoverTones clamp).
+  static Color _proofTone(Color c) {
+    final hsv = HSVColor.fromColor(c);
+    return hsv
+        .withSaturation(math.max(hsv.saturation, 0.35))
+        .withValue(hsv.value.clamp(0.45, 0.9))
+        .toColor();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tone = this.tone;
+    final seal = this.seal;
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Positioned.fill(
+          child: _OnPaper(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(
+                    child: TweenAnimationBuilder<Color?>(
+                      tween: ColorTween(
+                          end: tone == null ? _Paper.ink2 : _proofTone(tone)),
+                      duration: MediaQuery.disableAnimationsOf(context)
+                          ? Duration.zero
+                          : const Duration(milliseconds: 240),
+                      builder: (context, colour, _) =>
+                          ColoredBox(color: colour ?? _Paper.ink2),
+                    ),
+                  ),
+                  ColoredBox(
+                    color: _stock,
+                    child: SizedBox(
+                      height: 40,
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(7, 6, 7, 5),
+                        child: Text(title,
+                            maxLines: 2,
+                            overflow: TextOverflow.fade,
+                            style: AppTheme.hankoSerif(
+                                fontSize: 11,
+                                color: _Paper.ink,
+                                height: 1.2)),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        if (seal != null)
+          Positioned(
+              right: -18, bottom: -16, child: ExcludeSemantics(child: seal)),
+      ],
+    );
+  }
+}
+
+/// A figure on paper: the number in Shippori 28 sumi over its word in Jost
+/// 12 paper ink; with [rule], a sumi line at 22% at its left, the mockup's
+/// divider between figures.
+class _PaperFigure extends StatelessWidget {
+  const _PaperFigure(this.value, this.label, {required this.rule});
+
+  final String value;
+  final String label;
+  final bool rule;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        border: rule
+            ? const Border(left: BorderSide(color: Color(0x38121110)))
+            : null,
+      ),
+      child: Padding(
+        padding: EdgeInsets.only(left: rule ? 10 : 0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(value,
+                maxLines: 1,
+                softWrap: false,
+                overflow: TextOverflow.fade,
+                style: AppTheme.hankoSerif(
+                    fontSize: 28, color: _Paper.ink, height: 1.05)),
+            const SizedBox(height: 5),
+            Text(label,
+                style: AppTheme.hankoSans(
+                    fontSize: AppTheme.hankoLabelSize,
+                    color: _Paper.ink2,
+                    height: 1.2)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Genre DNA as one bar (the mockup's): your top five genres side by side,
+/// each as wide as its count of titles, in the colour of its top show
+/// ([tones], 3:1 or more on washi), with a washi line between segments and
+/// a sumi line at 50% round the bar; under it, a legend of the names and
+/// each genre's share of your titles, as the Taste page counts them. One
+/// image to a screen reader, with the names and shares.
+class _PaperDna extends StatelessWidget {
+  const _PaperDna({required this.genres, required this.tones});
+
+  final List<GenreData> genres;
+  final List<Color> tones;
+
+  @override
+  Widget build(BuildContext context) {
+    final percent = [for (final g in genres) (g.percentage * 100).round()];
+    return Semantics(
+      image: true,
+      label: 'Genre DNA: ${[
+        for (var i = 0; i < genres.length; i++)
+          '${genres[i].name} ${percent[i]}%'
+      ].join(', ')}',
+      excludeSemantics: true,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Genre DNA',
+              style: AppTheme.hankoSans(
+                  fontSize: AppTheme.hankoLabelSize,
+                  weight: FontWeight.w500,
+                  color: _Paper.ink2,
+                  height: 1.2)),
+          const SizedBox(height: 8),
+          DecoratedBox(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(1),
+              border: Border.all(color: const Color(0x80121110)),
+            ),
+            child: SizedBox(
+              height: 14,
+              child: Row(
+                children: [
+                  for (var i = 0; i < genres.length; i++)
+                    Expanded(
+                      flex: math.max(1, genres[i].count),
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: tones[i],
+                          border: i == 0
+                              ? null
+                              : const Border(
+                                  left: BorderSide(color: Color(0xE6EEE7DA))),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 12,
+            runSpacing: 4,
+            children: [
+              for (var i = 0; i < genres.length; i++)
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: tones[i],
+                        borderRadius: BorderRadius.circular(1),
+                      ),
+                      child: const SizedBox.square(dimension: 9),
+                    ),
+                    const SizedBox(width: 5),
+                    Text.rich(
+                      TextSpan(children: [
+                        TextSpan(text: genres[i].name),
+                        TextSpan(
+                          text: ' ${percent[i]}%',
+                          style: AppTheme.hankoSans(
+                              fontSize: AppTheme.hankoLabelSize,
+                              weight: FontWeight.w500,
+                              color: _Paper.ink2,
+                              height: 1.2,
+                              tabular: true),
+                        ),
+                      ]),
+                      style: AppTheme.hankoSans(
+                          fontSize: AppTheme.hankoLabelSize,
+                          weight: FontWeight.w500,
+                          color: _Paper.ink,
+                          height: 1.2),
+                    ),
+                  ],
+                ),
+            ],
           ),
         ],
       ),
