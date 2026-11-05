@@ -662,8 +662,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
           header,
           if (favourites != null) ...[
             favourites,
-            // The counts' own 22 make the mockup's 30 below the prints.
-            const SizedBox(height: 8),
+            // The mockup's 30 to the counts, inside the block, so the
+            // prints' shadows have faded (to about 12%) where the block
+            // cuts them; the counts drop their own 22 (_buildCounts).
+            const SizedBox(height: 30),
           ],
         ],
       ),
@@ -1546,8 +1548,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
       height: 1.4,
     );
     return Padding(
-      padding: const EdgeInsets.fromLTRB(
-          AppTheme.hankoGutter, 22, AppTheme.hankoGutter, 0),
+      // In Print Room (P5) the favourites' block above keeps the space
+      // (_onWall), whenever there are titles to show favourites for.
+      padding: EdgeInsets.fromLTRB(AppTheme.hankoGutter,
+          _printRoom && titles > 0 ? 0 : 22, AppTheme.hankoGutter, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
