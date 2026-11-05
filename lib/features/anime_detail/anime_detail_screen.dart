@@ -3625,6 +3625,22 @@ class _OverviewTab extends StatelessWidget {
     ];
   }
 
+  /// The cast for Overview's portraits (Print Room, P4): the staff answer's
+  /// characters in AniList's order, main roles first, up to eight, as the
+  /// Cast tab lists them.
+  List<({String name, String? image})> get _cast {
+    final out = <({String name, String? image})>[];
+    for (final e in staffData?['characters']?['edges'] as List? ?? const []) {
+      final node = e is Map ? e['node'] : null;
+      if (node is! Map) continue;
+      final name = node['name']?['full'];
+      if (name is! String || name.trim().isEmpty) continue;
+      out.add((name: name.trim(), image: node['image']?['medium'] as String?));
+      if (out.length == 8) break;
+    }
+    return out;
+  }
+
   final Anime anime;
   final Map<String, dynamic>? staffData;
   final bool isLoadingStaff;
@@ -3652,6 +3668,7 @@ class _OverviewTab extends StatelessWidget {
     final studio = (staffData?['studios']?['nodes'] as List?)?.isNotEmpty == true
         ? (staffData!['studios']['nodes'] as List)[0]['name'] as String?
         : null;
+    final cast = _AnimeDetailScreenState._printRoom ? _cast : const <({String name, String? image})>[];
 
     // The sections carry keys (question 115), so the list matches them by
     // key, not by place. The countdown card arrives with the staff answer
@@ -3681,6 +3698,14 @@ class _OverviewTab extends StatelessWidget {
         if (anime.description != null) ...[
           const _HankoSectionHead(key: ValueKey('synopsis head'), title: 'Synopsis', aside: null),
           _SynopsisText(key: const ValueKey('synopsis'), text: cleanDescription(anime.description!)),
+          const SizedBox(height: 28),
+        ],
+
+        // Print Room (P4; DESIGN.md §9.5, frame 04): after the synopsis, as
+        // the mockup has it, the cast as round portraits.
+        if (cast.isNotEmpty) ...[
+          const _HankoSectionHead(key: ValueKey('cast head'), title: 'Cast', aside: null),
+          _CastPortraits(key: const ValueKey('cast'), cast: cast),
           const SizedBox(height: 28),
         ],
 
@@ -3887,6 +3912,153 @@ class _HankoWatchLinks extends StatelessWidget {
                   ),
                 ),
               ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// The cast on Overview as round portraits (Print Room, P4; DESIGN.md §9.5,
+/// frame 04): people are round, things square. The staff answer's
+/// characters, up to eight, in a strip that scrolls sideways: 66 dp circles
+/// 14 apart, the face kept in the circle (AniList's character art is a
+/// portrait with the face near its top; the mockup's 50% 18%), and the name
+/// under it in Jost 500 12 washi, two lines (three at 1.3×), fading past
+/// that. At 360 dp four show and a fifth peeks in. They're people, not
+/// actions: the app has no character page, and the Cast tab, one tap away,
+/// has their voices. The strip starts at the gutter and runs out to the
+/// page's edges as it scrolls.
+class _CastPortraits extends StatelessWidget {
+  const _CastPortraits({super.key, required this.cast});
+
+  final List<({String name, String? image})> cast;
+
+  static const double _size = 66;
+  static const double _gap = 14;
+
+  @override
+  Widget build(BuildContext context) {
+    final scaler = MediaQuery.textScalerOf(context);
+    final style = AppTheme.hankoSans(
+        fontSize: AppTheme.hankoLabelSize, weight: FontWeight.w500, height: 1.25);
+    // A limit counted in lines grows with the text (P1's finding).
+    final lines = math.max(2, (2 * scaler.scale(AppTheme.hankoLabelSize) / AppTheme.hankoLabelSize).round());
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      clipBehavior: Clip.none,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (final (i, person) in cast.indexed) ...[
+            if (i > 0) const SizedBox(width: _gap),
+            Semantics(
+              container: true,
+              label: person.name,
+              child: ExcludeSemantics(
+                child: SizedBox(
+                  width: _size,
+                  child: Column(
+                    children: [
+                      ClipOval(
+                        child: SizedBox.square(
+                          dimension: _size,
+                          child: ColoredBox(
+                            color: AppTheme.hankoSumi3,
+                            child: _portrait(person),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 7),
+                      _FadeLines(person.name, style: style, maxLines: lines, textAlign: TextAlign.center),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  static Widget _portrait(({String name, String? image}) person) {
+    // No art, or art that won't load: the name's first letter, as the Cast
+    // tab's avatars do.
+    final initial = Center(
+      child: Text(
+        person.name.characters.first.toUpperCase(),
+        style: AppTheme.hankoSerif(fontSize: 22, color: AppTheme.hankoStone),
+      ),
+    );
+    final url = person.image;
+    if (url == null || url.isEmpty) return initial;
+    return CachedNetworkImage(
+      imageUrl: url,
+      fit: BoxFit.cover,
+      alignment: const Alignment(0, -0.64),
+      errorWidget: (_, _, _) => initial,
+    );
+  }
+}
+
+/// Words on up to [maxLines] lines whose last line fades out at its end when
+/// they run longer, instead of an ellipsis: Shippori draws "…" as the
+/// centred Japanese ⋯ (AppTheme.hankoSerif). Flutter's own TextOverflow.fade
+/// on a multi-line Text fades the bottom half of the last line instead, so
+/// the words are split after their last full line and that line is set on
+/// its own, one line with TextOverflow.fade. Home's _FadeTitle (P2), for
+/// Detail's strips (P4).
+class _FadeLines extends StatelessWidget {
+  const _FadeLines(this.text, {required this.style, required this.maxLines, this.textAlign});
+
+  final String text;
+  final TextStyle style;
+  final int maxLines;
+
+  /// A cut last line is always as wide as the box, so it starts at the left
+  /// edge and fades at the right whatever the alignment.
+  final TextAlign? textAlign;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final painter = TextPainter(
+          text: TextSpan(text: text, style: style),
+          textDirection: Directionality.of(context),
+          textScaler: MediaQuery.textScalerOf(context),
+          maxLines: maxLines,
+        )..layout(maxWidth: constraints.maxWidth);
+        final overflows = painter.didExceedMaxLines;
+        final lines = overflows ? painter.computeLineMetrics() : null;
+        // The last line's first character, found by its position on that
+        // line (P2 found getLineBoundary answers with the line before at a
+        // soft-wrapped line's first offset).
+        final lastStart = lines == null || lines.length < maxLines
+            ? 0
+            : painter
+                .getPositionForOffset(Offset(
+                    0, lines[maxLines - 1].baseline - lines[maxLines - 1].ascent / 2))
+                .offset;
+        painter.dispose();
+        if (!overflows || lastStart <= 0) {
+          return Text(text,
+              style: style,
+              textAlign: textAlign,
+              maxLines: maxLines,
+              softWrap: maxLines > 1,
+              overflow: TextOverflow.fade);
+        }
+        return Column(
+          crossAxisAlignment:
+              textAlign == TextAlign.center ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(text.substring(0, lastStart).trimRight(),
+                style: style, textAlign: textAlign, maxLines: maxLines - 1),
+            Text(text.substring(lastStart).trimLeft(),
+                style: style, maxLines: 1, softWrap: false, overflow: TextOverflow.fade),
           ],
         );
       },
