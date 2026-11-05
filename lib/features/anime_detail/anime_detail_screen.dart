@@ -1734,6 +1734,9 @@ class _HankoDetailHeaderState extends State<HankoDetailHeader> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   _HankoColophon(
+                                    // The column beside the print, for
+                                    // Print Room's whole words (P4).
+                                    width: constraints.maxWidth - 2 * AppTheme.hankoGutter - g.printWidth - 20,
                                     // The seal's top (keyline included):
                                     // see the Positioned seal below.
                                     sealTop: g.printHeight - 68 - AppTheme.hankoKeyline,
@@ -2659,6 +2662,7 @@ class _HankoPrint extends StatelessWidget {
 /// studio and the director are links (H3 k), each opening its own page.
 class _HankoColophon extends StatelessWidget {
   const _HankoColophon({
+    required this.width,
     required this.studio,
     required this.onStudio,
     required this.director,
@@ -2667,6 +2671,9 @@ class _HankoColophon extends StatelessWidget {
     this.sealTop = double.infinity,
   });
 
+  /// The column's width: in Print Room (P4) a name wider than it is set a
+  /// little smaller rather than broken between its letters.
+  final double width;
   final String? studio;
   final VoidCallback? onStudio;
   final String? director;
@@ -2688,7 +2695,7 @@ class _HankoColophon extends StatelessWidget {
       sealTop: sealTop,
       children: [
         if (studio != null)
-          _HankoLink(label: studio, semanticLabel: 'Studio, $studio', onTap: onStudio),
+          _HankoLink(label: studio, semanticLabel: 'Studio, $studio', onTap: onStudio, maxWidth: width),
         for (final (i, fact) in facts.indexed)
           Padding(
             padding: EdgeInsets.only(top: i == 0 && studio == null ? 0 : 4),
@@ -2711,7 +2718,7 @@ class _HankoColophon extends StatelessWidget {
               height: 1.3,
             ),
           ),
-          _HankoLink(label: director, semanticLabel: 'Director, $director', onTap: onDirector),
+          _HankoLink(label: director, semanticLabel: 'Director, $director', onTap: onDirector, maxWidth: width),
         ],
       ],
     );
@@ -2844,26 +2851,41 @@ class _RenderClearOfSeal extends RenderBox
 /// edge colour, 3 px below), in a 48 dp tall target. Without a page to open
 /// it is plain text.
 class _HankoLink extends StatelessWidget {
-  const _HankoLink({required this.label, required this.semanticLabel, required this.onTap});
+  const _HankoLink({
+    required this.label,
+    required this.semanticLabel,
+    required this.onTap,
+    required this.maxWidth,
+  });
 
   final String label;
   final String semanticLabel;
   final VoidCallback? onTap;
 
+  /// The colophon's width, for Print Room's whole words (P4).
+  final double maxWidth;
+
   @override
   Widget build(BuildContext context) {
     final linked = onTap != null;
+    final style = AppTheme.hankoSans(
+      fontSize: AppTheme.hankoMetaSize,
+      weight: FontWeight.w500,
+      height: 1.3,
+    ).copyWith(
+      decoration: linked ? TextDecoration.underline : null,
+      decorationColor: AppTheme.hankoEdge,
+      decorationThickness: 1,
+    );
+    final scaler = MediaQuery.textScalerOf(context);
     final text = Text(
       label,
-      style: AppTheme.hankoSans(
-        fontSize: AppTheme.hankoMetaSize,
-        weight: FontWeight.w500,
-        height: 1.3,
-      ).copyWith(
-        decoration: linked ? TextDecoration.underline : null,
-        decorationColor: AppTheme.hankoEdge,
-        decorationThickness: 1,
-      ),
+      style: style,
+      // In Print Room every word stays whole: at 1.3× "MADHOUSE" broke as
+      // "MADHOUS / E" in the column beside the print (P4).
+      textScaler: _AnimeDetailScreenState._printRoom
+          ? _wholeWords(scaler, label, style, maxWidth)
+          : scaler,
     );
     if (!linked) return Padding(padding: const EdgeInsets.only(bottom: 2), child: text);
     // Its own semantics node (container) with the InkWell's tap and focus
@@ -4172,6 +4194,32 @@ class _MayLikePrintState extends State<_MayLikePrint> {
   }
 }
 
+/// A text scaler that keeps every word of [text] whole within [maxWidth]
+/// (Print Room, P4). Flutter breaks a word wider than its line between its
+/// letters: at 1.3× text the colophon read "MADHOUS / E" and You may like
+/// "Evergarde / n". So when the widest word won't fit, [text] is set just
+/// small enough that it does, never below 80% of the reader's own size;
+/// otherwise [scaler] is returned as it is.
+TextScaler _wholeWords(TextScaler scaler, String text, TextStyle style, double maxWidth) {
+  if (!maxWidth.isFinite || maxWidth <= 0) return scaler;
+  var widest = 0.0;
+  for (final word in text.split(RegExp(r'\s+'))) {
+    if (word.isEmpty) continue;
+    final painter = TextPainter(
+      text: TextSpan(text: word, style: style),
+      textScaler: scaler,
+      textDirection: TextDirection.ltr,
+      maxLines: 1,
+    )..layout();
+    widest = math.max(widest, painter.width);
+    painter.dispose();
+  }
+  if (widest <= maxWidth) return scaler;
+  final size = style.fontSize ?? AppTheme.hankoBodySize;
+  final factor = scaler.scale(size) / size;
+  return TextScaler.linear(math.max(0.8 * factor, factor * maxWidth / widest * 0.995));
+}
+
 /// Words on up to [maxLines] lines whose last line fades out at its end when
 /// they run longer, instead of an ellipsis: Shippori draws "…" as the
 /// centred Japanese ⋯ (AppTheme.hankoSerif). Flutter's own TextOverflow.fade
@@ -4194,10 +4242,13 @@ class _FadeLines extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
+        // Every word whole: a name wider than the box is set a little
+        // smaller rather than broken between its letters.
+        final scaler = _wholeWords(MediaQuery.textScalerOf(context), text, style, constraints.maxWidth);
         final painter = TextPainter(
           text: TextSpan(text: text, style: style),
           textDirection: Directionality.of(context),
-          textScaler: MediaQuery.textScalerOf(context),
+          textScaler: scaler,
           maxLines: maxLines,
         )..layout(maxWidth: constraints.maxWidth);
         final overflows = painter.didExceedMaxLines;
@@ -4215,6 +4266,7 @@ class _FadeLines extends StatelessWidget {
         if (!overflows || lastStart <= 0) {
           return Text(text,
               style: style,
+              textScaler: scaler,
               textAlign: textAlign,
               maxLines: maxLines,
               softWrap: maxLines > 1,
@@ -4226,9 +4278,9 @@ class _FadeLines extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(text.substring(0, lastStart).trimRight(),
-                style: style, textAlign: textAlign, maxLines: maxLines - 1),
+                style: style, textScaler: scaler, textAlign: textAlign, maxLines: maxLines - 1),
             Text(text.substring(lastStart).trimLeft(),
-                style: style, maxLines: 1, softWrap: false, overflow: TextOverflow.fade),
+                style: style, textScaler: scaler, maxLines: 1, softWrap: false, overflow: TextOverflow.fade),
           ],
         );
       },
