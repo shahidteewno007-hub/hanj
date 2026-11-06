@@ -261,9 +261,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
               .toList();
           final shelves = _shelves(entries);
           // Print Room (P5): the favourites lie on the wall with the
-          // header, and the wall takes its covers from the same list.
+          // header, and the wall takes its covers from the same list. Since
+          // P7 they are the favourites you marked; before, your highest
+          // rated (HanjShelves.favouritesApart).
           final favourites = _printRoom && listKnown && totalAnime > 0
-              ? _topRated(entries)
+              ? (HanjShelves.favouritesApart
+                  ? _chosen(entries)
+                  : _topRated(entries))
               : null;
           final wall = favourites == null
               ? null
@@ -399,8 +403,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             onWall: wall != null),
                         favourites: favourites == null
                             ? null
-                            : _buildFavourites(favourites,
-                                onWall: wall != null),
+                            : HanjShelves.favouritesApart
+                                ? _buildChosen(favourites,
+                                    onWall: wall != null)
+                                : _buildFavourites(favourites,
+                                    onWall: wall != null),
                       )
                     : _column(_buildHeader(user, initial)),
               ),
@@ -416,7 +423,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
               if (!_printRoom && listKnown && totalAnime > 0)
                 SliverToBoxAdapter(
                   key: const ValueKey('profile-favourites'),
-                  child: _column(_buildFavourites(_topRated(entries))),
+                  child: _column(HanjShelves.favouritesApart
+                      ? _buildChosen(_chosen(entries))
+                      : _buildFavourites(_topRated(entries))),
                 ),
 
               // ── The counts (Hanko stage H5, item e) ──────
@@ -1193,6 +1202,152 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return rated.take(3).toList();
   }
 
+  /// Favourites (Print Room P7; Shahid, 2026-11-06: "put favourite so users
+  /// can show off their favourites on the profile also let's not put rating
+  /// on them there just the posters so they look clean"): the shows you
+  /// marked as favourites in the status sheet, as clean prints with no seal
+  /// and no number, lying on the wall as P5 laid them. The highest-rated
+  /// section it replaces is _buildFavourites (HanjShelves.favouritesApart).
+  ///
+  /// Three across, P5's size. With three or fewer, P5's row, the rest empty
+  /// dashed slots; with none, a line under them says how to mark one. With
+  /// more, the row is a reel: the first three lie where the row puts them,
+  /// the fourth shows at the column's edge so the row says it goes on, and
+  /// the head counts them, as a shelf's does. The reel is cut at its sides
+  /// only (_Sideways), so the prints' shadows fall on the wall below it as
+  /// the row's do. On the wall ([onWall]) the words are washi.
+  Widget _buildChosen(List<Map<String, dynamic>> chosen,
+      {bool onWall = false}) {
+    final words = onWall ? AppTheme.hankoWashi : AppTheme.hankoStone;
+    const gutter = EdgeInsets.symmetric(horizontal: AppTheme.hankoGutter);
+    return Padding(
+      padding: const EdgeInsets.only(top: _printRoom ? 22 : 26),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: gutter,
+            child: _SectionHead('Favourites',
+                aside: chosen.length > 3 ? '${chosen.length} titles' : null,
+                asideColor: words),
+          ),
+          LayoutBuilder(builder: (context, constraints) {
+            const gap = _printRoom ? 10.0 : 8.0;
+            final width =
+                (constraints.maxWidth - 2 * AppTheme.hankoGutter - 2 * gap) / 3;
+            final height = width * 325 / 230;
+            if (chosen.length <= 3) {
+              return Padding(
+                padding: gutter,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    for (var i = 0; i < 3; i++) ...[
+                      if (i > 0) const SizedBox(width: gap),
+                      if (i < chosen.length)
+                        _chosenFavourite(chosen[i], width, height)
+                      else
+                        HankoSeal.unrated(
+                          size: height,
+                          width: width,
+                          showAdd: false,
+                          semanticLabel:
+                              'Empty place, mark a favourite to fill it',
+                        ),
+                    ],
+                  ],
+                ),
+              );
+            }
+            return ClipRect(
+              clipper: const _Sideways(),
+              child: SizedBox(
+                height: height,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  clipBehavior: Clip.none,
+                  padding: gutter,
+                  itemCount: chosen.length,
+                  separatorBuilder: (_, _) => const SizedBox(width: gap),
+                  itemBuilder: (context, i) =>
+                      _chosenFavourite(chosen[i], width, height),
+                ),
+              ),
+            );
+          }),
+          if (chosen.isEmpty) ...[
+            const SizedBox(height: 10),
+            Padding(
+              padding: gutter,
+              child: Text(
+                'To add one, open a show, tap its status and choose '
+                'Favourite.',
+                style: AppTheme.hankoSans(
+                  fontSize: AppTheme.hankoMetaSize,
+                  color: words,
+                  height: 1.4,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// One of your favourites (P7): its print alone, with no seal, one
+  /// screen-reader button named by its title, since the head says what it
+  /// is. Without Print Room, the flat cover.
+  Widget _chosenFavourite(
+      Map<String, dynamic> entry, double width, double height) {
+    return _CoverButton(
+      label: entry['title'] as String? ?? 'Unknown',
+      onTap: () => _openEntry(entry),
+      child: _printRoom
+          ? HankoPrint(
+              url: entry['imageUrl'] as String?,
+              width: width,
+              height: height,
+              lift: HankoPrintLift.large,
+              sharp: true,
+            )
+          : _Cover(
+              url: entry['imageUrl'] as String?, width: width, height: height),
+    );
+  }
+
+  /// Your favourites (P7), in any status, since marking one is your choice:
+  /// the most recently marked first (favouritedAt). Those marked before P7
+  /// have no such date and follow, the most recently tagged first
+  /// (tagsUpdatedAt), then by title, A to Z, so the order never shuffles
+  /// between visits.
+  static List<Map<String, dynamic>> _chosen(
+      List<Map<String, dynamic>> entries) {
+    int newestFirst(DateTime? a, DateTime? b) {
+      if (a == b) return 0;
+      if (a == null) return 1;
+      if (b == null) return -1;
+      return b.compareTo(a);
+    }
+
+    final chosen = [
+      for (final e in entries)
+        if (HanjShelves.isFavourite(e['tags'])) e,
+    ];
+    chosen.sort((a, b) {
+      final byMark =
+          newestFirst(_when(a['favouritedAt']), _when(b['favouritedAt']));
+      if (byMark != 0) return byMark;
+      final byTags =
+          newestFirst(_when(a['tagsUpdatedAt']), _when(b['tagsUpdatedAt']));
+      if (byTags != 0) return byTags;
+      return ((a['title'] as String?) ?? '')
+          .toLowerCase()
+          .compareTo(((b['title'] as String?) ?? '').toLowerCase());
+    });
+    return chosen;
+  }
+
   /// The recent diary (Hanko stage H5, item f): your latest dated moments,
   /// newest first, five at most. It is partial until the list keeps watch
   /// dates (question 27), so each row says only what its date can prove:
@@ -1497,6 +1652,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   /// from before that rule are read, not rewritten: any spelling of
   /// Favourites counts as it, every other name is hidden, and an entry
   /// tagged with both is under Masterpiece only. An empty shelf isn't shown.
+  /// Since P7 the second shelf is Hidden gems, and Favourites is a mark of
+  /// its own, shown at the top (_buildChosen), so a Masterpiece that is a
+  /// favourite shows in both places.
   static List<_Shelf> _shelves(List<Map<String, dynamic>> entries) {
     final byShelf = {
       for (final name in HanjShelves.all) name: <Map<String, dynamic>>[],
@@ -2178,6 +2336,21 @@ class _NextFrameState extends State<_NextFrame> {
   @override
   Widget build(BuildContext context) =>
       _ready ? widget.child : const SizedBox.shrink();
+}
+
+/// Cuts the favourites' reel (P7) at its sides only: a print scrolled past
+/// an edge is cut there (on a wide window, at the record's column), while
+/// the prints' large shadows and focus rings, above and below the reel,
+/// fall on the wall as the row's do.
+class _Sideways extends CustomClipper<Rect> {
+  const _Sideways();
+
+  @override
+  Rect getClip(Size size) =>
+      Rect.fromLTRB(0, -size.height, size.width, size.height * 2);
+
+  @override
+  bool shouldReclip(_Sideways oldClipper) => false;
 }
 
 /// Profile's scroll controller (the bar after a fast flick): its position
