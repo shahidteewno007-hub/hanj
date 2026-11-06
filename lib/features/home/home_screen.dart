@@ -1891,8 +1891,9 @@ class _HomeScreenState extends State<HomeScreen> {
   /// Whether laying out [sentence], followed by the seal, at [maxWidth]
   /// breaks inside a word: whether a word, such as a short title kept whole
   /// with what is joined to it, is wider than the line. The widest word is
-  /// measured on a layout of unbounded width, where nothing is broken; a
-  /// layout made at [maxWidth] reports a broken word's pieces instead.
+  /// measured on a layout of unbounded width, where nothing is broken: a
+  /// layout made at [maxWidth] leaves out a word it had to break, so its
+  /// minimum width can't show one.
   bool _breaksAWord(String sentence, TextStyle style, TextScaler scaler,
       Size? seal, double maxWidth) {
     final painter = TextPainter(
