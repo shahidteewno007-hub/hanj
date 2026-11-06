@@ -73,6 +73,14 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
   // rating only, is kept, not deleted (CLAUDE.md): false brings it back.
   static const bool _sealPress = true;
 
+  // +1 moves as Home's does (Print Room, P6; DESIGN.md §9.3 A rule 5, "the
+  // tile dips, the count turns over; 200 ms"; question P6-4): the washi +1
+  // dips to 0.90 and comes back, 60 ms in and 140 out, with no overshoot,
+  // and the count's figure turns over in 160 ms (_HankoPlusOne,
+  // _HankoRollingCount). The still +1 and count are kept, not deleted
+  // (CLAUDE.md): false brings them back.
+  static const bool _plusOneDip = true;
+
   final _firestoreService = FirestoreService();
   final _aniListService   = AnilistService();
   final _confettiKey      = GlobalKey<ConfettiOverlayState>();
@@ -1912,20 +1920,26 @@ class _HankoDetailHeaderState extends State<HankoDetailHeader> {
                           ? widget.nextEpisode! - 1
                           : (widget.airing ? watched : null),
                       nextLine: widget._nextLine,
-                      // +1 while watching, until the last episode.
+                      // +1 while watching, until the last episode. It
+                      // dips as Home's does (P6, _plusOneDip).
                       action: widget.status == 'WATCHING' &&
                               (widget.episodes == null ||
                                   widget.episodes! <= 0 ||
                                   watched < widget.episodes!)
-                          ? _HankoMainAction(
-                              label: '+1',
-                              icon: null,
-                              semanticLabel: 'Mark episode ${watched + 1} watched',
-                              minWidth: 76,
-                              minHeight: 56,
-                              fontSize: 20,
-                              onTap: widget.onBump,
-                            )
+                          ? _AnimeDetailScreenState._plusOneDip
+                              ? _HankoPlusOne(
+                                  nextEpisode: watched + 1,
+                                  onTap: widget.onBump,
+                                )
+                              : _HankoMainAction(
+                                  label: '+1',
+                                  icon: null,
+                                  semanticLabel: 'Mark episode ${watched + 1} watched',
+                                  minWidth: 76,
+                                  minHeight: 56,
+                                  fontSize: 20,
+                                  onTap: widget.onBump,
+                                )
                           : null,
                     ),
                   ],
@@ -2178,6 +2192,8 @@ class _HankoEpisodes extends StatelessWidget {
     final total = this.total != null && this.total! > 0 ? this.total : null;
     final action = this.action;
     final nextLine = this.nextLine;
+    // "7 of 28" as it's drawn; with the reel off it also says "watched".
+    final words = total != null ? '$watched of $total' : '$watched';
     return Row(
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
@@ -2194,24 +2210,50 @@ class _HankoEpisodes extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 6),
-              Text.rich(
-                TextSpan(
-                  text: '$watched',
-                  children: [
-                    if (total != null)
-                      TextSpan(
-                        text: ' of $total',
-                        style: AppTheme.hankoSans(fontSize: 15, color: AppTheme.hankoStone, height: 1),
-                      ),
-                  ],
+              if (_AnimeDetailScreenState._plusOneDip)
+                // The figure turns over when +1 lands (P6): its own small
+                // widget, on " of 28"'s baseline, and said with it in one
+                // label, as Text.rich's semanticsLabel did.
+                Semantics(
+                  label: _reel ? words : '$words watched',
+                  child: ExcludeSemantics(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.baseline,
+                      textBaseline: TextBaseline.alphabetic,
+                      children: [
+                        _HankoRollingCount(
+                          value: watched,
+                          style: AppTheme.hankoSerif(fontSize: 30, height: 1),
+                        ),
+                        if (total != null)
+                          Text(
+                            ' of $total',
+                            style: AppTheme.hankoSans(fontSize: 15, color: AppTheme.hankoStone, height: 1),
+                          ),
+                      ],
+                    ),
+                  ),
+                )
+              else
+                Text.rich(
+                  TextSpan(
+                    text: '$watched',
+                    children: [
+                      if (total != null)
+                        TextSpan(
+                          text: ' of $total',
+                          style: AppTheme.hankoSans(fontSize: 15, color: AppTheme.hankoStone, height: 1),
+                        ),
+                    ],
+                  ),
+                  semanticsLabel: _reel
+                      ? null
+                      : total != null
+                          ? '$watched of $total watched'
+                          : '$watched watched',
+                  style: AppTheme.hankoSerif(fontSize: 30, height: 1),
                 ),
-                semanticsLabel: _reel
-                    ? null
-                    : total != null
-                        ? '$watched of $total watched'
-                        : '$watched watched',
-                style: AppTheme.hankoSerif(fontSize: 30, height: 1),
-              ),
               // The reel: one tick per episode, watched solid, aired and
               // waiting outlined, still to air short (a line past 30). Off
               // since 2026-11-05 (_reel).
@@ -2235,6 +2277,131 @@ class _HankoEpisodes extends StatelessWidget {
         ),
         if (action != null) ...[const SizedBox(width: 18), action],
       ],
+    );
+  }
+}
+
+/// Detail's +1, moving as Home's does (Print Room, P6; DESIGN.md §9.3 A rule
+/// 5; question P6-4): each tap dips the washi tile to 0.90 and brings it
+/// back, 60 ms in and 140 out, ease out, with no overshoot, which is the
+/// seal's. The count turns over meanwhile (_HankoRollingCount). With "remove
+/// animations" on it doesn't move.
+///
+/// The tile is +1's _HankoMainAction as it was, scaled whole, its tap and
+/// focus with it, so it stays one button with the same label. Only the tile
+/// moves: a transition on its own controller, in a layer of its own, so a dip
+/// rebuilds and repaints nothing else on the page. "Add to list", the same
+/// main action, doesn't dip.
+class _HankoPlusOne extends StatefulWidget {
+  const _HankoPlusOne({required this.nextEpisode, required this.onTap});
+
+  final int nextEpisode;
+  final VoidCallback? onTap;
+
+  @override
+  State<_HankoPlusOne> createState() => _HankoPlusOneState();
+}
+
+class _HankoPlusOneState extends State<_HankoPlusOne>
+    with SingleTickerProviderStateMixin {
+  // Home's dip (_PlusOneTileState): 0.90 at 60 ms, at rest by 200.
+  late final AnimationController _dip = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 200),
+  );
+  late final Animation<double> _scale = TweenSequence<double>([
+    TweenSequenceItem(
+      tween: Tween(begin: 1.0, end: 0.90).chain(CurveTween(curve: Curves.easeOut)),
+      weight: 60,
+    ),
+    TweenSequenceItem(
+      tween: Tween(begin: 0.90, end: 1.0).chain(CurveTween(curve: Curves.easeOut)),
+      weight: 140,
+    ),
+  ]).animate(_dip);
+
+  @override
+  void dispose() {
+    _dip.dispose();
+    super.dispose();
+  }
+
+  void _tap() {
+    if (!MediaQuery.disableAnimationsOf(context)) _dip.forward(from: 0);
+    widget.onTap?.call();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return RepaintBoundary(
+      child: ScaleTransition(
+        scale: _scale,
+        child: _HankoMainAction(
+          label: '+1',
+          icon: null,
+          semanticLabel: 'Mark episode ${widget.nextEpisode} watched',
+          minWidth: 76,
+          minHeight: 56,
+          fontSize: 20,
+          onTap: widget.onTap == null ? null : _tap,
+        ),
+      ),
+    );
+  }
+}
+
+/// The count's figure, which turns over when it changes (Print Room, P6), as
+/// Home's Continue count does (_RollingCount, round seven): the new figure
+/// comes up from below as the old one leaves upward, 160 ms, so a +1 is seen
+/// to land in "7 of 28". A count that goes back (a refused save) rolls the
+/// other way. Still with "remove animations" on. In a layer of its own, so a
+/// roll repaints nothing else on the page.
+class _HankoRollingCount extends StatefulWidget {
+  const _HankoRollingCount({required this.value, required this.style});
+
+  final int value;
+  final TextStyle style;
+
+  @override
+  State<_HankoRollingCount> createState() => _HankoRollingCountState();
+}
+
+class _HankoRollingCountState extends State<_HankoRollingCount> {
+  bool _up = true;
+
+  @override
+  void didUpdateWidget(_HankoRollingCount old) {
+    super.didUpdateWidget(old);
+    if (old.value != widget.value) _up = widget.value > old.value;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final still = MediaQuery.disableAnimationsOf(context);
+    final current = ValueKey(widget.value);
+    return RepaintBoundary(
+      child: ClipRect(
+        child: AnimatedSwitcher(
+          duration: still ? Duration.zero : const Duration(milliseconds: 160),
+          switchInCurve: Curves.easeOut,
+          switchOutCurve: Curves.easeIn,
+          layoutBuilder: (shown, leaving) => Stack(
+            alignment: Alignment.centerLeft,
+            children: [...leaving, ?shown],
+          ),
+          transitionBuilder: (child, animation) {
+            // The incoming figure runs 0 → 1 from below (above when going
+            // back); the leaving one runs 1 → 0, so it starts where it is.
+            final incoming = child.key == current;
+            final edge = (incoming == _up) ? 0.7 : -0.7;
+            return SlideTransition(
+              position: Tween(begin: Offset(0, edge), end: Offset.zero).animate(animation),
+              child: FadeTransition(opacity: animation, child: child),
+            );
+          },
+          child: Text('${widget.value}', key: current, style: widget.style),
+        ),
+      ),
     );
   }
 }
