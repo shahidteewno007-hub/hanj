@@ -3738,7 +3738,8 @@ class _ArtWash extends StatelessWidget {
 /// lying on the field with the large shadow and a pool of its colour behind
 /// it. Your [rating], if there is one, is pressed across the print's
 /// lower-left corner as a 44 dp seal, beside the sentence's last words
-/// ("sealed it"), so the layout finishes the sentence.
+/// ("sealed it"), so the layout finishes the sentence. Since P7 the seal is
+/// 30 dp (_smallSeal).
 ///
 /// The print asks for the 460 px cover (question 167: heroes only) and
 /// shows the stored one until it arrives, or for good if it fails. With
@@ -3769,8 +3770,19 @@ class _HeroRow extends StatelessWidget {
   /// The print sits 4 under the top of the sentence's first line.
   static const double printTop = 4;
 
-  /// Between the sentence and the print; the seal hangs 18 of its 44 into it.
+  /// Between the sentence and the print; the seal hangs 18 of its 44 into it
+  /// (12 of its 30 since P7).
   static const double gap = 24;
+
+  /// Your seal on the hero print at 30 dp (Print Room P7; Shahid,
+  /// 2026-11-06: "on home page doesn't the rating box look too big? I am
+  /// not a big fan of these ratings bcz they are ours"), the size P5 gave
+  /// the seals on Profile's prints, from P2's 44, with its number kept: the
+  /// lede ends "and sealed it", and the seal is that moment. It hangs (12,
+  /// 8) past the corner, P2's (18, 12) scaled, so it keeps 12 dp clear of
+  /// the words instead of 6, and the sentence keeps its width and its line
+  /// breaks. False gives back P2's 44.
+  static const bool _smallSeal = true;
 
   /// The pool of colour: 240 × 220, centred 8 under the print's centre, as
   /// the mockup's radial glow.
@@ -3786,9 +3798,11 @@ class _HeroRow extends StatelessWidget {
       height: printHeight,
       lift: HankoPrintLift.large,
       sharp: true,
-      seal: rating == null ? null : HankoSeal.score(rating, size: 44),
+      seal: rating == null
+          ? null
+          : HankoSeal.score(rating, size: _smallSeal ? 30 : 44),
       sealCorner: Alignment.bottomLeft,
-      sealOverhang: const Offset(18, 12),
+      sealOverhang: _smallSeal ? const Offset(12, 8) : const Offset(18, 12),
       heroTag: heroTag,
     );
     if (onPrint != null) {
