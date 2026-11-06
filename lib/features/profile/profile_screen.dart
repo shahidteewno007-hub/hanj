@@ -1351,7 +1351,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   /// The recent diary (Hanko stage H5, item f): your latest dated moments,
   /// newest first, five at most. It is partial until the list keeps watch
   /// dates (question 27), so each row says only what its date can prove:
-  ///  - "Rated": the date of your rating (ratedAt), with your seal.
+  ///  - "Rated": the date of your rating (ratedAt), with your seal; since
+  ///    P7 with no seal, and "Finished and rated" when you finished the
+  ///    show in the same sitting (_DiaryRow._withoutRatings).
   ///  - "Updated": lastWatched, which adds, status changes, imports and
   ///    episodes all write, so it can't say which; the row adds what the
   ///    show is now ("now watching, 7 of 28").
@@ -2750,6 +2752,31 @@ class _DiaryRow extends StatelessWidget {
   final _DiaryItem item;
   final VoidCallback? onTap;
 
+  /// The diary without your ratings (Print Room P7; Shahid, 2026-11-06:
+  /// "Let's remove the rating from recent diary", and "we already know what
+  /// I rated my shows so not something I need reminding of"): no seal and
+  /// no number on any row, nor in what a screen reader hears. A rating's
+  /// row says what happened instead: "Finished and rated" when you finished
+  /// the show in the same sitting (_finishedThen), "Rated" otherwise. False
+  /// gives back the seal on each "Rated" row.
+  static const bool _withoutRatings = true;
+
+  /// Whether a rated show was finished in the same sitting as its rating
+  /// (P7): it is completed, and its last update is within six hours of the
+  /// rating. That is the update the diary folds into the rating's row
+  /// (_diary), and Home's lede says "finished ... and sealed it" by the same
+  /// rule.
+  static bool _finishedThen(Map<String, dynamic> e) {
+    final ratedAt = e['ratedAt'], updatedAt = e['lastWatched'];
+    if (e['status'] != 'COMPLETED' ||
+        ratedAt is! Timestamp ||
+        updatedAt is! Timestamp) {
+      return false;
+    }
+    return ratedAt.toDate().difference(updatedAt.toDate()).abs() <=
+        const Duration(hours: 6);
+  }
+
   static const _months = [
     'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
   ];
@@ -2790,23 +2817,33 @@ class _DiaryRow extends StatelessWidget {
     final title = entry == null
         ? '${NumberFormat.decimalPattern().format(item.count)} titles updated'
         : (entry['title'] as String?) ?? 'Unknown';
+    // Since P7 a rating's row says whether you finished the show then.
+    final finished =
+        _withoutRatings && entry != null && item.rated && _finishedThen(entry);
     final meta = entry == null
         ? null
         : item.rated
-            ? 'Rated'
+            ? (finished ? 'Finished and rated' : 'Rated')
             : _updatedLine(entry);
     // Only a "Rated" row carries your seal (question 132). A list entry
     // keeps one rating, the latest (updateRating overwrites userRating and
     // ratedAt, and the activity log records no ratings), so an "Updated"
     // row can't know what your rating was on its day: a 29 Oct row showed
     // the 8.5 sealed on 30 Oct. It shows no seal rather than a later one.
-    final rating = entry != null && item.rated && entry['userRating'] is num
+    // Since P7 no row does (_withoutRatings).
+    final rating = !_withoutRatings &&
+            entry != null &&
+            item.rated &&
+            entry['userRating'] is num
         ? (entry['userRating'] as num).toDouble()
         : null;
     final spoken = [
       '${_weekdayNames[at.weekday - 1]} ${at.day} ${_monthNames[at.month - 1]}'
           '${thisYear ? '' : ' ${at.year}'}',
-      if (entry == null) title else '${item.rated ? 'rated' : 'updated'} $title',
+      if (entry == null)
+        title
+      else
+        '${item.rated ? (finished ? 'finished and rated' : 'rated') : 'updated'} $title',
       if (entry != null && !item.rated) _updatedLine(entry).replaceFirst('Updated · ', ''),
       if (rating != null) 'your rating ${HankoSeal.formatScore(rating)}',
     ].join(', ');
