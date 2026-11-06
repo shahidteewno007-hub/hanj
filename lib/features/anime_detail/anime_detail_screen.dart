@@ -15,6 +15,7 @@ import 'package:http/http.dart' as http;
 import '../../widgets/anilist_saved_note.dart';
 import '../../widgets/hanko_cover_colour.dart';
 import '../../widgets/hanko_field.dart';
+import '../../widgets/hanko_flight.dart';
 import '../../widgets/hanko_print.dart';
 import '../../widgets/hanko_rating_ruler.dart';
 import '../../widgets/hanko_reel.dart';
@@ -37,7 +38,13 @@ import '../home/home_screen.dart' show showHanjListSheet;
 
 class AnimeDetailScreen extends StatefulWidget {
   final Anime anime;
-  const AnimeDetailScreen({super.key, required this.anime});
+
+  /// The print this page was opened from flies into its print (Print Room,
+  /// P6): the flight's tag goes on Detail's print, and its colour is the
+  /// field's from the first frame. Null when Detail was opened any other way.
+  final HankoFlight? flight;
+
+  const AnimeDetailScreen({super.key, required this.anime, this.flight});
 
   @override
   State<AnimeDetailScreen> createState() => _AnimeDetailScreenState();
@@ -400,8 +407,13 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
   }
 
   /// Print Room's field colour (P4): AniList's, else what the Seasons walk
-  /// knew, else the cover's own once AniList has had its say.
+  /// knew, else the cover's own once AniList has had its say. Opened by a
+  /// print's flight (P6), the colour that print's place showed, from the
+  /// first frame, and it stays: AniList's, landing a second or more later,
+  /// would change the page's colour under you as you read.
   Color? get _fieldColour {
+    final flown = widget.flight?.colour;
+    if (flown != null) return flown;
     final anilist = _coverColor ?? _knownColour;
     if (anilist != null) return anilist;
     return _staffSettled || _isMalImport ? _coverRead : null;
@@ -1287,6 +1299,8 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
               title: title,
               nativeTitle: _nativeTitle,
               coverUrl: cover,
+              // The print it was opened from lands here (P6).
+              printTag: widget.flight?.tag,
               sharpCoverUrl: _sharpCover,
               // Print Room's field colour (P4): AniList's, or the cover's own.
               coverColor: _printRoom ? _fieldColour : _coverColor,
@@ -1363,6 +1377,7 @@ class HankoDetailHeader extends StatefulWidget {
     required this.title,
     this.nativeTitle,
     this.coverUrl,
+    this.printTag,
     this.sharpCoverUrl,
     this.coverColor,
     this.studio,
@@ -1403,6 +1418,10 @@ class HankoDetailHeader extends StatefulWidget {
   /// It is in the image cache already, so the print is there in the first
   /// frame.
   final String? coverUrl;
+
+  /// The Hero tag of the print Detail was opened from (Print Room, P6), on
+  /// Print Room's print, so that print flies into this one. Null: no Hero.
+  final Object? printTag;
 
   /// AniList's `extraLarge` (460 px), crossfading in over [coverUrl].
   final String? sharpCoverUrl;
@@ -1707,6 +1726,7 @@ class _HankoDetailHeaderState extends State<HankoDetailHeader> {
                               height: g.printHeight,
                               title: widget.title,
                               coverUrl: widget.coverUrl,
+                              heroTag: widget.printTag,
                               coverColor: widget.coverColor,
                               nativeTitle: widget.nativeTitle,
                               onTap: widget.onCover,
@@ -2456,6 +2476,7 @@ class _PrintRoomPrint extends StatelessWidget {
     required this.height,
     required this.title,
     required this.coverUrl,
+    required this.heroTag,
     required this.coverColor,
     required this.nativeTitle,
     required this.onTap,
@@ -2465,6 +2486,9 @@ class _PrintRoomPrint extends StatelessWidget {
   final double height;
   final String title;
   final String? coverUrl;
+
+  /// The flight's tag (P6): the print Detail was opened from lands here.
+  final Object? heroTag;
   final Color? coverColor;
   final String? nativeTitle;
   final VoidCallback? onTap;
@@ -2481,6 +2505,7 @@ class _PrintRoomPrint extends StatelessWidget {
           lift: HankoPrintLift.large,
           sharp: true,
           placeholder: coverColor ?? AppTheme.hankoSumi3,
+          heroTag: heroTag,
         ),
         Positioned(
           left: -1,

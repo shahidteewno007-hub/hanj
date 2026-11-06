@@ -34,6 +34,9 @@ enum HankoPrintLift {
 /// the stored cover until that arrives, or for good if it fails. The naming
 /// is the AniList image server's, not a documented API, hence the fallback.
 ///
+/// [heroTag] lets the print fly (Print Room, P6; see HankoFlight): the print
+/// and its seal are one Hero, and the mat stays where it lies.
+///
 /// The print is decorative and adds nothing to the semantics tree. The screen
 /// names the show in its own node, as Hanko's rows do.
 class HankoPrint extends StatelessWidget {
@@ -49,6 +52,7 @@ class HankoPrint extends StatelessWidget {
     this.sealOverhang = const Offset(8, 8),
     this.sharp = false,
     this.placeholder = AppTheme.hankoSumi3,
+    this.heroTag,
   });
 
   /// The stored cover URL. Null or empty shows [placeholder] alone.
@@ -77,6 +81,10 @@ class HankoPrint extends StatelessWidget {
   /// Shown while the cover loads, and when there is none.
   final Color placeholder;
 
+  /// Names the print's Hero, so it can fly to the page it opens (Print Room,
+  /// P6). Null, the default, draws no Hero.
+  final Object? heroTag;
+
   /// The 460 px cover for [url], by the AniList image server's naming. When [url]
   /// isn't one of AniList's 230 px covers (a MyAnimeList import, for one),
   /// it comes back unchanged.
@@ -87,14 +95,19 @@ class HankoPrint extends StatelessWidget {
     return url.contains(stored) ? url.replaceFirst(stored, sharper) : url;
   }
 
+  static const _corners = BorderRadius.all(Radius.circular(AppTheme.hankoRadius));
+
+  /// The shadow [lift] casts.
+  List<BoxShadow> get _shadow => switch (lift) {
+        HankoPrintLift.none => const <BoxShadow>[],
+        HankoPrintLift.small => AppTheme.hankoPrintShadow,
+        HankoPrintLift.large => AppTheme.hankoPrintShadowLarge,
+      };
+
   @override
   Widget build(BuildContext context) {
-    const corners = BorderRadius.all(Radius.circular(AppTheme.hankoRadius));
-    final shadow = switch (lift) {
-      HankoPrintLift.none => const <BoxShadow>[],
-      HankoPrintLift.small => AppTheme.hankoPrintShadow,
-      HankoPrintLift.large => AppTheme.hankoPrintShadowLarge,
-    };
+    const corners = _corners;
+    final shadow = _shadow;
     Widget body = SizedBox(
       width: width,
       height: height,
@@ -123,6 +136,10 @@ class HankoPrint extends StatelessWidget {
         ],
       );
     }
+    final heroTag = this.heroTag;
+    if (heroTag != null) {
+      body = Hero(tag: heroTag, flightShuttleBuilder: _inFlight, child: body);
+    }
     final mat = this.mat;
     if (mat != null) {
       body = DecoratedBox(
@@ -134,6 +151,41 @@ class HankoPrint extends StatelessWidget {
       );
     }
     return ExcludeSemantics(child: body);
+  }
+
+  /// What flies between two prints (Print Room, P6): the page's print, its
+  /// cover as the page will show it, with its shadow eased from the one the
+  /// print had where it lay to the page's as it rises, and no seal (the
+  /// page's own seal comes with the page, so there's never a second one).
+  /// [animation] runs from the screen the print was tapped on (0) to the
+  /// page it opens (1), whichever way it flies.
+  static Widget _inFlight(
+    BuildContext flightContext,
+    Animation<double> animation,
+    HeroFlightDirection direction,
+    BuildContext fromHeroContext,
+    BuildContext toHeroContext,
+  ) {
+    final from = fromHeroContext.findAncestorWidgetOfExactType<HankoPrint>();
+    final to = toHeroContext.findAncestorWidgetOfExactType<HankoPrint>();
+    final opened = direction == HeroFlightDirection.push;
+    final lay = opened ? from : to;
+    final page = opened ? to : from;
+    if (lay == null || page == null) return (toHeroContext.widget as Hero).child;
+    final art = ClipRRect(borderRadius: _corners, child: page._art());
+    return AnimatedBuilder(
+      animation: animation,
+      child: art,
+      builder: (context, art) => DecoratedBox(
+        decoration: BoxDecoration(
+          color: page.placeholder,
+          borderRadius: _corners,
+          boxShadow:
+              BoxShadow.lerpList(lay._shadow, page._shadow, animation.value),
+        ),
+        child: art,
+      ),
+    );
   }
 
   Widget _art() {

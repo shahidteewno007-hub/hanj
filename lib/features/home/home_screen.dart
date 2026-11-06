@@ -12,6 +12,7 @@ import '../../core/theme/app_theme.dart';
 import '../../widgets/anilist_saved_note.dart';
 import '../../widgets/hanko_cover_colour.dart';
 import '../../widgets/hanko_field.dart';
+import '../../widgets/hanko_flight.dart';
 import '../../widgets/hanko_print.dart';
 import '../../widgets/hanko_reel.dart';
 import '../../widgets/hanko_seal.dart';
@@ -87,6 +88,41 @@ class _HomeScreenState extends State<HomeScreen> {
   // pick on Watching, as the status sheet's "Watching" does, so the show
   // moves onto the Continue shelf. Off, the band is P2's as built.
   static const bool _startWatching = true;
+
+  // ── Shelf to page (Print Room P6; DESIGN.md §9.3 A rule 5) ──
+  // The print you tap flies into Detail's print as one Hero, and Detail
+  // fades in over Home in the show's colour, which Home's mat or field has
+  // already read, so it's there from the first frame (HankoFlightRoute,
+  // 320 ms; instant with Remove animations on). From every print on Home:
+  // Continue's shelf, the hero and the band. Off, each opens Detail with the
+  // push it always had (MaterialPageRoute).
+  static const bool _flight = true;
+
+  /// A print's Hero tag on Home (P6): its place and its show, since one show
+  /// can lie in two places at once (the hero's fallback is the shelf's first
+  /// show). Null, no Hero, with the flight off.
+  static Object? _printTag(String place, String id) =>
+      _flight && _printRoom && id.isNotEmpty ? (place, id) : null;
+
+  /// The route that opens [anime] from its print at [place] (P6): the flight,
+  /// with the colour the place showed, read from the same cover; with the
+  /// flight off, the push.
+  static Route<void> _showRoute(BuildContext context, Anime anime,
+      {required String place}) {
+    final tag = _printTag(place, anime.id);
+    if (tag == null) {
+      return MaterialPageRoute(builder: (_) => AnimeDetailScreen(anime: anime));
+    }
+    final url = anime.imageUrl ?? '';
+    final flight = HankoFlight(
+      tag: tag,
+      colour: url.isEmpty ? null : HankoCoverColour.peek(url),
+    );
+    return HankoFlightRoute(
+      still: MediaQuery.disableAnimationsOf(context),
+      builder: (_) => AnimeDetailScreen(anime: anime, flight: flight),
+    );
+  }
 
   /// The pick's Watching write is on its way: the button says so.
   bool _starting = false;
@@ -981,7 +1017,8 @@ class _HomeScreenState extends State<HomeScreen> {
                       // of two or more, with no newer entry passed over.
                       newest: _planToWatch.length > 1 &&
                           identical(pick, _planToWatch.first),
-                      onOpen: () => _openEntry(pick),
+                      // Its print flies to the show's page (P6).
+                      onOpen: () => _openEntry(pick, place: 'band'),
                       // Print Room's washi action (P2-2), on its band only.
                       onStart: _printRoom && _startWatching
                           ? () => _start(pick)
@@ -1577,7 +1614,8 @@ class _HomeScreenState extends State<HomeScreen> {
   /// day, so it was seldom the one you had just planned.
   Map<String, dynamic> _watchlistPick() => _pickable.first;
 
-  void _openEntry(Map<String, dynamic> data) {
+  /// Opens [data]'s show; from its print at [place], the print flies (P6).
+  void _openEntry(Map<String, dynamic> data, {String? place}) {
     final anime = Anime(
       id: data['animeId']?.toString() ?? '',
       title: data['title'] as String? ?? 'Unknown',
@@ -1585,7 +1623,9 @@ class _HomeScreenState extends State<HomeScreen> {
       episodes: data['episodes'] as int?,
       genres: (data['genres'] as List<dynamic>?)?.cast<String>() ?? [],
     );
-    _open(MaterialPageRoute(builder: (_) => AnimeDetailScreen(anime: anime)));
+    _open(place == null
+        ? MaterialPageRoute(builder: (_) => AnimeDetailScreen(anime: anime))
+        : _showRoute(context, anime, place: place));
   }
 
   Widget _buildHeadline() {
@@ -1635,8 +1675,9 @@ class _HomeScreenState extends State<HomeScreen> {
         sentence: Text(line,
             style: style.copyWith(fontSize: _ledeBesidePrint)),
         url: cover,
+        heroTag: _printTag('hero', first['animeId']?.toString() ?? ''),
         printLabel: (first['title'] as String? ?? '').trim(),
-        onPrint: () => _openEntry(first),
+        onPrint: () => _openEntry(first, place: 'hero'),
       );
     }
     return Text(line, style: style);
@@ -1757,7 +1798,8 @@ class _HomeScreenState extends State<HomeScreen> {
       child: _inkOnField(
         onPrint,
         InkWell(
-          onTap: () => _openEntry(entry),
+          // On the print, the print flies (P6).
+          onTap: () => _openEntry(entry, place: onPrint ? 'hero' : null),
           splashFactory: NoSplash.splashFactory,
           highlightColor: AppTheme.hankoPressWash,
           hoverColor: AppTheme.hankoPressWash,
@@ -1768,7 +1810,12 @@ class _HomeScreenState extends State<HomeScreen> {
               // On the print (Print Room) the whole hero, the sentence and
               // the print with your seal, is the one button.
               child: onPrint
-                  ? _HeroRow(sentence: words(), url: cover, rating: rating)
+                  ? _HeroRow(
+                      sentence: words(),
+                      url: cover,
+                      heroTag: _printTag(
+                          'hero', entry['animeId']?.toString() ?? ''),
+                      rating: rating)
                   : words(),
             ),
           ),
@@ -2851,8 +2898,9 @@ class _TonightCardState extends State<_TonightCard>
     'DROPPED': Icons.cancel_sharp,
   };
 
-  void _openShow() => widget.open(MaterialPageRoute(
-      builder: (_) => AnimeDetailScreen(anime: widget.anime)));
+  // The band's print flies to the show's page (P6).
+  void _openShow() => widget.open(
+      _HomeScreenState._showRoute(context, widget.anime, place: 'band'));
 
   @override
   Widget build(BuildContext context) {
@@ -2889,6 +2937,7 @@ class _TonightCardState extends State<_TonightCard>
       // chart, a new place down it each day (_loadChart).
       note: 'From this season’s chart',
       onOpen: _openShow,
+      heroTag: _HomeScreenState._printTag('band', anime.id),
       trailing: ScaleTransition(
         scale: _bookmarkScale,
         child: IconButton(
@@ -2972,6 +3021,8 @@ class _WatchlistPick extends StatelessWidget {
       score: score == null ? null : (score / 10).toStringAsFixed(1),
       note: newest ? 'Newest on your watchlist' : null,
       onOpen: onOpen,
+      heroTag: _HomeScreenState._printTag(
+          'band', entry['animeId']?.toString() ?? ''),
       action: onStart == null
           ? null
           : _StartWatching(title: title, starting: starting, onTap: onStart),
@@ -2996,6 +3047,7 @@ class _PickBand extends StatelessWidget {
     required this.imageUrl,
     required this.title,
     required this.onOpen,
+    required this.heroTag,
     this.facts,
     this.score,
     this.note,
@@ -3008,6 +3060,9 @@ class _PickBand extends StatelessWidget {
   final String? imageUrl;
   final String title;
   final VoidCallback onOpen;
+
+  /// Print Room's print's Hero tag, so it flies to the show's page (P6).
+  final Object? heroTag;
   final String? facts;
 
   /// AniList's score out of 10, one decimal.
@@ -3192,6 +3247,7 @@ class _PickBand extends StatelessWidget {
                           width: printWidth,
                           height: printHeight,
                           sharp: true,
+                          heroTag: heroTag,
                         )
                       else
                         _PickPrint(url: imageUrl),
@@ -3577,6 +3633,7 @@ class _HeroRow extends StatelessWidget {
   const _HeroRow({
     required this.sentence,
     required this.url,
+    required this.heroTag,
     this.rating,
     this.printLabel,
     this.onPrint,
@@ -3584,6 +3641,9 @@ class _HeroRow extends StatelessWidget {
 
   final Widget sentence;
   final String? url;
+
+  /// The print's Hero tag, so it flies to the show's page (P6).
+  final Object? heroTag;
   final double? rating;
   final String? printLabel;
   final VoidCallback? onPrint;
@@ -3614,6 +3674,7 @@ class _HeroRow extends StatelessWidget {
       seal: rating == null ? null : HankoSeal.score(rating, size: 44),
       sealCorner: Alignment.bottomLeft,
       sealOverhang: const Offset(18, 12),
+      heroTag: heroTag,
     );
     if (onPrint != null) {
       print = _PrintTap(label: printLabel ?? '', onTap: onPrint, child: print);
@@ -4079,16 +4140,17 @@ class _ContinueCardState extends State<_ContinueCard> {
       height: 1,
       tabular: true,
     );
-    void openShow() => widget.open(MaterialPageRoute(
-        builder: (_) => AnimeDetailScreen(
-              anime: Anime(
-                id: animeId,
-                title: title,
-                imageUrl: imageUrl,
-                episodes: total,
-                genres: genres,
-              ),
-            )));
+    // The print flies off the shelf into the show's page (P6).
+    void openShow() => widget.open(_HomeScreenState._showRoute(
+        context,
+        Anime(
+          id: animeId,
+          title: title,
+          imageUrl: imageUrl,
+          episodes: total,
+          genres: genres,
+        ),
+        place: 'shelf'));
     final item = Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -4108,6 +4170,7 @@ class _ContinueCardState extends State<_ContinueCard> {
               width: _ContinueCard.printWidth,
               height: _ContinueCard.printHeight,
               mat: mat,
+              heroTag: _HomeScreenState._printTag('shelf', animeId),
             ),
           ),
         ),
