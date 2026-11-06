@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/anime_model.dart';
 
 class AnilistService {
@@ -375,12 +376,18 @@ class AnilistService {
   /// series director sits; in the default order `staff` can miss them (25
   /// edges of Frieren's held four kinds of director, not the Director).
   /// `staff` keeps its own order, which the Cast tab shows.
+  ///
+  /// It also carries the show's own season facts and its relations (round
+  /// seven), so the Seasons strip knows the show's neighbours at no extra
+  /// request; see [noteSeasons].
   Future<Map<String, dynamic>?> getAnimeStaff(String animeId) async {
     const String query = '''
     query (\$id: Int) {
       Media(id: \$id, type: ANIME) {
-        title { native }
-        coverImage { extraLarge color }
+        $_seasonFields
+        relations { edges { relationType node { $_seasonFields } } }
+        title { romaji english native }
+        coverImage { large extraLarge color }
         bannerImage
         duration
         nextAiringEpisode { airingAt episode }
@@ -624,6 +631,322 @@ class AnilistService {
     }
   }
 
+  // ── Seasons (round seven) ───────────────────────────────────
+  // Detail's Seasons strip: a show's chain of PREQUEL and SEQUEL relations
+  // on AniList, walked a step at a time. getAnimeStaff carries the open
+  // show's own relations, so its neighbours cost nothing. Each further step
+  // is one request for every show at the edge of what's known (id_in), made
+  // through _post, so it queues on the throttle, notes the rate-limit
+  // headers and backs off on a 429. What a step learns is kept per show: in
+  // memory for the app's run, and on the device for a few days, so a season
+  // opened from the strip, or a show opened again, asks for nothing already
+  // known.
+  //
+  // Seasons are the TV, TV_SHORT and ONA entries. A film, special or OVA in
+  // the chain is walked through, never shown, and only one at a time: past
+  // one the walk goes on only to a season, so a run of films (a film series)
+  // is never followed.
+
+  /// AniList formats that count as a season.
+  static const seasonFormats = {'TV', 'TV_SHORT', 'ONA'};
+
+  /// What the strip needs of a show, for the open show and each relation.
+  static const String _seasonFields = '''
+          id
+          type
+          isAdult
+          format
+          status
+          episodes
+          season
+          seasonYear
+          startDate { year month day }
+          title { romaji english }
+          coverImage { large color }
+          nextAiringEpisode { episode }
+  ''';
+
+  /// One step of the walk: these shows, with their relations.
+  static const String _seasonQuery = '''
+    query (\$ids: [Int], \$perPage: Int) {
+      Page(page: 1, perPage: \$perPage) {
+        media(id_in: \$ids, type: ANIME) {
+          $_seasonFields
+          relations { edges { relationType node { $_seasonFields } } }
+        }
+      }
+    }
+  ''';
+
+  static final Map<int, _SeasonNode> _seasonNodes = {};
+  static final Map<int, Future<void>> _seasonReads = {};
+  static Future<void>? _seasonsRestored;
+  static const _seasonsKey = 'anilist_seasons_v1';
+
+  /// Relations read within this long aren't read again.
+  static const _seasonsFresh = Duration(days: 3);
+
+  /// Shows not seen for this long are dropped from the device.
+  static const _seasonsKept = Duration(days: 14);
+  static const _seasonsMaxStored = 400;
+
+  /// One walk reads at most this many steps, reaches at most this many
+  /// shows, and asks for at most this many shows in one step.
+  static const _seasonsMaxSteps = 8;
+  static const _seasonsMaxShows = 40;
+  static const _seasonsMaxBatch = 25;
+
+  /// Keeps the open show's season facts and relations from its
+  /// [getAnimeStaff] answer.
+  static void noteSeasons(Map<String, dynamic>? media) {
+    if (media != null) _keepSeason(media, DateTime.now());
+  }
+
+  /// What is known of [animeId]'s seasons now, from memory, with no request:
+  /// a season opened from the strip shows the strip in its first frame.
+  static SeasonChain? knownSeasons(int animeId) =>
+      _seasonChainFrom(animeId, DateTime.now()).$1;
+
+  /// Walks [animeId]'s seasons, reporting what is known to [onChain] at the
+  /// start and after each step, until nothing is left to read or [alive]
+  /// says the screen has gone. A step that fails ends the walk with what was
+  /// known, marked [SeasonChain.failed]. Never throws.
+  Future<void> walkSeasons(
+    int animeId, {
+    required bool Function() alive,
+    required void Function(SeasonChain chain) onChain,
+  }) async {
+    var learned = false;
+    try {
+      await (_seasonsRestored ??= _restoreSeasons());
+      for (var step = 0;; step++) {
+        final (chain, toRead) = _seasonChainFrom(animeId, DateTime.now());
+        if (chain == null || !alive()) return;
+        if (toRead.isEmpty || step >= _seasonsMaxSteps) {
+          // Done, or as far as one walk goes: nothing more is coming.
+          onChain(chain._with(moreBefore: false, moreAfter: false));
+          return;
+        }
+        onChain(chain);
+        try {
+          await _readSeasons(toRead.take(_seasonsMaxBatch).toList());
+          learned = true;
+        } catch (_) {
+          final known = _seasonChainFrom(animeId, DateTime.now()).$1;
+          if (known != null && alive()) onChain(known._with(failed: true));
+          return;
+        }
+      }
+    } catch (_) {
+      // Nothing here may reach Crashlytics as a fatal; the strip keeps what
+      // it showed.
+    } finally {
+      // Once per walk, not per step: it writes every show kept.
+      if (learned) unawaited(_storeSeasons());
+    }
+  }
+
+  /// Keeps a Media entry's season facts and, when it carries its relations,
+  /// its PREQUEL and SEQUEL neighbours: anime only, nothing marked adult.
+  /// Returns its id, or null when it isn't a usable entry.
+  static int? _keepSeason(Map<String, dynamic> media, DateTime now) {
+    final season = AnimeSeason._fromMedia(media);
+    if (season == null) return null;
+    final node = _seasonNodes.putIfAbsent(season.id, () => _SeasonNode(season, now))
+      ..season = season
+      ..seenAt = now;
+    final edges = media['relations']?['edges'];
+    if (edges is! List) return season.id;
+    final before = <int>[], after = <int>[];
+    for (final edge in edges) {
+      if (edge is! Map) continue;
+      final kind = edge['relationType'];
+      final other = edge['node'];
+      if (kind != 'PREQUEL' && kind != 'SEQUEL') continue;
+      if (other is! Map<String, dynamic>) continue;
+      if (other['type'] != 'ANIME' || other['isAdult'] == true) continue;
+      final neighbour = AnimeSeason._fromMedia(other);
+      if (neighbour == null) continue;
+      _seasonNodes.putIfAbsent(neighbour.id, () => _SeasonNode(neighbour, now))
+        ..season = neighbour
+        ..seenAt = now;
+      (kind == 'PREQUEL' ? before : after).add(neighbour.id);
+    }
+    node
+      ..prequels = before
+      ..sequels = after
+      ..readAt = now;
+    return season.id;
+  }
+
+  /// The chain from [startId] as known now, and the shows whose relations
+  /// the next step reads: those never read, then those read too long ago.
+  /// Null when nothing is known of [startId].
+  static (SeasonChain?, List<int>) _seasonChainFrom(int startId, DateTime now) {
+    if (!_seasonNodes.containsKey(startId)) return (null, const []);
+    // Places along the chain: the start at 0, prequels before, sequels after.
+    final place = <int, int>{startId: 0};
+    final queue = <int>[startId];
+    final unread = <int>[], stale = <int>[];
+    for (var q = 0; q < queue.length; q++) {
+      final id = queue[q];
+      final node = _seasonNodes[id]!;
+      final readAt = node.readAt;
+      if (readAt == null) {
+        unread.add(id);
+        continue;
+      }
+      if (now.difference(readAt) > _seasonsFresh) stale.add(id);
+      final steps = [
+        for (final p in node.prequels!) (p, -1),
+        for (final s in node.sequels!) (s, 1),
+      ];
+      for (final (next, step) in steps) {
+        if (place.containsKey(next) || place.length >= _seasonsMaxShows) continue;
+        final to = _seasonNodes[next];
+        // Past a film, special or OVA, only to a season.
+        if (to == null || !(to.season.isSeason || node.season.isSeason)) continue;
+        place[next] = place[id]! + step;
+        queue.add(next);
+      }
+    }
+    final seasons = [
+      for (final id in queue)
+        if (_seasonNodes[id]!.season.isSeason) _seasonNodes[id]!.season,
+    ]..sort((a, b) {
+        final byPlace = place[a.id]!.compareTo(place[b.id]!);
+        if (byPlace != 0) return byPlace;
+        // Two at one place (a show with two sequels): the earlier first,
+        // undated ones last.
+        final byDate = (a.startDate ?? 99999999).compareTo(b.startDate ?? 99999999);
+        return byDate != 0 ? byDate : a.id.compareTo(b.id);
+      });
+    final first = seasons.isEmpty ? 0 : place[seasons.first.id]!;
+    final last = seasons.isEmpty ? 0 : place[seasons.last.id]!;
+    final chain = SeasonChain(
+      seasons: seasons,
+      currentId: startId,
+      // A show whose relations are unread may lead to more seasons on its
+      // side of the chain.
+      moreBefore: unread.any((id) => place[id]! <= first),
+      moreAfter: unread.any((id) => place[id]! >= last),
+    );
+    return (chain, [...unread, ...stale]);
+  }
+
+  /// Reads these shows' relations, sharing a read already under way for
+  /// any of them.
+  Future<void> _readSeasons(List<int> ids) async {
+    final waits = <Future<void>>{};
+    final fresh = <int>[];
+    for (final id in ids) {
+      final pending = _seasonReads[id];
+      if (pending != null) {
+        waits.add(pending);
+      } else {
+        fresh.add(id);
+      }
+    }
+    if (fresh.isNotEmpty) {
+      final read = _fetchSeasons(fresh);
+      for (final id in fresh) {
+        _seasonReads[id] = read;
+      }
+      read.whenComplete(() {
+        for (final id in fresh) {
+          if (identical(_seasonReads[id], read)) _seasonReads.remove(id);
+        }
+      }).ignore();
+      waits.add(read);
+    }
+    await Future.wait(waits);
+  }
+
+  Future<void> _fetchSeasons(List<int> ids) async {
+    final response = await _post({
+      'query': _seasonQuery,
+      'variables': {'ids': ids, 'perPage': ids.length},
+    });
+    if (response.statusCode != 200) {
+      throw StateError('AniList ${response.statusCode} (seasons)');
+    }
+    final media = jsonDecode(response.body)['data']?['Page']?['media'];
+    if (media is! List) throw const FormatException('no media (seasons)');
+    final now = DateTime.now();
+    final seen = <int>{};
+    for (final m in media) {
+      if (m is! Map<String, dynamic>) continue;
+      final id = _keepSeason(m, now);
+      if (id != null) seen.add(id);
+    }
+    // A show AniList didn't send back (removed, or not an anime) has
+    // nothing more to give: it counts as read, with no neighbours, so no
+    // walk asks for it again.
+    for (final id in ids) {
+      if (seen.contains(id)) continue;
+      _seasonNodes[id]
+        ?..prequels = const []
+        ..sequels = const []
+        ..readAt = now;
+    }
+  }
+
+  /// Loads what earlier runs kept on the device, under what this run
+  /// already knows.
+  static Future<void> _restoreSeasons() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_seasonsKey);
+      if (raw == null) return;
+      final stored = jsonDecode(raw);
+      if (stored is! Map) return;
+      final now = DateTime.now();
+      for (final value in stored.values) {
+        if (value is! Map) continue;
+        final season = AnimeSeason._fromJson(value['s']);
+        final seen = value['a'];
+        if (season == null || seen is! int) continue;
+        final seenAt = DateTime.fromMillisecondsSinceEpoch(seen);
+        if (now.difference(seenAt) > _seasonsKept) continue;
+        if (_seasonNodes.containsKey(season.id)) continue;
+        final node = _SeasonNode(season, seenAt);
+        final read = value['t'], before = value['p'], after = value['q'];
+        if (read is int && before is List && after is List) {
+          node
+            ..prequels = [for (final x in before) if (x is int) x]
+            ..sequels = [for (final x in after) if (x is int) x]
+            ..readAt = DateTime.fromMillisecondsSinceEpoch(read);
+        }
+        _seasonNodes[season.id] = node;
+      }
+    } catch (_) {}
+  }
+
+  /// Keeps the shows seen lately on the device, newest first.
+  static Future<void> _storeSeasons() async {
+    try {
+      final now = DateTime.now();
+      final nodes = _seasonNodes.values
+          .where((n) => now.difference(n.seenAt) <= _seasonsKept)
+          .toList()
+        ..sort((a, b) => b.seenAt.compareTo(a.seenAt));
+      final out = <String, Object?>{
+        for (final n in nodes.take(_seasonsMaxStored))
+          '${n.season.id}': {
+            's': n.season._toJson(),
+            'a': n.seenAt.millisecondsSinceEpoch,
+            if (n.readAt != null) ...{
+              't': n.readAt!.millisecondsSinceEpoch,
+              'p': n.prequels,
+              'q': n.sequels,
+            },
+          },
+      };
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_seasonsKey, jsonEncode(out));
+    } catch (_) {}
+  }
+
   String? _extractTrailerUrl(Map<String, dynamic>? trailer) {
     if (trailer == null) return null;
     final id   = trailer['id'] as String?;
@@ -632,4 +955,179 @@ class AnilistService {
     if (site == 'youtube') return 'https://www.youtube.com/watch?v=$id';
     return null;
   }
+}
+
+/// One season of a show on AniList, as Detail's Seasons strip shows it
+/// (round seven).
+class AnimeSeason {
+  const AnimeSeason({
+    required this.id,
+    required this.title,
+    this.titleEnglish,
+    this.format,
+    this.status,
+    this.episodes,
+    this.season,
+    this.seasonYear,
+    this.startDate,
+    this.coverUrl,
+    this.coverColor,
+    this.nextEpisode,
+  });
+
+  final int id;
+
+  /// AniList's romaji title, and its English one when it has one.
+  final String title;
+  final String? titleEnglish;
+
+  /// AniList's MediaFormat. TV, TV_SHORT and ONA count as seasons.
+  final String? format;
+
+  /// AniList's MediaStatus: FINISHED, RELEASING, NOT_YET_RELEASED …
+  final String? status;
+  final int? episodes;
+  final String? season;
+  final int? seasonYear;
+
+  /// When it started, as yyyymmdd, with 00 for an unknown month or day.
+  final int? startDate;
+
+  /// coverImage.large, and coverImage.color ("#e4a15d").
+  final String? coverUrl;
+  final String? coverColor;
+
+  /// The next episode to air, while it airs.
+  final int? nextEpisode;
+
+  bool get isSeason => AnilistService.seasonFormats.contains(format);
+
+  /// The year it started.
+  int? get year => seasonYear ?? (startDate == null ? null : startDate! ~/ 10000);
+
+  /// An entry Detail can open. It has no score, so Detail treats it as a
+  /// list row's stub and fetches the rest, synopsis and all, as it does for
+  /// a row of My List.
+  Anime toAnime() => Anime(
+        id: '$id',
+        title: title,
+        titleEnglish: titleEnglish,
+        imageUrl: coverUrl,
+        episodes: episodes,
+        status: status,
+        season: season,
+        seasonYear: seasonYear,
+        format: format,
+      );
+
+  static AnimeSeason? _fromMedia(Map<String, dynamic> media) {
+    final id = media['id'];
+    final title = media['title'];
+    if (id is! int || title is! Map) return null;
+    final english = title['english'] as String?;
+    final date = media['startDate'];
+    final year = date is Map ? date['year'] : null;
+    return AnimeSeason(
+      id: id,
+      title: title['romaji'] as String? ?? english ?? 'Unknown',
+      titleEnglish: english,
+      format: media['format'] as String?,
+      status: media['status'] as String?,
+      episodes: media['episodes'] as int?,
+      season: media['season'] as String?,
+      seasonYear: media['seasonYear'] as int?,
+      startDate: year is int
+          ? year * 10000 + ((date['month'] as int?) ?? 0) * 100 + ((date['day'] as int?) ?? 0)
+          : null,
+      coverUrl: media['coverImage']?['large'] as String?,
+      coverColor: media['coverImage']?['color'] as String?,
+      nextEpisode: media['nextAiringEpisode']?['episode'] as int?,
+    );
+  }
+
+  Map<String, Object?> _toJson() => {
+        'id': id,
+        'title': title,
+        'titleEnglish': titleEnglish,
+        'format': format,
+        'status': status,
+        'episodes': episodes,
+        'season': season,
+        'seasonYear': seasonYear,
+        'startDate': startDate,
+        'coverUrl': coverUrl,
+        'coverColor': coverColor,
+        'nextEpisode': nextEpisode,
+      };
+
+  static AnimeSeason? _fromJson(Object? json) {
+    if (json is! Map) return null;
+    final id = json['id'];
+    final title = json['title'];
+    if (id is! int || title is! String) return null;
+    return AnimeSeason(
+      id: id,
+      title: title,
+      titleEnglish: json['titleEnglish'] as String?,
+      format: json['format'] as String?,
+      status: json['status'] as String?,
+      episodes: json['episodes'] as int?,
+      season: json['season'] as String?,
+      seasonYear: json['seasonYear'] as int?,
+      startDate: json['startDate'] as int?,
+      coverUrl: json['coverUrl'] as String?,
+      coverColor: json['coverColor'] as String?,
+      nextEpisode: json['nextEpisode'] as int?,
+    );
+  }
+}
+
+/// A show's seasons in order, as far as they are known (round seven).
+class SeasonChain {
+  const SeasonChain({
+    required this.seasons,
+    required this.currentId,
+    this.moreBefore = false,
+    this.moreAfter = false,
+    this.failed = false,
+  });
+
+  /// The seasons (TV, TV_SHORT and ONA entries), first to last.
+  final List<AnimeSeason> seasons;
+
+  /// The show the chain was walked from. A film or a special isn't among
+  /// [seasons] itself.
+  final int currentId;
+
+  /// More seasons may still turn up before the first known one, or after
+  /// the last: a show on that side has relations not yet read.
+  final bool moreBefore;
+  final bool moreAfter;
+
+  /// The last read failed, so those won't turn up without another try.
+  final bool failed;
+
+  SeasonChain _with({bool? moreBefore, bool? moreAfter, bool? failed}) => SeasonChain(
+        seasons: seasons,
+        currentId: currentId,
+        moreBefore: moreBefore ?? this.moreBefore,
+        moreAfter: moreAfter ?? this.moreAfter,
+        failed: failed ?? this.failed,
+      );
+}
+
+/// A show the season walk knows, with its neighbours once its relations
+/// are read.
+class _SeasonNode {
+  _SeasonNode(this.season, this.seenAt);
+
+  AnimeSeason season;
+
+  /// When it was last seen, its own entry or as a neighbour.
+  DateTime seenAt;
+
+  /// Its PREQUEL and SEQUEL neighbours: null until its relations are read.
+  List<int>? prequels;
+  List<int>? sequels;
+  DateTime? readAt;
 }

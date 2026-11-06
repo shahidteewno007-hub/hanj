@@ -1051,9 +1051,13 @@ class _CountdownBanner extends StatelessWidget {
   Widget _timeUnit(String val, String label, Color color) {
     return Column(
       children: [
-        Text(val, style: TextStyle(
-          color: color, fontSize: 15, fontWeight: FontWeight.w800,
-          fontFamily: 'SpaceGrotesk',
+        // Jost with tabular figures (Hanko's numerals; question 136). The
+        // old 'SpaceGrotesk' literal named no registered family, so the
+        // digits fell back to the platform font. Tabular figures keep the
+        // ticking seconds from shifting width. 600 is Jost's heaviest.
+        Text(val, style: AppTheme.mono(
+          fontSize: 15, weight: FontWeight.w600, color: color,
+          letterSpacing: 0,
         )),
         Text(label, style: TextStyle(
           color: AppTheme.textMuted, fontSize: 8, letterSpacing: 1,

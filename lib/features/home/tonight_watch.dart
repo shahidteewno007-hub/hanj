@@ -51,36 +51,44 @@ class TonightWatchCard extends StatelessWidget {
         children: [
           Semantics(
             header: true,
-            child: Text("Tonight's watch",
+            // The typographic apostrophe: Shippori draws the typewriter one
+            // as a straight tick (questions 109 and 154).
+            child: Text('Tonight’s watch',
                 style: AppTheme.hankoSerif(height: 1.3)),
           ),
           const SizedBox(height: 6),
-          // The sentence and the tile are one button, as the old card was.
-          // excludeSemantics drops the InkWell's own tap action with the
-          // rest of the subtree, so the node carries onTap itself.
+          // The sentence and the tile are one button, as the old card was:
+          // its own semantics node (container), named by its label, with
+          // the InkWell's tap and focus inside it (question 119, as
+          // Profile's rows since dafb7c5). A tap given to the node over
+          // excluded semantics let a screen reader press it but left out
+          // the InkWell's focus, so on the web it couldn't take focus. The
+          // sentence and the tile are left out of the tree, since the label
+          // says them.
           Semantics(
+            container: true,
             button: true,
             label: 'Choose a mood. $sentence',
-            onTap: open,
-            excludeSemantics: true,
             child: InkWell(
               onTap: open,
               splashFactory: NoSplash.splashFactory,
               highlightColor: AppTheme.hankoPressWash,
               hoverColor: AppTheme.hankoPressWash,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    sentence,
-                    style: AppTheme.hankoSans(
-                        fontSize: AppTheme.hankoMetaSize,
-                        color: AppTheme.hankoStone,
-                        height: 1.4),
-                  ),
-                  const SizedBox(height: 12),
-                  _HankoTile(label: 'Choose a mood', icon: icon),
-                ],
+              child: ExcludeSemantics(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      sentence,
+                      style: AppTheme.hankoSans(
+                          fontSize: AppTheme.hankoMetaSize,
+                          color: AppTheme.hankoStone,
+                          height: 1.4),
+                    ),
+                    const SizedBox(height: 12),
+                    _HankoTile(label: 'Choose a mood', icon: icon),
+                  ],
+                ),
               ),
             ),
           ),
@@ -233,7 +241,7 @@ class _TonightWatchSheetState extends State<TonightWatchSheet>
     'Emotional':    'Sometimes you just need to feel something real.',
     'Cozy':         'Slow down and stay awhile.',
     'Dark':         'Not every story needs light.',
-    'Funny':        'Life\'s too short — laugh a little.',
+    'Funny':        'Life’s too short — laugh a little.',
     'Mind-bending': 'Leave reality at the door.',
   };
 
@@ -338,7 +346,7 @@ class _TonightWatchSheetState extends State<TonightWatchSheet>
                     children: [
                       Semantics(
                         header: true,
-                        child: Text("Tonight's watch",
+                        child: Text('Tonight’s watch',
                             style: AppTheme.hankoSerif(
                                 fontSize: AppTheme.hankoLedeSize,
                                 height: 1.2)),
@@ -425,6 +433,7 @@ class _TonightWatchSheetState extends State<TonightWatchSheet>
     if (_recommendation == null) {
       // An empty answer and a failed request land here alike, so the copy
       // names no cause it can't verify (ANILIST-OFFLINE-0908-REPORT.md).
+      // The typographic apostrophe, as Home's failure line (question 154).
       return Center(
         child: Padding(
           padding:
@@ -432,7 +441,7 @@ class _TonightWatchSheetState extends State<TonightWatchSheet>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text("Couldn't find a pick just now.",
+              Text("Couldn’t find a pick just now.",
                   textAlign: TextAlign.center,
                   style: AppTheme.hankoSerif(
                       fontSize: AppTheme.hankoFeaturedSize, height: 1.3)),
@@ -488,85 +497,95 @@ class _TonightWatchSheetState extends State<TonightWatchSheet>
 
           // The pick: the cover, the whole title (the sheet scrolls, so it
           // is never cut), the facts, the crowd's score in indigo, and Open,
-          // the sheet's one main action. Cover and words are one button.
+          // the sheet's one main action. Cover and words are one button:
+          // its own semantics node with the InkWell's tap and focus inside
+          // it, as the card on Home (question 119). The InkWell paints on a
+          // transparent Material of its own: ink is drawn under a
+          // Material's children, and the sheet's sumi 2 fill sits over the
+          // bottom sheet's Material, which hid the press wash and would hide
+          // the focus wash too.
           Semantics(
+            container: true,
             button: true,
             label: [
               'Open $title',
               if (facts.isNotEmpty) facts,
               if (score != null) 'AniList $score',
             ].join(', '),
-            onTap: openShow,
-            excludeSemantics: true,
-            child: InkWell(
-              onTap: openShow,
-              splashFactory: NoSplash.splashFactory,
-              highlightColor: AppTheme.hankoPressWash,
-              hoverColor: AppTheme.hankoPressWash,
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  ClipRRect(
-                    borderRadius:
-                        BorderRadius.circular(AppTheme.hankoRadius),
-                    child: anime.imageUrl != null
-                        ? Image.network(anime.imageUrl!,
-                            width: 104, height: 156,
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, _, _) => _placeholder())
-                        : _placeholder(),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          title,
-                          style: AppTheme.hankoSerif(
-                              fontSize: AppTheme.hankoFeaturedSize,
-                              height: 1.15),
-                        ),
-                        if (facts.isNotEmpty) ...[
-                          const SizedBox(height: 6),
-                          Text(
-                            facts,
-                            style: AppTheme.hankoSans(
-                                fontSize: AppTheme.hankoMetaSize,
-                                color: AppTheme.hankoStone,
-                                height: 1.4),
-                          ),
-                        ],
-                        if (score != null) ...[
-                          const SizedBox(height: 4),
-                          Text.rich(
-                            TextSpan(
-                              text: 'AniList ',
-                              style: AppTheme.hankoSans(
-                                  fontSize: AppTheme.hankoMetaSize,
-                                  color: AppTheme.hankoStone,
-                                  height: 1.4),
-                              children: [
-                                TextSpan(
-                                  text: score,
-                                  style: AppTheme.hankoSans(
-                                    fontSize: AppTheme.hankoMetaSize,
-                                    weight: FontWeight.w500,
-                                    color: AppTheme.hankoAi,
-                                    height: 1.4,
-                                    tabular: true,
-                                  ),
-                                ),
-                              ],
+            child: Material(
+              type: MaterialType.transparency,
+              child: InkWell(
+                onTap: openShow,
+                splashFactory: NoSplash.splashFactory,
+                highlightColor: AppTheme.hankoPressWash,
+                hoverColor: AppTheme.hankoPressWash,
+                child: ExcludeSemantics(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      ClipRRect(
+                        borderRadius:
+                            BorderRadius.circular(AppTheme.hankoRadius),
+                        child: anime.imageUrl != null
+                            ? Image.network(anime.imageUrl!,
+                                width: 104, height: 156,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, _, _) => _placeholder())
+                            : _placeholder(),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              title,
+                              style: AppTheme.hankoSerif(
+                                  fontSize: AppTheme.hankoFeaturedSize,
+                                  height: 1.15),
                             ),
-                          ),
-                        ],
-                        const SizedBox(height: 14),
-                        const _HankoTile(label: 'Open', main: true),
-                      ],
-                    ),
+                            if (facts.isNotEmpty) ...[
+                              const SizedBox(height: 6),
+                              Text(
+                                facts,
+                                style: AppTheme.hankoSans(
+                                    fontSize: AppTheme.hankoMetaSize,
+                                    color: AppTheme.hankoStone,
+                                    height: 1.4),
+                              ),
+                            ],
+                            if (score != null) ...[
+                              const SizedBox(height: 4),
+                              Text.rich(
+                                TextSpan(
+                                  text: 'AniList ',
+                                  style: AppTheme.hankoSans(
+                                      fontSize: AppTheme.hankoMetaSize,
+                                      color: AppTheme.hankoStone,
+                                      height: 1.4),
+                                  children: [
+                                    TextSpan(
+                                      text: score,
+                                      style: AppTheme.hankoSans(
+                                        fontSize: AppTheme.hankoMetaSize,
+                                        weight: FontWeight.w500,
+                                        color: AppTheme.hankoAi,
+                                        height: 1.4,
+                                        tabular: true,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                            const SizedBox(height: 14),
+                            const _HankoTile(label: 'Open', main: true),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
             ),
           ),

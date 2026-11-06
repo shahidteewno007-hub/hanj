@@ -22,6 +22,7 @@ import 'features/onboarding/onboarding_screen.dart';
 import 'features/cards/card_collection_screen.dart';
 import 'features/cards/card_unlock_overlay.dart';
 import 'cadre/screens/cadre_lobby_screen.dart';
+import 'features/tier_list/tier_list_home_screen.dart';
 import 'firebase_options.dart';
 
 final _scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
@@ -226,6 +227,7 @@ class HanjApp extends StatelessWidget {
             routes: {
               '/cards': (_) => const CardCollectionScreen(),
               '/cadre': (_) => const CadreLobbyScreen(),
+              '/tierlist': (_) => const TierListHomeScreen(),
             },
             home: const AuthWrapper(),
           );

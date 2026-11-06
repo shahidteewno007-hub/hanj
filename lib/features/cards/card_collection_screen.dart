@@ -173,6 +173,7 @@ class _CardCollectionScreenState extends State<CardCollectionScreen>
   @override
   void initState() {
     super.initState();
+    hc.HanjCard.preloadFonts(); // before the first face (collection open)
     _tabCtrl = TabController(length: _filters.length, vsync: this);
     _tabCtrl.addListener(() {
       if (!_tabCtrl.indexIsChanging) {
@@ -531,7 +532,12 @@ class _HanjCardTile extends StatelessWidget {
     }
   }
 
-  // Map id → card number (matches catalogue; fallback to 0)
+  // Map id → card number (matches catalogue; fallback to 0). The secret
+  // cards had none and read "№ 0000" (question 144); they take 0901–0907,
+  // a block of their own in catalogue order, as the rares and epics have.
+  // All Seasons was 0004, Genre Curious's number too; it is 0400, the four
+  // seasons in the 100 and 200 Clubs' style. Kept identical to
+  // _CardDetailSheet._cardNumberFor and HanjCardCatalogue (hanj_card.dart).
   int get _cardNumber {
     const nums = {
       'first_pull': 1, 'the_list_begins': 2, 'rated': 3, 'genre_curious': 4,
@@ -539,9 +545,12 @@ class _HanjCardTile extends StatelessWidget {
       'action_purist': 218, 'sol_soul': 219, 'romance_run': 220, 'fantasy_pilgrim': 221,
       'the_50_club': 50, 'genre_lord': 51, 'harsh_critic': 52, 'the_optimist': 53,
       'decade_scholar': 54, 'obsessed': 55,
-      'the_100_club': 100, 'year_of_anime': 365, 'all_seasons': 4, 'the_200_club': 200,
+      'the_100_club': 100, 'year_of_anime': 365, 'all_seasons': 400, 'the_200_club': 200,
       'spring_2026_watcher': 237, 'winter_arc_2026': 88,
       'golden_week_2026': 312, 'summer_2026_watcher': 401,
+      'cant_let_go': 901, 'resurrection': 902, 'the_long_game': 903,
+      'time_traveller': 904, 'the_purist': 905, 'dropout': 906,
+      'ghost_of_seasons_past': 907,
     };
     return nums[id] ?? 0;
   }
@@ -580,6 +589,7 @@ class _HanjCardTile extends StatelessWidget {
             isUnlocked: isUnlocked,
             width:      constraints.maxWidth,
             height:     constraints.maxHeight,
+            cachedGlow: true, // the glow's blur, once per rarity (PERF.md S2-2)
           );
         },
       ),
@@ -672,6 +682,20 @@ class _CardDetailSheet extends StatelessWidget {
     return hints[id] ?? 'Keep watching and exploring.';
   }
 
+  /// A seasonal card's print run, as the grid's tile passes it
+  /// (_HanjCardTile._totalCount), so the sheet and the shared image read
+  /// "№ 0237 / 2400" as the grid does, not "№ 0237" (question 143). Null
+  /// for every other card.
+  static int? _totalCountFor(String id) {
+    const totals = {
+      'spring_2026_watcher': 2400, 'winter_arc_2026': 1200,
+      'golden_week_2026': 800, 'summer_2026_watcher': 2400,
+    };
+    return totals[id];
+  }
+
+  // The secret cards' 0901–0907 as in _HanjCardTile._cardNumber
+  // (question 144).
   static int _cardNumberFor(String id) {
     const nums = {
       'first_pull': 1, 'the_list_begins': 2, 'rated': 3, 'genre_curious': 4,
@@ -679,9 +703,12 @@ class _CardDetailSheet extends StatelessWidget {
       'action_purist': 218, 'sol_soul': 219, 'romance_run': 220, 'fantasy_pilgrim': 221,
       'the_50_club': 50, 'genre_lord': 51, 'harsh_critic': 52, 'the_optimist': 53,
       'decade_scholar': 54, 'obsessed': 55,
-      'the_100_club': 100, 'year_of_anime': 365, 'all_seasons': 4, 'the_200_club': 200,
+      'the_100_club': 100, 'year_of_anime': 365, 'all_seasons': 400, 'the_200_club': 200,
       'spring_2026_watcher': 237, 'winter_arc_2026': 88,
       'golden_week_2026': 312, 'summer_2026_watcher': 401,
+      'cant_let_go': 901, 'resurrection': 902, 'the_long_game': 903,
+      'time_traveller': 904, 'the_purist': 905, 'dropout': 906,
+      'ghost_of_seasons_past': 907,
     };
     return nums[id] ?? 0;
   }
@@ -691,10 +718,25 @@ class _CardDetailSheet extends StatelessWidget {
     // At large text the sheet is taller than the screen (at 2.0x it ran up
     // to 88 px past it, question 74), so it scrolls. When it fits, as at
     // 1.0x, the scroll view is exactly the sheet's height and nothing moves.
+    //
+    // Hanko's shapes (question 130): the sheet's top corners at 6, its chips,
+    // note and buttons at 2. The card's rarity colour washes the sheet's top
+    // and fades by its middle, as the shared image sets the card on a glow
+    // of its colour: depth from the card itself, a gradient with no blur.
+    const ground = Color(0xFF0F0C09);
     return SingleChildScrollView(child: Container(
       decoration: BoxDecoration(
-        color: const Color(0xFF0F0C09),
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          stops: const [0, 0.6],
+          colors: [
+            Color.alphaBlend(rarity.color.withValues(alpha: 0.14), ground),
+            ground,
+          ],
+        ),
+        borderRadius: const BorderRadius.vertical(
+            top: Radius.circular(AppTheme.hankoSheetRadius)),
         border: Border(
           top: BorderSide(color: rarity.color.withValues(alpha: 0.4), width: 1.5),
         ),
@@ -730,6 +772,7 @@ class _CardDetailSheet extends StatelessWidget {
                 category:   category.toUpperCase(),
                 kanji:      _kanjiFor(category),
                 cardNumber: _cardNumberFor(id),
+                totalCount: _totalCountFor(id),
                 unlockedAt: unlockedAt,
               ),
             ),
@@ -789,7 +832,7 @@ class _CardDetailSheet extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
               decoration: BoxDecoration(
                 color: rarity.color.withValues(alpha: 0.07),
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
                 border: Border.all(
                   color: rarity.color.withValues(alpha: 0.18),
                 ),
@@ -840,11 +883,15 @@ class _CardDetailSheet extends StatelessWidget {
               category:    category,
               kanji:       _kanjiFor(category),
               cardNumber:  _cardNumberFor(id),
-              totalCount:  null, // seasonal cards store this in Firestore already
+              totalCount:  _totalCountFor(id), // the pinned record keeps it too
             ),
             const SizedBox(height: 12),
             // Share — turns a card into a story-format image for IG / Snap / etc.
-            GestureDetector(
+            // The sheet's main action, so Hanko's washi tile (question 130).
+            _SheetButton(
+              label: 'Share card',
+              icon: Icons.ios_share_sharp,
+              main: true,
               onTap: () => openCardShare(
                 context,
                 accentColor: rarity.color,
@@ -860,32 +907,8 @@ class _CardDetailSheet extends StatelessWidget {
                   category:   category.toUpperCase(),
                   kanji:      _kanjiFor(category),
                   cardNumber: _cardNumberFor(id),
+                  totalCount: _totalCountFor(id),
                   unlockedAt: unlockedAt,
-                ),
-              ),
-              child: Container(
-                width: double.infinity,
-                height: 50,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF161514),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Icons.ios_share_rounded,
-                        size: 17, color: Colors.white),
-                    const SizedBox(width: 8),
-                    Text(
-                      'SHARE CARD',
-                      style: AppTheme.mono(
-                        fontSize: 12,
-                        color: Colors.white,
-                        letterSpacing: 1.5,
-                      ),
-                    ),
-                  ],
                 ),
               ),
             ),
@@ -910,13 +933,88 @@ class _Chip extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
         border: Border.all(color: color.withValues(alpha: 0.3)),
       ),
       child: Text(
         label,
         style: AppTheme.mono(
             fontSize: 9, color: color, letterSpacing: 1.0),
+      ),
+    );
+  }
+}
+
+/// The card sheet's buttons in Hanko's shapes (question 130): 48 dp tall,
+/// 2 px corners, an icon and Jost 600 15 in sentence case, pressed with a
+/// wash and no ripple. The main action, Share card, is Detail's washi tile
+/// with sumi words (15.3:1); the other, Pin, is a sumi 3 tile with a 1 px
+/// edge outline, as Profile's Retry. Neither is coral or gold now: coral
+/// marks only your own verdicts. One screen-reader button each, with the
+/// tap and keyboard focus in its node (they were GestureDetectors, which a
+/// keyboard couldn't reach).
+class _SheetButton extends StatelessWidget {
+  const _SheetButton({
+    required this.label,
+    required this.icon,
+    required this.onTap,
+    this.main = false,
+  });
+
+  final String label;
+  final IconData icon;
+  final VoidCallback onTap;
+  final bool main;
+
+  @override
+  Widget build(BuildContext context) {
+    final ink = main ? AppTheme.hankoSumi : AppTheme.hankoWashi;
+    return Semantics(
+      container: true,
+      button: true,
+      child: Material(
+        color: main ? AppTheme.hankoWashi : AppTheme.hankoSumi3,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+          side: main
+              ? BorderSide.none
+              : const BorderSide(color: AppTheme.hankoEdge),
+        ),
+        child: InkWell(
+          onTap: onTap,
+          splashFactory: NoSplash.splashFactory,
+          highlightColor: main
+              ? AppTheme.hankoSumi.withValues(alpha: 0.08)
+              : AppTheme.hankoPressWash,
+          hoverColor: main ? null : AppTheme.hankoPressWash,
+          borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(
+                minHeight: AppTheme.hankoTouch, minWidth: double.infinity),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(icon, size: 20, color: ink),
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Text(
+                      label,
+                      textAlign: TextAlign.center,
+                      style: AppTheme.hankoSans(
+                        fontSize: 15,
+                        weight: FontWeight.w600,
+                        color: ink,
+                        height: 1.2,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -952,17 +1050,27 @@ class _PinCardButtonState extends State<_PinCardButton> {
   bool _isPinned = false;
   List<dynamic> _pinned = [];
 
+  /// The last pin or unpin couldn't be saved: the button went back, and a
+  /// line under it says so until the next tap.
+  bool _failed = false;
+
   @override
   void initState() {
     super.initState();
     _load();
   }
 
+  // Awaited and caught: a failed read (refused, say) went unhandled, which
+  // main.dart reports to Crashlytics as fatal. The button then shows as
+  // not pinned, as it would for a card that isn't.
   Future<void> _load() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
-    final doc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
-    final pinned = (doc.data()?['pinnedCards'] as List<dynamic>?) ?? [];
+    List<dynamic> pinned = const [];
+    try {
+      final doc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+      pinned = (doc.data()?['pinnedCards'] as List<dynamic>?) ?? [];
+    } catch (_) {}
     if (mounted) {
       setState(() {
         _pinned = pinned;
@@ -972,16 +1080,37 @@ class _PinCardButtonState extends State<_PinCardButton> {
     }
   }
 
+  /// Saves [updated] as the pinned cards, the button already showing it.
+  /// Awaited and caught, as the reminder bells' writes (question 83): an
+  /// unhandled failure was a fatal Crashlytics report, and the button went
+  /// on showing a pin that wasn't saved. Now it goes back to [before].
+  /// Offline, the write waits for the connection and the button stays.
+  Future<void> _save(String uid, List<dynamic> updated,
+      {required List<dynamic> before, required bool wasPinned}) async {
+    try {
+      await FirebaseFirestore.instance.collection('users').doc(uid).set(
+        {'pinnedCards': updated}, SetOptions(merge: true));
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _pinned = before;
+        _isPinned = wasPinned;
+        _failed = true;
+      });
+    }
+  }
+
   Future<void> _toggle() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
+    if (_failed) setState(() => _failed = false);
 
     if (_isPinned) {
       // Unpin immediately
+      final before = _pinned;
       final updated = _pinned.where((c) => c['id'] != widget.cardId).toList();
       setState(() { _pinned = updated; _isPinned = false; });
-      await FirebaseFirestore.instance.collection('users').doc(uid).set(
-        {'pinnedCards': updated}, SetOptions(merge: true));
+      await _save(uid, updated, before: before, wasPinned: true);
       return;
     }
 
@@ -999,12 +1128,25 @@ class _PinCardButtonState extends State<_PinCardButton> {
     // If a card is already pinned, ask to replace it
     if (_pinned.isNotEmpty) {
       final existingName = (_pinned.first['name'] as String?) ?? 'current card';
+      // In Hanko's language, as the sheet it rises over (question 130's
+      // cards pass): the sheets' sumi 2 and 6 px corners, the card's
+      // rarity colour as its edge, a Shippori head, typographic quotes, and
+      // "Pin it" in washi 600 where it was coral (coral marks only your
+      // own verdicts). Both answers press with Hanko's wash, no ripple.
+      const answer = ButtonStyle(
+        overlayColor: WidgetStatePropertyAll(AppTheme.hankoPressWash),
+        splashFactory: NoSplash.splashFactory,
+        minimumSize: WidgetStatePropertyAll(Size(64, AppTheme.hankoTouch)),
+        shape: WidgetStatePropertyAll(RoundedRectangleBorder(
+          borderRadius: BorderRadius.all(Radius.circular(AppTheme.hankoRadius)),
+        )),
+      );
       final confirm = await showDialog<bool>(
         context: context,
         builder: (_) => AlertDialog(
-          backgroundColor: const Color(0xFF0F0C09),
+          backgroundColor: AppTheme.hankoSumi2,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(AppTheme.hankoSheetRadius),
             side: BorderSide(
               color: CardRarity.values
                   .firstWhere((r) => r.name == widget.rarity,
@@ -1015,43 +1157,81 @@ class _PinCardButtonState extends State<_PinCardButton> {
           ),
           title: Text(
             'Replace card?',
-            style: AppTheme.serif(fontSize: 18, weight: FontWeight.w700),
+            style: AppTheme.hankoSerif(fontSize: 18, height: 1.3),
           ),
           content: Text(
-            'Replace "$existingName" with "${widget.cardName}" on your profile?',
-            style: AppTheme.sans(fontSize: 14, color: AppTheme.textSecondary),
+            'Replace “$existingName” with “${widget.cardName}” on your profile?',
+            style: AppTheme.hankoSans(height: 1.45),
           ),
           actions: [
             TextButton(
+              style: answer,
               onPressed: () => Navigator.pop(context, false),
               child: Text('Cancel',
-                  style: AppTheme.sans(fontSize: 14, color: AppTheme.textMuted)),
+                  style: AppTheme.hankoSans(
+                      fontSize: 15,
+                      weight: FontWeight.w500,
+                      color: AppTheme.hankoStone)),
             ),
             TextButton(
+              style: answer,
               onPressed: () => Navigator.pop(context, true),
               child: Text('Pin it',
-                  style: AppTheme.sans(
-                      fontSize: 14,
-                      color: AppTheme.primary,
-                      weight: FontWeight.w700)),
+                  style: AppTheme.hankoSans(
+                      fontSize: 15, weight: FontWeight.w600)),
             ),
           ],
         ),
       );
-      if (confirm != true) return;
+      if (confirm != true || !mounted) return;
     }
 
     // Pin immediately — optimistic update
+    final before = _pinned;
     final updated = [newCard];
     setState(() { _pinned = updated; _isPinned = true; });
-    await FirebaseFirestore.instance.collection('users').doc(uid).set(
-      {'pinnedCards': updated}, SetOptions(merge: true));
+    await _save(uid, updated, before: before, wasPinned: false);
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) return const SizedBox(height: 40);
+    // The tile's height while the pin is read, so nothing below moves.
+    if (_loading) return const SizedBox(height: AppTheme.hankoTouch);
+    if (_preHanko) return _preHankoTile();
 
+    // Hanko's secondary tile (question 130), with the state in its words
+    // and its pin's fill; no coral, which marks only your own verdicts, and
+    // no gold.
+    final tile = _SheetButton(
+      label: _isPinned ? 'Pinned to your profile' : 'Pin to your profile',
+      icon: _isPinned ? Icons.push_pin_sharp : Icons.push_pin_outlined,
+      onTap: _toggle,
+    );
+    if (!_failed) return tile;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        tile,
+        const SizedBox(height: 8),
+        Text(
+          'Couldn’t save that. Try again.',
+          textAlign: TextAlign.center,
+          style: AppTheme.hankoSans(
+            fontSize: AppTheme.hankoMetaSize,
+            color: AppTheme.hankoStone,
+            height: 1.4,
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// The button before question 130: a rounded box in gold, coral once
+  /// pinned, with "PIN TO PROFILE" or "PINNED ✓" in mono. Kept, switched
+  /// off, as design history and a deletion candidate.
+  static const bool _preHanko = false;
+
+  Widget _preHankoTile() {
     final color = _isPinned ? AppTheme.primary : AppTheme.accent;
     final label = _isPinned ? 'PINNED ✓' : 'PIN TO PROFILE';
     final icon  = _isPinned ? Icons.push_pin : Icons.push_pin_outlined;

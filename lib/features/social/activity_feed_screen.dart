@@ -163,9 +163,11 @@ class _ActivityFeedScreenState extends State<ActivityFeedScreen>
         }
 
         // A failed read says so in Profile's words (stage H5), naming no
-        // cause the app can't verify.
+        // cause the app can't verify. The sentence is Shippori, which draws
+        // the typewriter apostrophe as a straight tick, so it takes the
+        // typographic one, as Profile's does (question 109).
         if (snapshot.hasError) {
-          return _note('Couldn\'t load your activity just now.', null);
+          return _note('Couldn’t load your activity just now.', null);
         }
 
         // The same words as before, as Hanko's empty state.
@@ -550,13 +552,21 @@ class _ActivityCard extends StatelessWidget {
     }
   }
 
+  /// When it happened, in the words the other screens use (question 134),
+  /// by calendar day: "Today"; "Last night" (yesterday from 18:00) or
+  /// "Yesterday", as Home's lede says them; the weekday within the week
+  /// ("Saturday"); then the date as Profile's diary and Detail write it,
+  /// "4 Oct", with the year when it isn't this one ("4 Oct 2025"). It used
+  /// to write "1d ago" and "Oct 4", which no other screen does.
   String _formatTime(DateTime dt) {
-    final diff = DateTime.now().difference(dt);
-    if (diff.inMinutes < 1) return 'Just now';
-    if (diff.inHours < 1) return '${diff.inMinutes}m ago';
-    if (diff.inDays < 1) return '${diff.inHours}h ago';
-    if (diff.inDays < 7) return '${diff.inDays}d ago';
-    return DateFormat('MMM d').format(dt);
+    final now = DateTime.now();
+    final days = DateTime.utc(now.year, now.month, now.day)
+        .difference(DateTime.utc(dt.year, dt.month, dt.day))
+        .inDays;
+    if (days <= 0) return 'Today';
+    if (days == 1) return dt.hour >= 18 ? 'Last night' : 'Yesterday';
+    if (days < 7) return DateFormat('EEEE').format(dt);
+    return DateFormat(dt.year == now.year ? 'd MMM' : 'd MMM y').format(dt);
   }
 }
 

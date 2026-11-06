@@ -44,6 +44,12 @@ Profile's 78 had gone in Hanko H5, when the pinned card replaced it.
 | 56 | `features/cards/card_unlock_overlay.dart:284` (card back, tinted) | full |
 | 72 | `features/onboarding/onboarding_screen.dart:300` | full |
 
+Round seven, merged with the change on 2026-11-05 (`claude/r8-build`), adds one site, the
+tier-list picture's foot: 18 dp, `features/tier_list/tier_list_export_screen.dart:457`, small
+cut. Its rebuilt prints moved `ranking_cards.dart`'s lines to `:1670` (the masthead) and
+`:449`, `:751`, `:1054` (pre-Hanko). Print Room's specimen in `hanko_dev.dart` reads its colour
+from `hanj_cut.png`.
+
 The icons follow the same rule:
 - The launcher, PWA and legacy icons use `hanj_cut_icon.svg`.
 - The favicon uses `hanj_cut_icon_small.svg`, which has no flash.

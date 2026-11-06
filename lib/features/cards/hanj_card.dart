@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../core/theme/app_theme.dart';
@@ -84,9 +85,29 @@ class HanjCard extends StatelessWidget {
   final double width;
   final double height;
 
+  /// Draws the rarity glow's blurred strokes from an image made once per
+  /// rarity and card size (_GlowImages), not with MaskFilter.blur on every
+  /// card in every frame. Only the collection grid sets it: on the phone its
+  /// scroll was raster-bound by those blurs (PERF.md S2-2). Wherever a face
+  /// is saved, shared or scaled (the sheet, the share canvas, Profile, the
+  /// unlock overlay) the glow is still drawn directly, so saved images don't
+  /// change.
+  final bool cachedGlow;
+
   // Default card size (2:3 ratio)
   static const double kWidth  = 200.0;
   static const double kHeight = 300.0;
+
+  /// Starts loading the faces' Space Mono, regular and bold, before the
+  /// first face is built. Nothing else in the app uses it, so on the first
+  /// open of the collection in a session it only began loading as the grid
+  /// was built: the faces were laid out in a fallback font, then every
+  /// paragraph on screen was laid out again as each weight arrived. Called
+  /// as the collection opens, the fonts arrive while its cards are fetched.
+  static void preloadFonts() {
+    GoogleFonts.spaceMono();
+    GoogleFonts.spaceMono(fontWeight: FontWeight.w700);
+  }
 
   const HanjCard({
     super.key,
@@ -94,6 +115,7 @@ class HanjCard extends StatelessWidget {
     this.isUnlocked = true,
     this.width  = kWidth,
     this.height = kHeight,
+    this.cachedGlow = false,
   });
 
   /// A Hanj Card is drawn like a printed card, at one size (question 52):
@@ -104,8 +126,8 @@ class HanjCard extends StatelessWidget {
   /// 25 px past their bottoms. At 1.0 nothing changes. The detail sheet says
   /// the card's name again under the face, in text that does grow.
   @override
-  Widget build(BuildContext context) =>
-      MediaQuery.withNoTextScaling(child: _face());
+  Widget build(BuildContext context) => MediaQuery.withNoTextScaling(
+      child: cachedGlow ? _CachedGlow(child: _face()) : _face());
 
   Widget _face() {
     if (!isUnlocked) return _LockedCard(card: card, width: width, height: height);
@@ -555,8 +577,7 @@ class _LegendaryCard extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                         ),
                       const SizedBox(height: 6),
-                      Text(card.description, style: TextStyle(fontSize: w * 0.045, color: const Color(0xFFCCBB99).withOpacity(0.8), height: 1.45), maxLines: nameOnOneLine ? 3 : 2, overflow: TextOverflow.ellipsis),
-                      const Spacer(),
+                      Expanded(child: _PanelDescription(text: card.description, style: TextStyle(fontSize: w * 0.045, color: const Color(0xFFCCBB99).withOpacity(0.8), height: 1.45), maxLines: nameOnOneLine ? 3 : 2)),
                       // Divider
                       Container(height: 0.5, color: gold.withOpacity(0.25)),
                       const SizedBox(height: 6),
@@ -748,16 +769,16 @@ class _SeasonalCard extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                         ),
                         const SizedBox(height: 6),
-                        Text(
-                          card.description,
-                          style: TextStyle(
-                            fontSize: w * 0.045,
-                            color: const Color(0xFF88AA99).withOpacity(0.85),
-                            height: 1.45),
-                          maxLines: 3,
-                          overflow: TextOverflow.ellipsis,
+                        Expanded(
+                          child: _PanelDescription(
+                            text: card.description,
+                            style: TextStyle(
+                              fontSize: w * 0.045,
+                              color: const Color(0xFF88AA99).withOpacity(0.85),
+                              height: 1.45),
+                            maxLines: 3,
+                          ),
                         ),
-                        const Spacer(),
                         Container(height: 0.5, color: green.withOpacity(0.25)),
                         const SizedBox(height: 6),
                         _Footer(card: card, color: green.withOpacity(0.45)),
@@ -860,6 +881,14 @@ class _CardShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // In the collection grid the glow's blurred strokes come from an image
+    // made once per rarity and size (HanjCard.cachedGlow, _GlowImages).
+    final cached = glowSpread > 0 && !isDashed && _CachedGlow.isOn(context);
+    final scale = cached ? MediaQuery.devicePixelRatioOf(context) : 1.0;
+    final glowImage = cached
+        ? _GlowImages.of(glowColor, glowSpread, Size(width, height), scale)
+        : null;
+
     // Square corners. Glow is painted INSIDE the card via CustomPaint so it
     // never escapes the widget bounds — no boxShadow bleeding issues.
     return SizedBox(
@@ -884,6 +913,8 @@ class _CardShell extends StatelessWidget {
               glowColor: glowColor,
               glowSpread: glowSpread,
               isDashed: isDashed,
+              glowImage: glowImage,
+              glowImageScale: scale,
             ),
           ),
 
@@ -906,12 +937,16 @@ class _GlowBorderPainter extends CustomPainter {
   final Color color, glowColor;
   final double glowSpread;
   final bool isDashed;
+  final ui.Image? glowImage;    // the grid's blurred strokes (_GlowImages)
+  final double glowImageScale;  // its pixels per logical pixel
 
   const _GlowBorderPainter({
     required this.color,
     required this.glowColor,
     required this.glowSpread,
     required this.isDashed,
+    required this.glowImage,
+    required this.glowImageScale,
   });
 
   @override
@@ -921,25 +956,18 @@ class _GlowBorderPainter extends CustomPainter {
     // Clip canvas so nothing escapes the card bounds
     canvas.clipRect(Rect.fromLTWH(0, 0, size.width, size.height));
 
-    // Glow rects are inset so the blurred stroke stays fully inside
-    final inset = glowSpread > 0 ? (glowSpread * 0.4).clamp(4.0, 12.0) : 1.0;
-    final glowRect = Rect.fromLTWH(inset, inset, size.width - inset * 2, size.height - inset * 2);
-
-    if (glowSpread > 0) {
-      // Soft wide glow
-      canvas.drawRect(glowRect, Paint()
-        ..color = glowColor.withOpacity(0.3)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = inset * 2
-        ..maskFilter = MaskFilter.blur(BlurStyle.normal, inset));
-
-      // Tight bright glow on border
-      final borderRect = Rect.fromLTWH(1, 1, size.width - 2, size.height - 2);
-      canvas.drawRect(borderRect, Paint()
-        ..color = glowColor.withOpacity(0.6)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2.0
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2));
+    final image = glowImage;
+    if (image != null) {
+      // One pixel of the image to one physical pixel, so at rest it lands
+      // where the blur itself would have.
+      canvas.drawImageRect(
+        image,
+        Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
+        Rect.fromLTWH(0, 0, image.width / glowImageScale, image.height / glowImageScale),
+        Paint()..filterQuality = FilterQuality.low,
+      );
+    } else if (glowSpread > 0) {
+      paintGlow(canvas, size, glowColor, glowSpread);
     }
 
     // Sharp border line
@@ -959,8 +987,78 @@ class _GlowBorderPainter extends CustomPainter {
     );
   }
 
+  /// The glow's two blurred strokes: drawn here on every face but the grid's,
+  /// and once per rarity into the grid's images (_GlowImages).
+  static void paintGlow(Canvas canvas, Size size, Color glowColor, double glowSpread) {
+    // Glow rects are inset so the blurred stroke stays fully inside
+    final inset = (glowSpread * 0.4).clamp(4.0, 12.0);
+    final glowRect = Rect.fromLTWH(inset, inset, size.width - inset * 2, size.height - inset * 2);
+
+    // Soft wide glow
+    canvas.drawRect(glowRect, Paint()
+      ..color = glowColor.withOpacity(0.3)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = inset * 2
+      ..maskFilter = MaskFilter.blur(BlurStyle.normal, inset));
+
+    // Tight bright glow on border
+    final borderRect = Rect.fromLTWH(1, 1, size.width - 2, size.height - 2);
+    canvas.drawRect(borderRect, Paint()
+      ..color = glowColor.withOpacity(0.6)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.0
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2));
+  }
+
   @override
-  bool shouldRepaint(_GlowBorderPainter old) => false;
+  bool shouldRepaint(_GlowBorderPainter old) => old.glowImage != glowImage;
+}
+
+/// Marks the faces of the collection grid (HanjCard.cachedGlow).
+class _CachedGlow extends InheritedWidget {
+  const _CachedGlow({required super.child});
+
+  static bool isOn(BuildContext context) =>
+      context.getInheritedWidgetOfExactType<_CachedGlow>() != null;
+
+  @override
+  bool updateShouldNotify(_CachedGlow oldWidget) => false;
+}
+
+/// The collection grid's glow images: each rarity's two blurred strokes,
+/// recorded and rasterised once at the grid's card size and pixel ratio, so
+/// MaskFilter.blur runs once per rarity, not twice per glowing card in every
+/// frame (the phone renders with Impeller, which keeps no raster cache, so a
+/// blur in a card's paint ran again on every frame it was on screen). A new
+/// card size or pixel ratio starts a new set. The old images are dropped,
+/// not disposed, as a card may still be painting one; once nothing holds
+/// them they are freed.
+class _GlowImages {
+  static final Map<(int, double), ui.Image> _images = {};
+  static Size _size = Size.zero;
+  static double _scale = 0;
+
+  static ui.Image of(Color glowColor, double glowSpread, Size size, double scale) {
+    if (size != _size || scale != _scale) {
+      _images.clear();
+      _size = size;
+      _scale = scale;
+    }
+    return _images[(glowColor.toARGB32(), glowSpread)] ??=
+        _render(glowColor, glowSpread, size, scale);
+  }
+
+  static ui.Image _render(Color glowColor, double glowSpread, Size size, double scale) {
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder)
+      ..scale(scale)
+      ..clipRect(Offset.zero & size);
+    _GlowBorderPainter.paintGlow(canvas, size, glowColor, glowSpread);
+    final picture = recorder.endRecording();
+    final image = picture.toImageSync((size.width * scale).ceil(), (size.height * scale).ceil());
+    picture.dispose();
+    return image;
+  }
 }
 
 class _ShimmerReflectionPainter extends CustomPainter {
@@ -1033,7 +1131,16 @@ class _HanjFeather extends StatelessWidget {
   }
 }
 
-/// Footer row — № XXXX left, RARITY · CATEGORY right
+/// Footer — № XXXX, then RARITY · CATEGORY. It was a Row of two Flexibles,
+/// which held the label to half the row, so every face cut its category
+/// short ("COMMON · …", "LEGENDARY ·…", "WATC…" on the phone), shared images
+/// included. As a Wrap the label still sits 8 px after the number, and takes
+/// a line of its own when the two don't fit side by side, as on every
+/// legendary and seasonal face. The label's line is 7 px (7.5 × 14/15, the
+/// leading split evenly), so a line of its own costs 7 px, not 11; and
+/// because 7 is a whole pixel, beside the number, centred, its baseline stays
+/// where it was. Where a panel can't hold the extra line, its description
+/// gives up its last line (_PanelDescription).
 class _Footer extends StatelessWidget {
   final HanjCardData card;
   final Color color;
@@ -1042,27 +1149,55 @@ class _Footer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
+    return Wrap(
+      spacing: 8,
+      crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        Flexible(
-          child: Text(
-            card.cardNumberFormatted,
-            style: GoogleFonts.spaceMono(fontSize: 7.5, color: color, letterSpacing: 0.5),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
+        Text(
+          card.cardNumberFormatted,
+          style: GoogleFonts.spaceMono(fontSize: 7.5, color: color, letterSpacing: 0.5),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
         ),
-        const SizedBox(width: 8),
-        Flexible(
-          child: Text(
-            rightText ?? '${card.rarityLabel}  ·  ${card.category}',
-            style: GoogleFonts.spaceMono(fontSize: 7.5, color: color, letterSpacing: 0.5),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            textAlign: TextAlign.right,
-          ),
+        Text(
+          rightText ?? '${card.rarityLabel}  ·  ${card.category}',
+          style: GoogleFonts.spaceMono(fontSize: 7.5, color: color, letterSpacing: 0.5, height: 14 / 15)
+              .copyWith(leadingDistribution: TextLeadingDistribution.even),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
         ),
       ],
+    );
+  }
+}
+
+/// A legendary or seasonal panel's description, given the lines the panel
+/// has left, up to [maxLines]. It takes the place of the Spacer that sat
+/// below it, so where everything fits nothing moves. Where it doesn't (a
+/// two-line name with a footer on two lines), the description gives up its
+/// last line, the trade _LegendaryCard already makes for a two-line name.
+/// Measured when the panel is laid out, so it follows the fonts as they load.
+class _PanelDescription extends StatelessWidget {
+  final String text;
+  final TextStyle style;
+  final int maxLines;
+  const _PanelDescription({required this.text, required this.style, required this.maxLines});
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final line = TextPainter(
+          text: TextSpan(text: ' ', style: DefaultTextStyle.of(context).style.merge(style)),
+          textDirection: TextDirection.ltr,
+          textScaler: MediaQuery.textScalerOf(context),
+        )..layout();
+        final lineHeight = line.height;
+        line.dispose();
+        final lines = math.min(maxLines, (constraints.maxHeight / lineHeight + 0.001).floor());
+        if (lines < 1) return const SizedBox.shrink();
+        return Text(text, style: style, maxLines: lines, overflow: TextOverflow.ellipsis);
+      },
     );
   }
 }
@@ -1111,14 +1246,21 @@ class _DotGridPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()..color = dotColor..style = PaintingStyle.fill;
+    // Every dot in one call. There are about 280 on a grid card, common or
+    // locked, and each was a draw call of its own on every frame the card
+    // was on screen (Impeller keeps no raster cache). Round points 1.6 px
+    // across are the same 0.8 px dots.
     const spacing = 12.0;
     const radius  = 0.8;
-    for (double x = 0; x < size.width; x += spacing) {
-      for (double y = 0; y < size.height; y += spacing) {
-        canvas.drawCircle(Offset(x, y), radius, paint);
-      }
-    }
+    final paint = Paint()
+      ..color = dotColor
+      ..strokeWidth = radius * 2
+      ..strokeCap = StrokeCap.round;
+    final dots = <Offset>[
+      for (double x = 0; x < size.width; x += spacing)
+        for (double y = 0; y < size.height; y += spacing) Offset(x, y),
+    ];
+    canvas.drawPoints(ui.PointMode.points, dots, paint);
   }
 
   @override bool shouldRepaint(_DotGridPainter old) => false;
@@ -1260,6 +1402,18 @@ class _PetalParticles extends StatelessWidget {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CARD CATALOGUE — all 30 cards pre-defined
+//
+// The unlock overlay (card_unlock_overlay.dart) looks a card up here by the id
+// the server sends (functions/index.js). Entries whose ids had drifted from the
+// server's (romance_soul, slice_of_life, fantasy_lord, spring_2026, winter_arc,
+// golden_week, ghost_past) were never found, so those unlocks showed a generic
+// card numbered 0000; they now carry the server's ids, names and descriptions.
+// Numbers match the collection's (card_collection_screen.dart). Secret cards
+// carry their real rarity, as the collection draws them: as CardRarity.secret
+// they drew the locked face even once unlocked; Obsessed is epic, as on the
+// server, and Can't Let Go is a secret (the server's category). The 200 Club
+// and Summer 2026 Watcher, missing, are added. Every other entry keeps its own
+// name, description, category and kanji.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class HanjCardCatalogue {
@@ -1276,9 +1430,9 @@ class HanjCardCatalogue {
     HanjCardData(id: 'binge_mode',      name: 'Binge Mode',        description: 'Five anime. One month. No regrets.',           rarity: CardRarity.rare,      category: 'WATCHER',  kanji: '速', cardNumber: 216),
     HanjCardData(id: 'loyal',           name: 'Loyal',             description: 'Three months active. The habit is real.',      rarity: CardRarity.rare,      category: 'STREAK',   kanji: '継', cardNumber: 217),
     HanjCardData(id: 'action_purist',   name: 'Action Purist',     description: 'Ten action anime completed.',                  rarity: CardRarity.rare,      category: 'GENRE',    kanji: '闘', cardNumber: 218),
-    HanjCardData(id: 'romance_soul',    name: 'Romance Soul',      description: 'Ten romance anime completed.',                 rarity: CardRarity.rare,      category: 'GENRE',    kanji: '愛', cardNumber: 219),
-    HanjCardData(id: 'slice_of_life',   name: 'Slice of Life Soul',description: 'Ten slice-of-life completed.',                 rarity: CardRarity.rare,      category: 'GENRE',    kanji: '日', cardNumber: 220),
-    HanjCardData(id: 'fantasy_lord',    name: 'Fantasy Lord',      description: 'Ten fantasy anime completed.',                 rarity: CardRarity.rare,      category: 'GENRE',    kanji: '幻', cardNumber: 221),
+    HanjCardData(id: 'romance_run',     name: 'Hopeless Romantic', description: 'Love stories hit different.',                  rarity: CardRarity.rare,      category: 'GENRE',    kanji: '愛', cardNumber: 220),
+    HanjCardData(id: 'sol_soul',        name: 'Slice of Life Soul',description: 'You find the extraordinary in the ordinary.',  rarity: CardRarity.rare,      category: 'GENRE',    kanji: '日', cardNumber: 219),
+    HanjCardData(id: 'fantasy_pilgrim', name: 'Fantasy Pilgrim',   description: "You live in worlds that don't exist.",        rarity: CardRarity.rare,      category: 'GENRE',    kanji: '幻', cardNumber: 221),
 
     // ── Epic ─────────────────────────────────────────────────────────────────
     HanjCardData(id: 'the_50_club',     name: 'The 50 Club',       description: 'Fifty worlds completed. You are not a casual.', rarity: CardRarity.epic,     category: 'DEVOTION', kanji: '心', cardNumber: 50),
@@ -1286,26 +1440,32 @@ class HanjCardCatalogue {
     HanjCardData(id: 'harsh_critic',    name: 'Harsh Critic',      description: 'Average rating under 6. Standards are high.',  rarity: CardRarity.epic,      category: 'TASTE',    kanji: '厳', cardNumber: 52),
     HanjCardData(id: 'the_optimist',    name: 'The Optimist',      description: 'Average rating over 8.5. Everything is good.', rarity: CardRarity.epic,      category: 'TASTE',    kanji: '楽', cardNumber: 53),
     HanjCardData(id: 'decade_scholar',  name: 'Decade Scholar',    description: 'Anime from five different decades witnessed.', rarity: CardRarity.epic,      category: 'LINEAGE',  kanji: '学', cardNumber: 54),
-    HanjCardData(id: 'cant_let_go',     name: "Can't Let Go",      description: 'Dropped and re-added. You already know.',      rarity: CardRarity.epic,      category: 'DEVOTION', kanji: '執', cardNumber: 55),
+    // A secret card (the server's category 'secret'), numbered as the collection's secrets.
+    HanjCardData(id: 'cant_let_go',     name: "Can't Let Go",      description: "Dropped it. Came back. Some stories won't release you.", rarity: CardRarity.epic, category: 'SECRET', kanji: '執', cardNumber: 901),
 
     // ── Legendary ────────────────────────────────────────────────────────────
     HanjCardData(id: 'the_100_club',    name: 'The Century Mark',  description: 'One hundred worlds witnessed. The mark, earned in fire.', rarity: CardRarity.legendary, category: 'MANGA CUT', kanji: '百', cardNumber: 100),
     HanjCardData(id: 'year_of_anime',   name: 'Year of Anime',     description: 'Active every month for twelve months.',        rarity: CardRarity.legendary,  category: 'STREAK',   kanji: '年', cardNumber: 365),
-    HanjCardData(id: 'obsessed',        name: 'Obsessed',          description: 'Ten anime in one month. There is no cure.',    rarity: CardRarity.legendary,  category: 'DEVOTION', kanji: '狂', cardNumber: 999),
-    HanjCardData(id: 'all_seasons',     name: 'All Seasons',       description: 'Spring, Summer, Fall, Winter. All witnessed.', rarity: CardRarity.legendary,  category: 'SEASONAL', kanji: '季', cardNumber: 4),
+    // Epic on the server and in the collection (№ 0055), so it's drawn as epic.
+    HanjCardData(id: 'obsessed',        name: 'Obsessed',          description: 'Ten anime in one month. There is no cure.',    rarity: CardRarity.epic,       category: 'DEVOTION', kanji: '狂', cardNumber: 55),
+    HanjCardData(id: 'all_seasons',     name: 'All Seasons',       description: 'Spring, Summer, Fall, Winter. All witnessed.', rarity: CardRarity.legendary,  category: 'SEASONAL', kanji: '季', cardNumber: 400),
+    HanjCardData(id: 'the_200_club',    name: 'The 200 Club',      description: 'Two hundred worlds. You are the library.',     rarity: CardRarity.legendary,  category: 'WATCHER',  kanji: '眼', cardNumber: 200),
 
     // ── Seasonal ─────────────────────────────────────────────────────────────
-    HanjCardData(id: 'spring_2026',     name: 'Spring 2026 Watcher', description: "You were here for Spring 2026. This card doesn't come back.", rarity: CardRarity.seasonal, category: 'SEASON', kanji: '季', cardNumber: 237, totalCount: 2400),
-    HanjCardData(id: 'winter_arc',      name: 'Winter Arc',        description: 'Five anime in December–January.',              rarity: CardRarity.seasonal,   category: 'SEASON',   kanji: '冬', cardNumber: 88,  totalCount: 1200),
-    HanjCardData(id: 'golden_week',     name: 'Golden Week Marathon', description: 'Two anime during Golden Week.',             rarity: CardRarity.seasonal,   category: 'SEASON',   kanji: '金', cardNumber: 312, totalCount: 800),
+    HanjCardData(id: 'spring_2026_watcher', name: 'Spring 2026 Watcher', description: 'You were here for Spring 2026.',            rarity: CardRarity.seasonal,   category: 'SEASON',   kanji: '季', cardNumber: 237, totalCount: 2400),
+    HanjCardData(id: 'winter_arc_2026', name: 'Winter Arc',        description: 'The coldest, longest watch sessions.',         rarity: CardRarity.seasonal,   category: 'SEASON',   kanji: '冬', cardNumber: 88,  totalCount: 1200),
+    HanjCardData(id: 'golden_week_2026', name: 'Golden Week Marathon', description: 'You did not leave the house.',             rarity: CardRarity.seasonal,   category: 'SEASON',   kanji: '金', cardNumber: 312, totalCount: 800),
+    HanjCardData(id: 'summer_2026_watcher', name: 'Summer 2026 Watcher', description: 'Hot outside. You stayed in and watched.', rarity: CardRarity.seasonal,   category: 'SEASON',   kanji: '夏', cardNumber: 401, totalCount: 2400),
 
     // ── Secret ───────────────────────────────────────────────────────────────
-    HanjCardData(id: 'ghost_past',      name: 'Ghost of Seasons Past', description: 'Completed on the anniversary of its air date.', rarity: CardRarity.secret, category: 'SECRET', kanji: '霊', cardNumber: 0),
-    HanjCardData(id: 'the_purist',      name: 'The Purist',        description: 'Original and remake. You honour the source.',   rarity: CardRarity.secret,    category: 'SECRET',   kanji: '純', cardNumber: 0),
-    HanjCardData(id: 'time_traveller',  name: 'Time Traveller',    description: 'Anime from five different decades.',            rarity: CardRarity.secret,    category: 'SECRET',   kanji: '時', cardNumber: 0),
-    HanjCardData(id: 'dropout',         name: 'Dropout',           description: 'Ten dropped. No shame — taste is selective.',   rarity: CardRarity.secret,    category: 'SECRET',   kanji: '落', cardNumber: 0),
-    HanjCardData(id: 'resurrection',    name: 'Resurrection',      description: 'Dropped and completed the same anime.',         rarity: CardRarity.secret,    category: 'SECRET',   kanji: '復', cardNumber: 0),
-    HanjCardData(id: 'the_long_game',   name: 'The Long Game',     description: 'Plan to Watch for over a year. Patience rewarded.', rarity: CardRarity.secret, category: 'SECRET', kanji: '待', cardNumber: 0),
+    // In their real rarities, as the collection draws them; CardRarity.secret
+    // is the locked face.
+    HanjCardData(id: 'ghost_of_seasons_past', name: 'Ghost of Seasons Past', description: 'Completed an anime on the anniversary of its air date.', rarity: CardRarity.legendary, category: 'SECRET', kanji: '霊', cardNumber: 907),
+    HanjCardData(id: 'the_purist',      name: 'The Purist',        description: 'Original and remake. You honour the source.',   rarity: CardRarity.legendary, category: 'SECRET',   kanji: '純', cardNumber: 905),
+    HanjCardData(id: 'time_traveller',  name: 'Time Traveller',    description: 'Anime from five different decades.',            rarity: CardRarity.epic,      category: 'SECRET',   kanji: '時', cardNumber: 904),
+    HanjCardData(id: 'dropout',         name: 'Dropout',           description: 'Ten dropped. No shame — taste is selective.',   rarity: CardRarity.rare,      category: 'SECRET',   kanji: '落', cardNumber: 906),
+    HanjCardData(id: 'resurrection',    name: 'Resurrection',      description: 'Dropped and completed the same anime.',         rarity: CardRarity.epic,      category: 'SECRET',   kanji: '復', cardNumber: 902),
+    HanjCardData(id: 'the_long_game',   name: 'The Long Game',     description: 'Plan to Watch for over a year. Patience rewarded.', rarity: CardRarity.rare, category: 'SECRET', kanji: '待', cardNumber: 903),
     HanjCardData(id: 'cant_let_go_s',   name: "Can't Let Go",      description: 'Dropped and re-added the same anime.',          rarity: CardRarity.secret,    category: 'SECRET',   kanji: '執', cardNumber: 0),
   ];
 }

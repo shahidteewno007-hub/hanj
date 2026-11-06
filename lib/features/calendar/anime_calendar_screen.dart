@@ -467,6 +467,12 @@ class _AnimeCalendarScreenState extends State<AnimeCalendarScreen> {
   /// Hanko snack bar. It is its own semantics node with the same tap, so a
   /// screen reader reaches it apart from the row it sits in; folded into the
   /// row, the bell and the row's way into the show were one node.
+  ///
+  /// The tap and focus are an InkWell's inside that node (question 119, as
+  /// Home's bell): a GestureDetector's tap given to the node over excluded
+  /// semantics had no focus, so the bell couldn't take focus on the web, and
+  /// Enter or Space couldn't set it. The InkWell has Hanko's press wash and
+  /// the theme's focus wash over the 48 dp target.
   Widget _bell(String mediaId, String title, int episode) {
     final isOn = _remindersOn.contains(mediaId);
     Future<void> toggle() async {
@@ -502,13 +508,14 @@ class _AnimeCalendarScreenState extends State<AnimeCalendarScreen> {
             _remindersOn.remove(mediaId);
           }
         });
-        // In place of "Reminder set" if it's still showing.
+        // In place of "Reminder set" if it's still showing. The typographic
+        // apostrophe, as Home's identical messages (question 154).
         ScaffoldMessenger.of(context)
           ..hideCurrentSnackBar()
           ..showSnackBar(SnackBar(
             content: Text(newVal
-                ? "Couldn't set the reminder. Try again."
-                : "Couldn't remove the reminder. Try again."),
+                ? "Couldn’t set the reminder. Try again."
+                : "Couldn’t remove the reminder. Try again."),
             backgroundColor: AppTheme.surfaceLight,
             behavior: SnackBarBehavior.floating,
             margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
@@ -524,30 +531,33 @@ class _AnimeCalendarScreenState extends State<AnimeCalendarScreen> {
       button: true,
       toggled: isOn,
       label: 'Remind me when episode $episode of $title airs',
-      onTap: toggle,
-      excludeSemantics: true,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
+      child: InkWell(
         onTap: toggle,
-        child: SizedBox.square(
-          dimension: AppTheme.hankoTouch,
-          child: Center(
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 250),
-              curve: Curves.easeOut,
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: isOn ? AppTheme.hankoWashi : Colors.transparent,
-                borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
-                border: isOn ? null : Border.all(color: AppTheme.hankoEdge),
-              ),
-              child: Icon(
-                isOn
-                    ? Icons.notifications_sharp
-                    : Icons.notifications_none_outlined,
-                color: isOn ? AppTheme.hankoSumi : AppTheme.hankoWashi,
-                size: 18,
+        splashFactory: NoSplash.splashFactory,
+        highlightColor: AppTheme.hankoPressWash,
+        hoverColor: AppTheme.hankoPressWash,
+        borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+        child: ExcludeSemantics(
+          child: SizedBox.square(
+            dimension: AppTheme.hankoTouch,
+            child: Center(
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 250),
+                curve: Curves.easeOut,
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: isOn ? AppTheme.hankoWashi : Colors.transparent,
+                  borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+                  border: isOn ? null : Border.all(color: AppTheme.hankoEdge),
+                ),
+                child: Icon(
+                  isOn
+                      ? Icons.notifications_sharp
+                      : Icons.notifications_none_outlined,
+                  color: isOn ? AppTheme.hankoSumi : AppTheme.hankoWashi,
+                  size: 18,
+                ),
               ),
             ),
           ),
@@ -622,69 +632,80 @@ class _DayChip extends StatelessWidget {
         : today
             ? AppTheme.hankoWashi
             : AppTheme.hankoStone;
-    // The label replaces the chip's own text, so the tap is given here too:
-    // excludeSemantics would otherwise drop the GestureDetector's, and a
-    // screen reader could find the day but not choose it.
+    // The label replaces the chip's own text. Its own semantics node
+    // (container), named by the day, with the InkWell's tap and focus inside
+    // it (question 119, as Profile's rows since dafb7c5). The tap used to be
+    // given to the node over excluded semantics, which let a screen reader
+    // choose the day, but a GestureDetector has no focus, so on the web a
+    // chip couldn't take focus and the keyboard couldn't choose a day. The
+    // InkWell has Hanko's press wash and the theme's focus wash; on the
+    // chosen day the washi fill covers them but for the slot's margin.
     return Semantics(
+      container: true,
       button: true,
       selected: selected,
       label: [name, if (today) 'today', if (hasEpisodes) 'has episodes']
           .join(', '),
-      onTap: onTap,
-      excludeSemantics: true,
       child: MouseRegion(
         cursor: SystemMouseCursors.click,
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
+        child: InkWell(
           onTap: onTap,
-          child: Container(
-            constraints: const BoxConstraints(minHeight: AppTheme.hankoTouch),
-            alignment: Alignment.center,
-            padding: const EdgeInsets.symmetric(horizontal: 2),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 2),
-              decoration: BoxDecoration(
-                color: selected ? AppTheme.hankoWashi : Colors.transparent,
-                borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
-                // Always a 1 px border, clear unless it's today, so a chip
-                // never shifts by a pixel when the choice moves.
-                border: Border.all(
-                  color: today && !selected
-                      ? AppTheme.hankoEdge
-                      : Colors.transparent,
+          splashFactory: NoSplash.splashFactory,
+          highlightColor: AppTheme.hankoPressWash,
+          hoverColor: AppTheme.hankoPressWash,
+          borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+          child: ExcludeSemantics(
+            child: Container(
+              constraints:
+                  const BoxConstraints(minHeight: AppTheme.hankoTouch),
+              alignment: Alignment.center,
+              padding: const EdgeInsets.symmetric(horizontal: 2),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                width: double.infinity,
+                padding:
+                    const EdgeInsets.symmetric(vertical: 6, horizontal: 2),
+                decoration: BoxDecoration(
+                  color: selected ? AppTheme.hankoWashi : Colors.transparent,
+                  borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+                  // Always a 1 px border, clear unless it's today, so a chip
+                  // never shifts by a pixel when the choice moves.
+                  border: Border.all(
+                    color: today && !selected
+                        ? AppTheme.hankoEdge
+                        : Colors.transparent,
+                  ),
                 ),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Text(
-                      label,
-                      maxLines: 1,
-                      softWrap: false,
-                      style: AppTheme.hankoSans(
-                        fontSize: AppTheme.hankoMetaSize,
-                        weight:
-                            selected ? FontWeight.w600 : FontWeight.w500,
-                        color: ink,
-                        height: 1.2,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        label,
+                        maxLines: 1,
+                        softWrap: false,
+                        style: AppTheme.hankoSans(
+                          fontSize: AppTheme.hankoMetaSize,
+                          weight:
+                              selected ? FontWeight.w600 : FontWeight.w500,
+                          color: ink,
+                          height: 1.2,
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 4),
-                  SizedBox.square(
-                    dimension: 4,
-                    child: hasEpisodes
-                        ? ColoredBox(
-                            color: selected
-                                ? AppTheme.hankoSumi
-                                : AppTheme.hankoWashi)
-                        : null,
-                  ),
-                ],
+                    const SizedBox(height: 4),
+                    SizedBox.square(
+                      dimension: 4,
+                      child: hasEpisodes
+                          ? ColoredBox(
+                              color: selected
+                                  ? AppTheme.hankoSumi
+                                  : AppTheme.hankoWashi)
+                          : null,
+                    ),
+                  ],
+                ),
               ),
             ),
           ),

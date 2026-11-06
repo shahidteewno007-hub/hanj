@@ -572,15 +572,19 @@ class _SoulmatchResultCard extends StatelessWidget {
           ),
           child: Column(
             children: [
+              // Hanko's numerals (question 136): Jost tabular at its
+              // heaviest shipped weight, through AppTheme.mono(), in place
+              // of a 'SpaceGrotesk' family literal that no font was ever
+              // registered under. This card is drawn only by the pre-Hanko
+              // screen (_preHanko).
               Text(
                 '${result.compatibility}%',
-                style: TextStyle(
-                  color: _scoreColor,
+                style: AppTheme.mono(
                   fontSize: 72,
-                  fontWeight: FontWeight.w900,
-                  height: 1,
-                  fontFamily: 'SpaceGrotesk',
-                ),
+                  weight: FontWeight.w600,
+                  color: _scoreColor,
+                  letterSpacing: 0,
+                ).copyWith(height: 1),
               ),
               const SizedBox(height: 8),
               Text(_scoreLabel,
