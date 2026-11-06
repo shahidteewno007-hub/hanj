@@ -4272,27 +4272,51 @@ class _PlusOneTile extends StatefulWidget {
 
 class _PlusOneTileState extends State<_PlusOneTile>
     with SingleTickerProviderStateMixin {
+  // Print Room P6 (DESIGN.md §9.3 A rule 5, "the tile dips, the count turns
+  // over; 200 ms"): the tile dips to 0.90 and comes back, 60 ms in and 140
+  // out, with no overshoot. The overshoot is the seal's: your verdict moves
+  // like that, the app's most frequent action doesn't. The count's roll
+  // (_RollingCount, 160 ms) turns over inside it. Round seven's press, in
+  // to 0.92 and out through the seal's 1.06 in 240 ms, is kept, not deleted
+  // (CLAUDE.md): false brings it back.
+  static const bool _dip = true;
+
   late final AnimationController _press = AnimationController(
     vsync: this,
-    duration: AppTheme.hankoSealPress * 2,
+    duration:
+        _dip ? const Duration(milliseconds: 200) : AppTheme.hankoSealPress * 2,
   );
-  late final Animation<double> _scale = TweenSequence<double>([
-    TweenSequenceItem(
-      tween: Tween(begin: 1.0, end: 0.92)
-          .chain(CurveTween(curve: Curves.easeOut)),
-      weight: 30,
-    ),
-    TweenSequenceItem(
-      tween: Tween(begin: 0.92, end: AppTheme.hankoSealPressScale)
-          .chain(CurveTween(curve: Curves.easeOut)),
-      weight: 30,
-    ),
-    TweenSequenceItem(
-      tween: Tween(begin: AppTheme.hankoSealPressScale, end: 1.0)
-          .chain(CurveTween(curve: Curves.easeInOut)),
-      weight: 40,
-    ),
-  ]).animate(_press);
+  late final Animation<double> _scale = (_dip
+          ? TweenSequence<double>([
+              TweenSequenceItem(
+                tween: Tween(begin: 1.0, end: 0.90)
+                    .chain(CurveTween(curve: Curves.easeOut)),
+                weight: 60,
+              ),
+              TweenSequenceItem(
+                tween: Tween(begin: 0.90, end: 1.0)
+                    .chain(CurveTween(curve: Curves.easeOut)),
+                weight: 140,
+              ),
+            ])
+          : TweenSequence<double>([
+              TweenSequenceItem(
+                tween: Tween(begin: 1.0, end: 0.92)
+                    .chain(CurveTween(curve: Curves.easeOut)),
+                weight: 30,
+              ),
+              TweenSequenceItem(
+                tween: Tween(begin: 0.92, end: AppTheme.hankoSealPressScale)
+                    .chain(CurveTween(curve: Curves.easeOut)),
+                weight: 30,
+              ),
+              TweenSequenceItem(
+                tween: Tween(begin: AppTheme.hankoSealPressScale, end: 1.0)
+                    .chain(CurveTween(curve: Curves.easeInOut)),
+                weight: 40,
+              ),
+            ]))
+      .animate(_press);
 
   bool _pressed = false;
   bool _hovered = false;
