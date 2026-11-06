@@ -66,6 +66,13 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
   // brings it back as it was, the tint and all.
   static const bool _printRoom = true;
 
+  // The seal press (Print Room, P6; DESIGN.md §9.3 A rule 5): rating, or
+  // finishing a show you've rated, drops your seal onto the print, which
+  // overshoots and settles while an ink ring spreads and fades, with one
+  // haptic tick (HankoSealPress). P4's press, 1.06 to 1.0 in 120 ms on a
+  // rating only, is kept, not deleted (CLAUDE.md): false brings it back.
+  static const bool _sealPress = true;
+
   final _firestoreService = FirestoreService();
   final _aniListService   = AnilistService();
   final _confettiKey      = GlobalKey<ConfettiOverlayState>();
@@ -1656,6 +1663,23 @@ class _HankoDetailHeaderState extends State<HankoDetailHeader> {
   int _presses = 0;
 
   @override
+  void didUpdateWidget(HankoDetailHeader oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Finishing a show you've rated seals it again (P6, rule 5): the press
+    // replays when your status turns Completed here, by the last +1 or the
+    // status sheet. Not when the entry is first read, and not for a show
+    // with no rating, which has no seal yet.
+    if (_AnimeDetailScreenState._sealPress &&
+        oldWidget.entryLoaded &&
+        widget.entryLoaded &&
+        oldWidget.status != 'COMPLETED' &&
+        widget.status == 'COMPLETED' &&
+        widget.rating != null) {
+      _presses++;
+    }
+  }
+
+  @override
   void dispose() {
     _preview.dispose();
     super.dispose();
@@ -1812,19 +1836,29 @@ class _HankoDetailHeaderState extends State<HankoDetailHeader> {
                       Positioned(
                         left: g.printWidth - 28,
                         top: g.printHeight - 68,
-                        // Rating presses the seal in, 1.06 to 1.0 in 120 ms;
-                        // with Remove animations on, it simply appears.
-                        child: TweenAnimationBuilder<double>(
-                          key: ValueKey(_presses),
-                          tween: Tween(begin: _presses == 0 || still ? 1.0 : AppTheme.hankoSealPressScale, end: 1.0),
-                          duration: AppTheme.hankoSealPress,
-                          curve: Curves.easeOut,
-                          builder: (context, scale, seal) => Transform.scale(scale: scale, child: seal),
-                          child: ValueListenableBuilder<double?>(
-                            valueListenable: _preview,
-                            builder: (context, preview, _) => widget._seal(preview ?? widget.rating),
-                          ),
-                        ),
+                        // P6: the seal drops onto the print, overshoots and
+                        // settles, with its ink ring and one haptic tick.
+                        child: _AnimeDetailScreenState._sealPress
+                            ? HankoSealPress(
+                                presses: _presses,
+                                child: ValueListenableBuilder<double?>(
+                                  valueListenable: _preview,
+                                  builder: (context, preview, _) => widget._seal(preview ?? widget.rating),
+                                ),
+                              )
+                            // Rating presses the seal in, 1.06 to 1.0 in 120
+                            // ms; with Remove animations on, it simply appears.
+                            : TweenAnimationBuilder<double>(
+                                key: ValueKey(_presses),
+                                tween: Tween(begin: _presses == 0 || still ? 1.0 : AppTheme.hankoSealPressScale, end: 1.0),
+                                duration: AppTheme.hankoSealPress,
+                                curve: Curves.easeOut,
+                                builder: (context, scale, seal) => Transform.scale(scale: scale, child: seal),
+                                child: ValueListenableBuilder<double?>(
+                                  valueListenable: _preview,
+                                  builder: (context, preview, _) => widget._seal(preview ?? widget.rating),
+                                ),
+                              ),
                       ),
                     ],
                   ),

@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../core/theme/app_theme.dart';
 
@@ -297,4 +299,153 @@ class _SealPainter extends CustomPainter {
       rule != old.rule ||
       ruleInset != old.ruleInset ||
       keyline != old.keyline;
+}
+
+/// Your seal pressed onto the page (Print Room, P6; DESIGN.md §9.3 A rule
+/// 5): when you rate a show, or finish one you've rated.
+///
+/// Each time [presses] goes up, [child] (your seal) drops onto the print
+/// from a little above it, overshoots and settles, and an ink ring in the
+/// seal's coral spreads from its edge and fades: 240 ms in all, with one
+/// haptic tick as it lands, at 90 ms. With Remove animations on, the seal
+/// simply appears, with the tick. Nothing loops.
+///
+/// It rebuilds nothing, itself included: the seal is built once and moved,
+/// scaled and inked by transitions, and the ring is painted from the same
+/// controller in a layer of its own, so a press repaints only that layer.
+/// The ring takes no room and isn't clipped: it spreads over whatever lies
+/// around the seal.
+class HankoSealPress extends StatefulWidget {
+  const HankoSealPress({super.key, required this.presses, required this.child});
+
+  /// How many times the seal has been pressed here. A new count presses it.
+  final int presses;
+
+  /// The seal.
+  final Widget child;
+
+  static const Duration duration = Duration(milliseconds: 240);
+
+  /// Where the seal lands, as a fraction of [duration]: 90 ms.
+  static const double _landing = 90 / 240;
+
+  @override
+  State<HankoSealPress> createState() => _HankoSealPressState();
+}
+
+class _HankoSealPressState extends State<HankoSealPress>
+    with SingleTickerProviderStateMixin {
+  // At rest until the first press.
+  late final AnimationController _press = AnimationController(
+    vsync: this,
+    duration: HankoSealPress.duration,
+    value: 1,
+  )..addListener(_land);
+
+  // The seal falls from 1.3x to 0.95 (ease in: it falls), rebounds to 1.02
+  // and settles: the storyboard's 0, 90, 160 and 240 ms.
+  late final Animation<double> _scale = TweenSequence<double>([
+    TweenSequenceItem(
+      tween: Tween(begin: 1.3, end: 0.95).chain(CurveTween(curve: Curves.easeIn)),
+      weight: 90,
+    ),
+    TweenSequenceItem(
+      tween: Tween(begin: 0.95, end: 1.02).chain(CurveTween(curve: Curves.easeOut)),
+      weight: 70,
+    ),
+    TweenSequenceItem(
+      tween: Tween(begin: 1.02, end: 1.0).chain(CurveTween(curve: Curves.easeInOut)),
+      weight: 80,
+    ),
+  ]).animate(_press);
+
+  static final Animatable<double> _falling = CurveTween(
+      curve: const Interval(0, HankoSealPress._landing, curve: Curves.easeIn));
+
+  // From a little up and to the right (the storyboard's 6 and 10 px for a
+  // 44 px seal), held above the paper at 45% ink until it lands.
+  late final Animation<Offset> _drop = _press.drive(
+      Tween(begin: const Offset(0.14, -0.23), end: Offset.zero).chain(_falling));
+  late final Animation<double> _ink =
+      _press.drive(Tween(begin: 0.45, end: 1.0).chain(_falling));
+
+  bool _landed = true;
+
+  @override
+  void didUpdateWidget(HankoSealPress oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.presses <= oldWidget.presses) return;
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _press.value = 1;
+      _tick();
+      return;
+    }
+    _landed = false;
+    _press.forward(from: 0);
+  }
+
+  void _land() {
+    if (_landed || _press.value < HankoSealPress._landing) return;
+    _landed = true;
+    _tick();
+  }
+
+  // One tick as the seal meets the paper. A platform call that fails is
+  // only a missing tick: it must never reach Crashlytics (CLAUDE.md).
+  static void _tick() =>
+      unawaited(HapticFeedback.mediumImpact().catchError((Object _) {}));
+
+  @override
+  void dispose() {
+    _press.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return RepaintBoundary(
+      child: CustomPaint(
+        painter: _InkRing(_press),
+        child: SlideTransition(
+          position: _drop,
+          child: ScaleTransition(
+            scale: _scale,
+            child: FadeTransition(opacity: _ink, child: widget.child),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The ink a press leaves (P6): a ring in the seal's coral that leaves the
+/// seal's edge as it lands, spreads and fades. For the storyboard's 44 px
+/// seal, 8 px out at 3 px and 55% at 90 ms, 18 px at 2 px and about 25% at
+/// 160 ms, gone at 240; scaled with the seal.
+class _InkRing extends CustomPainter {
+  _InkRing(this.press) : super(repaint: press);
+
+  final Animation<double> press;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const landing = HankoSealPress._landing;
+    final t = press.value;
+    if (t <= landing || t >= 1) return;
+    final spread = (t - landing) / (1 - landing);
+    final side = size.shortestSide;
+    final out = side * (0.18 + 0.27 * Curves.easeOutCubic.transform(spread));
+    final stroke = 3 - 1.5 * spread;
+    canvas.drawRRect(
+      RRect.fromRectAndRadius((Offset.zero & size).inflate(out + stroke / 2),
+          Radius.circular(AppTheme.hankoRadius + out * 0.15)),
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = stroke
+        ..color = AppTheme.hankoCoral.withValues(alpha: 0.55 * (1 - spread)),
+    );
+  }
+
+  @override
+  bool shouldRepaint(_InkRing old) => old.press != press;
 }
