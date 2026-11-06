@@ -82,6 +82,13 @@ class _HomeScreenState extends State<HomeScreen> {
   /// the sentence keeps its words in the width the print leaves it.
   static const double _ledeBesidePrint = 20;
 
+  /// A short title is kept whole only where it fits on a line (after P7's
+  /// phone check, 2026-11-06). Kept whole and wider than the line, it was
+  /// broken inside a word beside the print: "Today you sealed / Sparks of
+  /// Tomorro / w" at 360 dp. Now it breaks between its words instead, as a
+  /// long title does. False gives back the 18-character rule alone.
+  static const bool _titleMustFit = true;
+
   // ── Start watching, on the watchlist band (Print Room P2-2) ──
   // The mockup's washi button under tonight's pick, built as a stage of its
   // own (Shahid, 2026-11-05: "go with your recommendations"). It puts the
@@ -1747,13 +1754,19 @@ class _HomeScreenState extends State<HomeScreen> {
     final sentenceStyle =
         onPrint ? style.copyWith(fontSize: _ledeBesidePrint) : style;
     Widget words() => LayoutBuilder(builder: (context, constraints) {
+          // A short title is kept whole only if it fits on a line: wider,
+          // Flutter would break it inside a word (_titleMustFit).
+          final keepWhole = rawTitle.length <= 18 &&
+              !(_titleMustFit &&
+                  _breaksAWord(compose(wholeTitle: true), sentenceStyle,
+                      scaler, seal, constraints.maxWidth));
           // Q54: a short title kept whole can leave the word before it
           // alone on a line. At 1.3x "On Monday you / finished / Cowboy
           // Bebop, all ..." left "finished" by itself. So the first of
           // these that leaves no word alone wins: the title whole; the
           // title whole with "you" kept by its verb; the title free to
           // break. A long title may always break, as before.
-          final candidates = rawTitle.length <= 18
+          final candidates = keepWhole
               ? [
                   compose(wholeTitle: true),
                   compose(wholeTitle: true, bindVerb: true),
@@ -1873,6 +1886,35 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     painter.dispose();
     return alone;
+  }
+
+  /// Whether laying out [sentence], followed by the seal, at [maxWidth]
+  /// breaks inside a word: whether a word, such as a short title kept whole
+  /// with what is joined to it, is wider than the line. The widest word is
+  /// measured on a layout of unbounded width, where nothing is broken; a
+  /// layout made at [maxWidth] reports a broken word's pieces instead.
+  bool _breaksAWord(String sentence, TextStyle style, TextScaler scaler,
+      Size? seal, double maxWidth) {
+    final painter = TextPainter(
+      text: TextSpan(style: style, children: [
+        TextSpan(text: sentence),
+        if (seal != null)
+          const WidgetSpan(
+              alignment: PlaceholderAlignment.middle, child: SizedBox.shrink()),
+      ]),
+      textDirection: Directionality.of(context),
+      textScaler: scaler,
+    );
+    if (seal != null) {
+      painter.setPlaceholderDimensions([
+        PlaceholderDimensions(
+            size: seal, alignment: PlaceholderAlignment.middle),
+      ]);
+    }
+    painter.layout();
+    final breaks = painter.minIntrinsicWidth > maxWidth;
+    painter.dispose();
+    return breaks;
   }
 }
 
