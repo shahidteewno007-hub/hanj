@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ScrollDirection;
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -68,6 +69,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
   int _wallDecodeBuilt = 0;
   Widget? _wallBuilt;
 
+  // ── The bar after a fast flick (P5's follow-up, 2026-11-06) ──
+  // On the phone a fast flick back up didn't always bring the floating bar
+  // in: round seven's 10 times of 13, P5's 6 of 9. The bar snaps the way
+  // the scroll last went, and a flick's last step can read backwards
+  // (_FlingScrollPosition), so the snap hid the bar as the page flew up.
+  // The page's own controller now takes the fling's direction when the
+  // finger lifts. False gives the bar back as it was, on the Scaffold's
+  // controller.
+  static const bool _flingDirection = true;
+  final _scroll = _FlingScrollController();
+
   static const _avatarGradients = [
     [Color(0xFF7C3AED), Color(0xFFE91E8C)],
     [Color(0xFF2196F3), Color(0xFF00BCD4)],
@@ -85,6 +97,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _loadAvatarPrefs();
     _resolveFounderStatus();
     _loadFeaturedCard();
+  }
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
   }
 
   Future<void> _loadFeaturedCard() async {
@@ -255,6 +273,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             context: context,
             removeTop: true,
             child: CustomScrollView(
+            controller: _flingDirection ? _scroll : null,
             slivers: [
               // ── AppBar ──────────────────────────────────
               // Name first (Hanko stage H5): the name below heads the page, so
@@ -2159,6 +2178,57 @@ class _NextFrameState extends State<_NextFrame> {
   @override
   Widget build(BuildContext context) =>
       _ready ? widget.child : const SizedBox.shrink();
+}
+
+/// Profile's scroll controller (the bar after a fast flick): its position
+/// is _FlingScrollPosition. Otherwise it is Flutter's own, as the
+/// Scaffold's controller that the page used before.
+class _FlingScrollController extends ScrollController {
+  @override
+  ScrollPosition createScrollPosition(ScrollPhysics physics,
+      ScrollContext context, ScrollPosition? oldPosition) {
+    return _FlingScrollPosition(
+      physics: physics,
+      context: context,
+      initialPixels: initialScrollOffset,
+      keepScrollOffset: keepScrollOffset,
+      oldPosition: oldPosition,
+      debugLabel: debugLabel,
+    );
+  }
+}
+
+/// A scroll position that, when a drag ends in a fling, takes the fling's
+/// direction as the scroll's.
+///
+/// Flutter's floating bar follows the page back in only while the scroll's
+/// direction is forward, and when the page stops it snaps in for forward
+/// and out for anything else. Each drag update sets that direction, so a
+/// fling keeps the last one. On Android a fast flick's last update can be a
+/// pixel's step back: when the finger lifts short of where its last move
+/// was drawn, the engine adds a move back to the lift, which the drag
+/// applies though the fling's speed leaves it out. The page then flies on
+/// up with the direction reading reverse, so the bar stops following it,
+/// and the snap hides it. The fling's own direction is the way the page
+/// goes on, so the bar goes with it, as after any other flick.
+class _FlingScrollPosition extends ScrollPositionWithSingleContext {
+  _FlingScrollPosition({
+    required super.physics,
+    required super.context,
+    required super.initialPixels,
+    required super.keepScrollOffset,
+    required super.oldPosition,
+    required super.debugLabel,
+  });
+
+  @override
+  void goBallistic(double velocity) {
+    if (velocity != 0 && activity is DragScrollActivity) {
+      updateUserScrollDirection(
+          velocity < 0 ? ScrollDirection.forward : ScrollDirection.reverse);
+    }
+    super.goBallistic(velocity);
+  }
 }
 
 /// Art that opens something: a favourite's or a shelf's cover, or the
