@@ -2194,6 +2194,7 @@ class _HankoEpisodes extends StatelessWidget {
     final nextLine = this.nextLine;
     // "7 of 28" as it's drawn; with the reel off it also says "watched".
     final words = total != null ? '$watched of $total' : '$watched';
+    final figure = AppTheme.hankoSerif(fontSize: 30, height: 1);
     return Row(
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
@@ -2222,13 +2223,15 @@ class _HankoEpisodes extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.baseline,
                       textBaseline: TextBaseline.alphabetic,
                       children: [
-                        _HankoRollingCount(
-                          value: watched,
-                          style: AppTheme.hankoSerif(fontSize: 30, height: 1),
-                        ),
+                        _HankoRollingCount(value: watched, style: figure),
                         if (total != null)
                           Text(
                             ' of $total',
+                            // Set on the figure's line, as when they were one
+                            // paragraph. Each paragraph rounds its own
+                            // baseline, so on a line of its own " of 28" sat
+                            // half a dp low and the row 0.37 dp taller.
+                            strutStyle: StrutStyle.fromTextStyle(figure, forceStrutHeight: true),
                             style: AppTheme.hankoSans(fontSize: 15, color: AppTheme.hankoStone, height: 1),
                           ),
                       ],
