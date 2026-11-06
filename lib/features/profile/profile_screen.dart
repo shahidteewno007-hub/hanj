@@ -70,13 +70,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget? _wallBuilt;
 
   // ── The bar after a fast flick (P5's follow-up, 2026-11-06) ──
-  // On the phone a fast flick back up didn't always bring the floating bar
-  // in: round seven's 10 times of 13, P5's 6 of 9. The bar snaps the way
-  // the scroll last went, and a flick's last step can read backwards
-  // (_FlingScrollPosition), so the snap hid the bar as the page flew up.
-  // The page's own controller now takes the fling's direction when the
-  // finger lifts. False gives the bar back as it was, on the Scaffold's
-  // controller.
+  // On the phone a flick back up didn't always bring the floating bar in:
+  // round seven's 10 times of 13, P5's 6 of 9, and a slow drag now and
+  // then too. The bar snaps the way the scroll last went, and a drag's last
+  // step can read backwards when the finger lifts (_FlingScrollPosition),
+  // so the snap hid the bar as the page went up. The page's own controller
+  // keeps the drag's direction at the lift. False gives the bar back as it
+  // was, on the Scaffold's controller.
   static const bool _flingDirection = true;
   final _scroll = _FlingScrollController();
 
@@ -2198,19 +2198,24 @@ class _FlingScrollController extends ScrollController {
   }
 }
 
-/// A scroll position that, when a drag ends in a fling, takes the fling's
-/// direction as the scroll's.
+/// A scroll position that keeps a drag's direction when the finger lifts,
+/// so the floating bar goes the way the page went.
 ///
 /// Flutter's floating bar follows the page back in only while the scroll's
 /// direction is forward, and when the page stops it snaps in for forward
-/// and out for anything else. Each drag update sets that direction, so a
-/// fling keeps the last one. On Android a fast flick's last update can be a
-/// pixel's step back: when the finger lifts short of where its last move
-/// was drawn, the engine adds a move back to the lift, which the drag
-/// applies though the fling's speed leaves it out. The page then flies on
-/// up with the direction reading reverse, so the bar stops following it,
-/// and the snap hides it. The fling's own direction is the way the page
-/// goes on, so the bar goes with it, as after any other flick.
+/// and out for anything else. Each drag update sets that direction, and a
+/// fling keeps the last one. On Android that last update can be a step
+/// back of a pixel or so: the system hands the app a moving finger's last
+/// move a little ahead of the finger (it predicts it to the frame), and
+/// when the finger lifts behind that, the engine adds a move back to the
+/// lift, which the drag applies (the fling's speed leaves it out). Going up
+/// the page, the direction then reads reverse and the snap hides the bar;
+/// going down, forward, and the bar comes back.
+///
+/// So when a drag ends, its direction is the fling's if there is one, the
+/// way the page goes on; without a fling, a turn made by the drag's last
+/// update alone is undone, since a turn the finger means lasts more than
+/// one move.
 class _FlingScrollPosition extends ScrollPositionWithSingleContext {
   _FlingScrollPosition({
     required super.physics,
@@ -2221,12 +2226,30 @@ class _FlingScrollPosition extends ScrollPositionWithSingleContext {
     required super.debugLabel,
   });
 
+  // The direction before the drag's last update, if that update turned it.
+  ScrollDirection? _beforeTurn;
+
+  @override
+  void applyUserOffset(double delta) {
+    final before = userScrollDirection;
+    super.applyUserOffset(delta);
+    _beforeTurn =
+        before != ScrollDirection.idle && userScrollDirection != before
+            ? before
+            : null;
+  }
+
   @override
   void goBallistic(double velocity) {
-    if (velocity != 0 && activity is DragScrollActivity) {
-      updateUserScrollDirection(
-          velocity < 0 ? ScrollDirection.forward : ScrollDirection.reverse);
+    if (activity is DragScrollActivity) {
+      final way = velocity < 0
+          ? ScrollDirection.forward
+          : velocity > 0
+              ? ScrollDirection.reverse
+              : _beforeTurn;
+      if (way != null) updateUserScrollDirection(way);
     }
+    _beforeTurn = null;
     super.goBallistic(velocity);
   }
 }
