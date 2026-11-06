@@ -1317,9 +1317,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
             const SizedBox(height: 10),
             Padding(
               padding: gutter,
+              // "choose Favourite" keeps together, so the word isn't left
+              // alone on a line (question 110's rule).
               child: Text(
-                'To add one, open a show, tap its status and choose '
-                'Favourite.',
+                'To add one, open a show, tap its status and '
+                'choose\u00A0Favourite.',
                 style: AppTheme.hankoSans(
                   fontSize: AppTheme.hankoMetaSize,
                   color: words,

@@ -2537,10 +2537,11 @@ class _ShelfPickerState extends State<_ShelfPicker> {
             const SizedBox(width: 6),
             Expanded(
               // A favourite sits on the same entry as a shelf (P7), so the
-              // line names both.
+              // line names both. A word joiner keeps "signed-in" whole at
+              // large text, as the lede keeps a hyphenated title.
               child: Text(
                   HanjShelves.favouritesApart
-                      ? 'Favourites and shelves are visible to signed-in '
+                      ? 'Favourites and shelves are visible to signed-\u2060in '
                           'Hanj users.'
                       : 'Shelves are visible to signed-in Hanj users.',
                   style: quiet),
