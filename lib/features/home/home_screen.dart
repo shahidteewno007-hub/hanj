@@ -1995,10 +1995,17 @@ Future<String?> showHanjListSheet({
                 firestoreService.addAnimeToList(anime: anime, status: s.$1)
                     .catchError((_) {});
                 // 4. Shelves picked while the show wasn't on the list go on
-                // its new entry, in a write of their own after it.
-                if (shelves.staged.isNotEmpty) {
+                // its new entry, in a write of their own after it, with the
+                // favourite mark if it was marked too (P7).
+                final favourite = shelves.favourite == true;
+                if (shelves.staged.isNotEmpty || favourite) {
                   await _saveDraftShelves(
-                      context, anime.id, shelves.staged.toList());
+                      context,
+                      anime.id,
+                      HanjShelves.tagsFor(
+                          shelf: shelves.staged.firstOrNull,
+                          favourite: favourite),
+                      favourite: favourite);
                 }
               },
               splashFactory: NoSplash.splashFactory,
@@ -2210,12 +2217,15 @@ Future<String?> showHanjListSheet({
 /// list (round seven), once a status has been chosen for it: one update of
 /// the new entry's tags, sent after the status write, so it lands after the
 /// entry exists. Since 2026-11-05 [names] holds one shelf at most, and the
-/// tags become exactly it (HanjShelves). Awaited and caught: uncaught, a
+/// tags become exactly it (HanjShelves). Since P7 they can hold the
+/// favourite mark too ([favourite]), which also stamps favouritedAt, the
+/// time Profile orders favourites by. Awaited and caught: uncaught, a
 /// refused write would reach Crashlytics as fatal. A failure says so on the
 /// page the sheet was opened from, naming no cause; offline, the write
 /// waits for the connection.
 Future<void> _saveDraftShelves(
-    BuildContext context, String animeId, List<String> names) async {
+    BuildContext context, String animeId, List<String> names,
+    {required bool favourite}) async {
   final uid = FirebaseAuth.instance.currentUser?.uid;
   if (uid == null || animeId.isEmpty) return;
   try {
@@ -2227,11 +2237,17 @@ Future<void> _saveDraftShelves(
         .update({
       'tags': names,
       'tagsUpdatedAt': FieldValue.serverTimestamp(),
+      if (favourite) 'favouritedAt': FieldValue.serverTimestamp(),
     });
   } catch (_) {
     if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-      content: Text('Couldn’t save its shelves. Try again.'),
+    final shelf = names.any((n) => n != HanjShelves.favourites);
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(!favourite
+          ? 'Couldn’t save its shelves. Try again.'
+          : shelf
+              ? 'Couldn’t save its shelf and favourite. Try again.'
+              : 'Couldn’t save that favourite. Try again.'),
     ));
   }
 }
@@ -2241,6 +2257,10 @@ Future<void> _saveDraftShelves(
 /// One at most since 2026-11-05.
 class _ShelfDraft {
   final Set<String> staged = {};
+
+  /// The favourite mark as picked before the show is on the list (P7), or
+  /// null while it hasn't been touched.
+  bool? favourite;
 }
 
 /// Shelving, in the status sheet (round seven; Shahid, 2026-11-03: "I am
@@ -2266,6 +2286,15 @@ class _ShelfDraft {
 /// It reads once, as the sheet opens: the show's entry, for its shelf and
 /// whether it is on the list. Shelves are readable by any signed-in user,
 /// as Profile says, so the sheet says it too.
+///
+/// Since P7 (HanjShelves.favouritesApart) the shelves are Masterpiece and
+/// Hidden gems, and Favourite is a mark of its own above them, beside any
+/// shelf (Shahid, 2026-11-06: "put favourite so users can show off their
+/// favourites on the profile"). It is still the name "Favourites" in the
+/// entry's tags, so each write sets the tags whole, the shelf and the mark
+/// (HanjShelves.tagsFor), and either toggle keeps the other. Marking also
+/// stamps favouritedAt, the time Profile orders favourites by; unmarking
+/// clears it. Off the list the mark waits in [draft] with the shelf.
 class _ShelfPicker extends StatefulWidget {
   const _ShelfPicker({required this.animeId, required this.draft});
 
@@ -2291,6 +2320,10 @@ class _ShelfPickerState extends State<_ShelfPicker> {
   /// This show's shelf, one at most: as saved, or as picked while it is
   /// off the list.
   final Set<String> _mine = {};
+
+  /// Whether this show is one of your favourites (P7): as saved, or as
+  /// marked while it is off the list.
+  bool _favourite = false;
 
   /// Every shelf, in the order the chips show them.
   final List<String> _all = [];
@@ -2353,13 +2386,15 @@ class _ShelfPickerState extends State<_ShelfPicker> {
     try {
       final entry = await list.doc(widget.animeId).get();
       if (!mounted) return;
-      final saved = HanjShelves.shelfOf(_names(entry.data()?['tags']));
+      final tags = _names(entry.data()?['tags']);
+      final saved = HanjShelves.shelfOf(tags);
       final staged = widget.draft.staged;
       setState(() {
         _onList = entry.exists;
         _mine
           ..clear()
           ..addAll(staged.isNotEmpty ? staged : {?saved});
+        _favourite = widget.draft.favourite ?? HanjShelves.isFavourite(tags);
         _all
           ..clear()
           ..addAll(HanjShelves.all);
@@ -2377,7 +2412,7 @@ class _ShelfPickerState extends State<_ShelfPicker> {
 
   /// Puts the show on [name], or takes it off when it's there already. One
   /// shelf at a time, so the show leaves the other. On the list, its tags
-  /// become just [name], or none.
+  /// become just [name], or none, and the favourite mark if it has one (P7).
   Future<void> _toggle(String name) async {
     final before = {..._mine};
     final on = !_mine.contains(name);
@@ -2399,7 +2434,7 @@ class _ShelfPickerState extends State<_ShelfPicker> {
     final write = ++_write;
     try {
       await list.doc(widget.animeId).update({
-        'tags': [if (on) name],
+        'tags': HanjShelves.tagsFor(shelf: on ? name : null, favourite: _favourite),
         'tagsUpdatedAt': FieldValue.serverTimestamp(),
       });
     } catch (_) {
@@ -2412,6 +2447,39 @@ class _ShelfPickerState extends State<_ShelfPicker> {
           ..clear()
           ..addAll(before);
         _error = 'Couldn’t save that shelf. Try again.';
+      });
+    }
+  }
+
+  /// Marks the show as a favourite, or unmarks it (P7), keeping its shelf.
+  /// On the list it is written at once, as a shelf is: the tags whole, and
+  /// favouritedAt stamped or cleared; a refused write puts the chip back
+  /// and says so. Off the list it waits in the draft for a status.
+  Future<void> _toggleFavourite() async {
+    final before = _favourite;
+    final on = !before;
+    setState(() {
+      _favourite = on;
+      _error = null;
+    });
+    if (!_onList) {
+      widget.draft.favourite = on;
+      return;
+    }
+    final list = _list;
+    if (list == null) return;
+    final write = ++_write;
+    try {
+      await list.doc(widget.animeId).update({
+        'tags': HanjShelves.tagsFor(shelf: _mine.firstOrNull, favourite: on),
+        'tagsUpdatedAt': FieldValue.serverTimestamp(),
+        'favouritedAt': on ? FieldValue.serverTimestamp() : FieldValue.delete(),
+      });
+    } catch (_) {
+      if (!mounted || _write != write) return;
+      setState(() {
+        _favourite = before;
+        _error = 'Couldn’t save that favourite. Try again.';
       });
     }
   }
@@ -2449,6 +2517,10 @@ class _ShelfPickerState extends State<_ShelfPicker> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        if (HanjShelves.favouritesApart) ...[
+          _favouriteRow(quiet),
+          const SizedBox(height: 16),
+        ],
         Semantics(
           header: true,
           child: Text('Shelves', style: AppTheme.hankoSerif(height: 1.3)),
@@ -2464,7 +2536,13 @@ class _ShelfPickerState extends State<_ShelfPicker> {
             ),
             const SizedBox(width: 6),
             Expanded(
-              child: Text('Shelves are visible to signed-in Hanj users.',
+              // A favourite sits on the same entry as a shelf (P7), so the
+              // line names both.
+              child: Text(
+                  HanjShelves.favouritesApart
+                      ? 'Favourites and shelves are visible to signed-in '
+                          'Hanj users.'
+                      : 'Shelves are visible to signed-in Hanj users.',
                   style: quiet),
             ),
           ],
@@ -2524,10 +2602,16 @@ class _ShelfPickerState extends State<_ShelfPicker> {
                 ],
               ),
             ),
-          if (!_onList && _mine.isNotEmpty)
+          if (!_onList && (_mine.isNotEmpty || _favourite))
             Padding(
               padding: const EdgeInsets.only(top: 6),
-              child: Text('Choose where it lives to save its shelf.',
+              child: Text(
+                  !_favourite
+                      ? 'Choose where it lives to save its shelf.'
+                      : _mine.isNotEmpty
+                          ? 'Choose where it lives to save its shelf and '
+                              'favourite.'
+                          : 'Choose where it lives to save it as a favourite.',
                   style: said),
             ),
           if (error != null)
@@ -2536,6 +2620,36 @@ class _ShelfPickerState extends State<_ShelfPicker> {
               child: Text(error, style: said),
             ),
         ],
+      ],
+    );
+  }
+
+  /// The favourite mark (P7): the sheet's own chip with a heart, first and
+  /// apart from the shelves, beside what it does. Washi, not coral: coral is
+  /// the seal. While the entry is read, or if it couldn't be, the chip keeps
+  /// its place unseen, so nothing jumps and a favourite never shows as
+  /// unmarked; the line under Shelves says when it failed.
+  Widget _favouriteRow(TextStyle quiet) {
+    final known = !_loading && !_failed;
+    return Row(
+      children: [
+        ExcludeFocus(
+          excluding: !known,
+          child: Visibility(
+            visible: known,
+            maintainSize: true,
+            maintainAnimation: true,
+            maintainState: true,
+            child: _ShelfChip(
+              label: 'Favourite',
+              icon: Icons.favorite_border_sharp,
+              selected: _favourite,
+              onTap: _toggleFavourite,
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(child: Text('Shown first on your profile.', style: quiet)),
       ],
     );
   }
@@ -2581,7 +2695,8 @@ class _ShelfPickerState extends State<_ShelfPicker> {
 /// A shelf in the status sheet (round seven): Hanko's chip, drawn 36 dp tall
 /// (AppTheme.hankoChipHeight) in a 48 dp target, square corners, Jost 500
 /// 14. Off: sumi 3 with the edge outline; on: washi with a sumi label and a
-/// check, as a chosen status tile; "New shelf" carries a plus instead. Its
+/// check, as a chosen status tile; "New shelf" carries a plus instead, and
+/// Favourite (P7) a heart while it's off. Its
 /// own semantics node, a toggle named for the shelf, with the InkWell's tap
 /// and focus inside it (question 119). The InkWell covers the whole target,
 /// so the chip draws its own press and hover washes, as +1 does, and
