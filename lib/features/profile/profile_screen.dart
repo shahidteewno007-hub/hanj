@@ -11,6 +11,8 @@ import '../../core/responsive.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/anime_model.dart';
 import '../../models/hanj_shelves.dart';
+import '../../widgets/hanko_cover_colour.dart';
+import '../../widgets/hanko_flight.dart';
 import '../../widgets/hanko_print.dart';
 import '../../widgets/hanko_seal.dart';
 import '../../widgets/hanko_seal_register.dart';
@@ -79,6 +81,39 @@ class _ProfileScreenState extends State<ProfileScreen> {
   // was, on the Scaffold's controller.
   static const bool _flingDirection = true;
   final _scroll = _FlingScrollController();
+
+  // ── The favourites fly (Print Room P7, P6's question P6-1) ──
+  // Each favourite's print flies into Detail's print, as Home's prints do
+  // since P6 (HankoFlightRoute, 320 ms; instant with Remove animations on),
+  // and Detail opens in the show's colour when it is already known. Off,
+  // each opens Detail with the push it always had (MaterialPageRoute).
+  static const bool _flight = true;
+
+  /// A print's Hero tag on Profile (P7): its place and its show, as Home's
+  /// (_HomeScreenState._printTag). Null, no Hero, with the flight off.
+  static Object? _printTag(String place, String id) =>
+      _flight && _printRoom && id.isNotEmpty ? (place, id) : null;
+
+  /// The route that opens [anime] from its print at [place] (P7): the
+  /// flight, handing Detail the show's colour if a print elsewhere has read
+  /// it (Profile's favourites show none of their own), as Home's _showRoute
+  /// does; with the flight off, the push.
+  static Route<void> _showRoute(BuildContext context, Anime anime,
+      {required String place}) {
+    final tag = _printTag(place, anime.id);
+    if (tag == null) {
+      return MaterialPageRoute(builder: (_) => AnimeDetailScreen(anime: anime));
+    }
+    final url = anime.imageUrl ?? '';
+    final flight = HankoFlight(
+      tag: tag,
+      colour: url.isEmpty ? null : HankoCoverColour.peek(url),
+    );
+    return HankoFlightRoute(
+      still: MediaQuery.disableAnimationsOf(context),
+      builder: (_) => AnimeDetailScreen(anime: anime, flight: flight),
+    );
+  }
 
   static const _avatarGradients = [
     [Color(0xFF7C3AED), Color(0xFFE91E8C)],
@@ -1148,7 +1183,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       label: _favouritesNamed
           ? 'Favourite: $title, your rating $rating'
           : '$title, your rating $rating',
-      onTap: () => _openEntry(entry),
+      // It flies too (P7, _flight), as the favourites you mark do.
+      onTap: () => _openEntry(entry, place: 'favourite'),
       child: _printRoom
           ? HankoPrint(
               url: entry['imageUrl'] as String?,
@@ -1157,6 +1193,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
               lift: HankoPrintLift.large,
               sharp: true,
               seal: HankoSeal.score(score, size: 30),
+              heroTag: _printTag(
+                  'favourite', entry['animeId']?.toString() ?? ''),
             )
           : _Cover(
               url: entry['imageUrl'] as String?, width: width, height: height),
@@ -1297,12 +1335,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   /// One of your favourites (P7): its print alone, with no seal, one
   /// screen-reader button named by its title, since the head says what it
-  /// is. Without Print Room, the flat cover.
+  /// is. It flies into the show's page (_flight). Without Print Room, the
+  /// flat cover.
   Widget _chosenFavourite(
       Map<String, dynamic> entry, double width, double height) {
     return _CoverButton(
       label: entry['title'] as String? ?? 'Unknown',
-      onTap: () => _openEntry(entry),
+      onTap: () => _openEntry(entry, place: 'favourite'),
       child: _printRoom
           ? HankoPrint(
               url: entry['imageUrl'] as String?,
@@ -1310,6 +1349,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
               height: height,
               lift: HankoPrintLift.large,
               sharp: true,
+              heroTag: _printTag(
+                  'favourite', entry['animeId']?.toString() ?? ''),
             )
           : _Cover(
               url: entry['imageUrl'] as String?, width: width, height: height),
@@ -1682,8 +1723,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   static DateTime? _when(Object? value) =>
       value is Timestamp ? value.toDate() : null;
 
-  /// Opens a list entry's show, as My List's rows do.
-  void _openEntry(Map<String, dynamic> data) {
+  /// Opens a list entry's show, as My List's rows do; from a favourite's
+  /// print at [place], the print flies (P7).
+  void _openEntry(Map<String, dynamic> data, {String? place}) {
     final id = data['animeId']?.toString() ?? '';
     if (id.isEmpty) return;
     final anime = Anime(
@@ -1695,8 +1737,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
           const [],
       averageScore: (data['averageScore'] as num?)?.toDouble(),
     );
-    Navigator.push(context,
-        MaterialPageRoute(builder: (_) => AnimeDetailScreen(anime: anime)));
+    Navigator.push(
+        context,
+        place == null
+            ? MaterialPageRoute(builder: (_) => AnimeDetailScreen(anime: anime))
+            : _showRoute(context, anime, place: place));
   }
 
   /// The counts you can trust now (Hanko stage H5, item e), in words: titles
