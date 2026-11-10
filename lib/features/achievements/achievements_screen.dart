@@ -2220,17 +2220,29 @@ class AchievementSlip {
   static StreamSubscription<List<LiveEarn>>? _earns;
   static _Expecting? _expecting;
 
+  /// The status sheet's closing, the feedback a status, shelf or Favourite
+  /// chosen in it waits for.
+  static const Duration sheetClosing = Duration(milliseconds: 250);
+
   /// Something you did on [context]'s screen may earn an achievement. The
   /// slip waits [feedback] after now, for the action's own motion. [ticked]
   /// says the action already gave its haptic tick (Detail's seal press).
+  /// Asked again for the same screen (Detail learning that the sheet's
+  /// Completed pressed your seal), it takes over what's already waiting.
   static void expect(BuildContext context,
       {Duration feedback = Duration.zero, bool ticked = false}) {
     if (!Achievements.replaceCards) return;
     final messenger = ScaffoldMessenger.maybeOf(context);
     final route = ModalRoute.of(context);
     if (messenger == null || route == null) return;
-    _expecting?.stop();
-    _expecting = _Expecting(messenger, route, DateTime.now().add(feedback), ticked);
+    final previous = _expecting?..stop();
+    final next = _expecting =
+        _Expecting(messenger, route, DateTime.now().add(feedback), ticked);
+    if (previous != null && identical(previous.route, route)) {
+      for (final earns in previous._waiting) {
+        next.add(earns);
+      }
+    }
     _earns ??= AchievementsService.instance.liveEarns.listen(_earned);
   }
 

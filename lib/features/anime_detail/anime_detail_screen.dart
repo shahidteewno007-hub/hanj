@@ -35,6 +35,9 @@ import '../episode_discussions/episode_discussion_screen.dart';
 import '../staff_detail/studio_detail_screen.dart';
 import '../staff_detail/staff_detail_screen.dart';
 import '../home/home_screen.dart' show showHanjListSheet;
+import '../../models/achievements.dart' show Achievements;
+import '../../services/achievements_service.dart';
+import '../achievements/achievements_screen.dart' show AchievementSlip;
 
 class AnimeDetailScreen extends StatefulWidget {
   final Anime anime;
@@ -633,6 +636,13 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
     } else {
       // Sheet already saved to Firestore — just update UI immediately
       setState(() => _currentStatus = result);
+      // The sheet reported it to achievements (showHanjListSheet). Finishing
+      // a show you've rated presses your seal, with its tick, so the slip
+      // stays silent (decision h).
+      if (Achievements.replaceCards && result == 'COMPLETED' && _userRating != null) {
+        AchievementSlip.expect(context,
+            feedback: AchievementSlip.sheetClosing, ticked: _sealPress);
+      }
       // Hanko drops Detail's confetti (H3 f); it plays only with the classic
       // header back on.
       if (_classicDetail && result == 'COMPLETED') {
@@ -725,6 +735,16 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
     final previousAt = _ratedAt;
     if (rating == previous) return;
     setState(() { _userRating = rating; _ratedAt = DateTime.now(); });
+    // Achievements: a seal can earn one (Sealed, Finished and sealed, the
+    // whole ruler). The slip waits for your seal's press, which ticked.
+    if (Achievements.replaceCards) {
+      AchievementSlip.expect(context,
+          feedback: HankoSealPress.duration, ticked: _sealPress);
+      unawaited(AchievementsService.instance.noteAction(widget.anime.id, {
+        'userRating': rating,
+        'ratedAt': FieldValue.serverTimestamp(),
+      }).catchError((Object _) {}));
+    }
     if (offerUndo && previous != null) {
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
@@ -780,6 +800,19 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
       _currentEpisode = next;
       if (finishes) _currentStatus = 'COMPLETED';
     });
+    // Achievements: the +1 that finishes a show, reported as it shows (the
+    // writes below wait for the connection offline). The slip waits for
+    // +1's dip; a show you've rated is sealed again, and that press ticks.
+    if (Achievements.replaceCards && finishes) {
+      AchievementSlip.expect(context,
+          feedback: HankoSealPress.duration,
+          ticked: _sealPress && _userRating != null);
+      unawaited(AchievementsService.instance.noteAction(widget.anime.id, {
+        'currentEpisode': next,
+        'lastWatched': FieldValue.serverTimestamp(),
+        'status': 'COMPLETED',
+      }).catchError((Object _) {}));
+    }
     try {
       await _firestoreService.updateEpisodeProgress(int.parse(widget.anime.id), next);
     } catch (_) {
