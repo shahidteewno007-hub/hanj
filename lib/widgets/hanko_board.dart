@@ -210,18 +210,22 @@ class _HankoCoverTintState extends State<HankoCoverTint> {
 /// 2 px corners, on sumi 3 while it loads, with a hard print shadow (no blur,
 /// so no blur cost) and, for a cover that recedes, a sumi [veil] (0–1).
 /// [lifted] drops the shadow further, for a card under a pointer or keyboard
-/// focus. Decorative: the screen names the show in its own node.
+/// focus; [focused] turns the keyline washi, so keyboard focus shows on the
+/// art itself (an InkWell's highlight paints under the cover, where it can't
+/// be seen). Decorative: the screen names the show in its own node.
 class HankoCard extends StatelessWidget {
   const HankoCard({
     super.key,
     required this.url,
     this.veil = 0,
     this.lifted = false,
+    this.focused = false,
   });
 
   final String? url;
   final double veil;
   final bool lifted;
+  final bool focused;
 
   @override
   Widget build(BuildContext context) {
@@ -232,7 +236,8 @@ class HankoCard extends StatelessWidget {
           color: AppTheme.hankoSumi3,
           borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
           border: Border.all(
-              color: AppTheme.hankoSumi, width: AppTheme.hankoKeyline),
+              color: focused ? AppTheme.hankoWashi : AppTheme.hankoSumi,
+              width: AppTheme.hankoKeyline),
           boxShadow: [
             BoxShadow(
               color: const Color(0x8C000000),
@@ -518,7 +523,10 @@ class _HankoPosterState extends State<HankoPoster> {
                           fit: StackFit.expand,
                           children: [
                             HankoCard(
-                                url: widget.url, lifted: _hovered || _focused),
+                              url: widget.url,
+                              lifted: _hovered || _focused,
+                              focused: _focused,
+                            ),
                             if (rank != null)
                               Positioned(
                                 left: 0,
@@ -605,8 +613,10 @@ class HankoPlateNumber extends StatelessWidget {
 /// A printed tab (Vibes' label as a control): Jost 500 caps, tabular and
 /// tracked; washi with sumi figures when [selected] (CLAUDE.md: the selected
 /// tab is washi, never coral), stone on sumi 3 otherwise. Drawn 36 dp tall,
-/// touched at 48. One button for a screen reader, with keyboard focus on it.
-class HankoTab extends StatelessWidget {
+/// touched at 48. One button for a screen reader, with keyboard focus on it,
+/// shown by a washi ring just outside the tab (the InkWell's own highlight
+/// paints under the tab's fill, where it can't be seen).
+class HankoTab extends StatefulWidget {
   const HankoTab({
     super.key,
     required this.label,
@@ -619,43 +629,58 @@ class HankoTab extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
+  State<HankoTab> createState() => _HankoTabState();
+}
+
+class _HankoTabState extends State<HankoTab> {
+  bool _focused = false;
+
+  @override
   Widget build(BuildContext context) {
     final still = MediaQuery.disableAnimationsOf(context);
+    final selected = widget.selected;
     return Semantics(
       container: true,
       button: true,
       selected: selected,
-      label: label,
+      label: widget.label,
       child: ConstrainedBox(
         constraints: const BoxConstraints(minHeight: AppTheme.hankoTouch),
         child: Center(
           widthFactor: 1,
-          child: Material(
-            type: MaterialType.transparency,
-            child: InkWell(
-              onTap: onTap,
-              splashFactory: NoSplash.splashFactory,
-              highlightColor: AppTheme.hankoPressWash,
-              hoverColor: AppTheme.hankoPressWash,
-              borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
-              child: ExcludeSemantics(
-                child: AnimatedContainer(
-                  duration: still
-                      ? Duration.zero
-                      : const Duration(milliseconds: 200),
-                  constraints: const BoxConstraints(
-                      minHeight: AppTheme.hankoChipHeight),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: selected ? AppTheme.hankoWashi : AppTheme.hankoSumi3,
-                    borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
-                  ),
-                  child: Text(
-                    label.toUpperCase(),
-                    style: HankoBoard.labelStyle(
-                      color: selected ? AppTheme.hankoSumi : AppTheme.hankoStone,
+          child: _FocusRing(
+            on: _focused,
+            child: Material(
+              type: MaterialType.transparency,
+              child: InkWell(
+                onTap: widget.onTap,
+                onFocusChange: (v) => setState(() => _focused = v),
+                splashFactory: NoSplash.splashFactory,
+                highlightColor: AppTheme.hankoPressWash,
+                hoverColor: AppTheme.hankoPressWash,
+                borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+                child: ExcludeSemantics(
+                  child: AnimatedContainer(
+                    duration: still
+                        ? Duration.zero
+                        : const Duration(milliseconds: 200),
+                    constraints: const BoxConstraints(
+                        minHeight: AppTheme.hankoChipHeight),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 6),
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color:
+                          selected ? AppTheme.hankoWashi : AppTheme.hankoSumi3,
+                      borderRadius:
+                          BorderRadius.circular(AppTheme.hankoRadius),
+                    ),
+                    child: Text(
+                      widget.label.toUpperCase(),
+                      style: HankoBoard.labelStyle(
+                        color:
+                            selected ? AppTheme.hankoSumi : AppTheme.hankoStone,
+                      ),
                     ),
                   ),
                 ),
@@ -666,6 +691,29 @@ class HankoTab extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Keyboard focus on a printed control: a 2 px washi ring just outside it,
+/// a pixel clear of its edge, so it shows on a washi tab as well as on sumi.
+/// Its room is always kept, so focus never moves the layout.
+class _FocusRing extends StatelessWidget {
+  const _FocusRing({required this.on, required this.child});
+
+  final bool on;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => DecoratedBox(
+        position: DecorationPosition.foreground,
+        decoration: BoxDecoration(
+          border: Border.all(
+            color: on ? AppTheme.hankoWashi : const Color(0x00000000),
+            width: 2,
+          ),
+          borderRadius: BorderRadius.circular(AppTheme.hankoRadius + 3),
+        ),
+        child: Padding(padding: const EdgeInsets.all(3), child: child),
+      );
 }
 
 /// A row of [HankoTab]s that scrolls sideways when it doesn't fit (at 360 dp
@@ -744,8 +792,8 @@ class _HankoTabStripState extends State<HankoTabStrip> {
 /// A printed chip (Vibes' print cues): washi words on sumi 3, 2 px corners,
 /// drawn 36 dp tall and touched at 48, with a washi keyline when [on]. [icon]
 /// leads and [trailing] follows. One button for a screen reader, named by
-/// [semanticLabel].
-class HankoChip extends StatelessWidget {
+/// [semanticLabel], with keyboard focus shown by a washi ring outside it.
+class HankoChip extends StatefulWidget {
   const HankoChip({
     super.key,
     required this.label,
@@ -764,59 +812,73 @@ class HankoChip extends StatelessWidget {
   final bool on;
 
   @override
+  State<HankoChip> createState() => _HankoChipState();
+}
+
+class _HankoChipState extends State<HankoChip> {
+  bool _focused = false;
+
+  @override
   Widget build(BuildContext context) {
-    final icon = this.icon;
-    final trailing = this.trailing;
+    final icon = widget.icon;
+    final trailing = widget.trailing;
     return Semantics(
       container: true,
       button: true,
-      label: semanticLabel,
+      label: widget.semanticLabel,
       child: ConstrainedBox(
         constraints: const BoxConstraints(minHeight: AppTheme.hankoTouch),
         child: Center(
           widthFactor: 1,
-          child: Material(
-            type: MaterialType.transparency,
-            child: InkWell(
-              onTap: onTap,
-              splashFactory: NoSplash.splashFactory,
-              highlightColor: AppTheme.hankoPressWash,
-              hoverColor: AppTheme.hankoPressWash,
-              borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
-              child: ExcludeSemantics(
-                child: Container(
-                  constraints: const BoxConstraints(
-                      minHeight: AppTheme.hankoChipHeight),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: AppTheme.hankoSumi3,
-                    borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
-                    border: Border.all(
-                      color: on ? AppTheme.hankoWashi : AppTheme.hankoSumi3,
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (icon != null) ...[
-                        Icon(icon, size: 16, color: AppTheme.hankoWashi),
-                        const SizedBox(width: 6),
-                      ],
-                      Text(
-                        label,
-                        style: AppTheme.hankoSans(
-                          fontSize: AppTheme.hankoLabelSize,
-                          weight: FontWeight.w500,
-                          height: 1.3,
-                        ),
+          child: _FocusRing(
+            on: _focused,
+            child: Material(
+              type: MaterialType.transparency,
+              child: InkWell(
+                onTap: widget.onTap,
+                onFocusChange: (v) => setState(() => _focused = v),
+                splashFactory: NoSplash.splashFactory,
+                highlightColor: AppTheme.hankoPressWash,
+                hoverColor: AppTheme.hankoPressWash,
+                borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+                child: ExcludeSemantics(
+                  child: Container(
+                    constraints: const BoxConstraints(
+                        minHeight: AppTheme.hankoChipHeight),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 6),
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: AppTheme.hankoSumi3,
+                      borderRadius:
+                          BorderRadius.circular(AppTheme.hankoRadius),
+                      border: Border.all(
+                        color: widget.on
+                            ? AppTheme.hankoWashi
+                            : AppTheme.hankoSumi3,
                       ),
-                      if (trailing != null) ...[
-                        const SizedBox(width: 6),
-                        Icon(trailing, size: 14, color: AppTheme.hankoStone),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (icon != null) ...[
+                          Icon(icon, size: 16, color: AppTheme.hankoWashi),
+                          const SizedBox(width: 6),
+                        ],
+                        Text(
+                          widget.label,
+                          style: AppTheme.hankoSans(
+                            fontSize: AppTheme.hankoLabelSize,
+                            weight: FontWeight.w500,
+                            height: 1.3,
+                          ),
+                        ),
+                        if (trailing != null) ...[
+                          const SizedBox(width: 6),
+                          Icon(trailing, size: 14, color: AppTheme.hankoStone),
+                        ],
                       ],
-                    ],
+                    ),
                   ),
                 ),
               ),

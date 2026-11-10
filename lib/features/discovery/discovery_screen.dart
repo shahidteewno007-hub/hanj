@@ -910,7 +910,11 @@ class _StandingState extends State<_Standing> {
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    HankoCard(url: a.imageUrl, lifted: _hovered || _focused),
+                    HankoCard(
+                      url: a.imageUrl,
+                      lifted: _hovered || _focused,
+                      focused: _focused,
+                    ),
                     Positioned(
                       left: 0,
                       top: 0,
