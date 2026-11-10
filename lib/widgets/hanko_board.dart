@@ -439,6 +439,7 @@ class HankoPoster extends StatefulWidget {
     required this.score,
     required this.onTap,
     this.rank,
+    this.caption,
   });
 
   final String? url;
@@ -449,13 +450,19 @@ class HankoPoster extends StatefulWidget {
   final VoidCallback onTap;
   final int? rank;
 
+  /// One line under the title in stone, such as a person's role on the
+  /// show ("Director") or the character they voiced.
+  final String? caption;
+
   /// The poster's height at [width]: the cover, the gaps, two lines of title
-  /// and the score line at the reader's text size.
-  static double heightFor(double width, TextScaler scaler) =>
+  /// and the score line at the reader's text size, and the [caption]'s line
+  /// when [captioned].
+  static double heightFor(double width, TextScaler scaler,
+          {bool captioned = false}) =>
       width * hankoCoverRatio +
       8 +
-      scaler.scale(AppTheme.hankoLabelSize) * 1.25 * 3 +
-      4;
+      scaler.scale(AppTheme.hankoLabelSize) * 1.25 * (captioned ? 4 : 3) +
+      (captioned ? 7 : 4);
 
   @override
   State<HankoPoster> createState() => _HankoPosterState();
@@ -471,6 +478,7 @@ class _HankoPosterState extends State<HankoPoster> {
     final score = widget.score;
     final scoreText = score == null ? null : (score / 10).toStringAsFixed(1);
     final rank = widget.rank;
+    final caption = widget.caption;
     final still = MediaQuery.disableAnimationsOf(context);
     return Semantics(
       container: true,
@@ -478,6 +486,7 @@ class _HankoPosterState extends State<HankoPoster> {
       label: [
         if (rank != null) '$rank',
         widget.title,
+        ?caption,
         if (scoreText != null) 'AniList $scoreText',
       ].join(', '),
       child: Material(
@@ -531,6 +540,19 @@ class _HankoPosterState extends State<HankoPoster> {
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
+                    if (caption != null) ...[
+                      const SizedBox(height: 3),
+                      Text(
+                        caption,
+                        style: AppTheme.hankoSans(
+                          fontSize: AppTheme.hankoLabelSize,
+                          color: AppTheme.hankoStone,
+                          height: 1.25,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
                     if (scoreText != null) ...[
                       const SizedBox(height: 4),
                       Text(
