@@ -814,7 +814,8 @@ class _MarkBox extends StatelessWidget {
           ],
         );
       case GauntletMark.notReached:
-        return Text('—', style: AppTheme.hankoSans(fontSize: 18, color: AppTheme.hankoAsh));
+        // Stone, not ash: ash is only just 4.5:1 on the phases' grounds.
+        return Text('—', style: AppTheme.hankoSans(fontSize: 18, color: AppTheme.hankoStone));
     }
   }
 }
