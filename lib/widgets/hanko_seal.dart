@@ -315,14 +315,33 @@ class _SealPainter extends CustomPainter {
 /// controller in a layer of its own, so a press repaints only that layer.
 /// The ring takes no room and isn't clipped: it spreads over whatever lies
 /// around the seal.
+///
+/// One press for everything (achievements decision i, Shahid's A-13): the
+/// same move presses a badge into the unlock slip, so [ink] gives the ring
+/// the badge's own ink (sumi on paper) and [tick] lets the press stay silent
+/// when the action already ticked. Left out, the press is the seal's, coral
+/// with its tick, exactly as before: coral stays your seal's.
 class HankoSealPress extends StatefulWidget {
-  const HankoSealPress({super.key, required this.presses, required this.child});
+  const HankoSealPress({
+    super.key,
+    required this.presses,
+    required this.child,
+    this.ink,
+    this.tick = true,
+  });
 
   /// How many times the seal has been pressed here. A new count presses it.
   final int presses;
 
   /// The seal.
   final Widget child;
+
+  /// The ring's ink; null is the seal's coral.
+  final Color? ink;
+
+  /// Whether the press ticks as it lands (and, with Remove animations on,
+  /// as it appears).
+  final bool tick;
 
   static const Duration duration = Duration(milliseconds: 240);
 
@@ -377,7 +396,7 @@ class _HankoSealPressState extends State<HankoSealPress>
     if (widget.presses <= oldWidget.presses) return;
     if (MediaQuery.disableAnimationsOf(context)) {
       _press.value = 1;
-      _tick();
+      if (widget.tick) _tick();
       return;
     }
     _landed = false;
@@ -387,7 +406,7 @@ class _HankoSealPressState extends State<HankoSealPress>
   void _land() {
     if (_landed || _press.value < HankoSealPress._landing) return;
     _landed = true;
-    _tick();
+    if (widget.tick) _tick();
   }
 
   // One tick as the seal meets the paper. A platform call that fails is
@@ -405,7 +424,7 @@ class _HankoSealPressState extends State<HankoSealPress>
   Widget build(BuildContext context) {
     return RepaintBoundary(
       child: CustomPaint(
-        painter: _InkRing(_press),
+        painter: _InkRing(_press, widget.ink ?? AppTheme.hankoCoral),
         child: SlideTransition(
           position: _drop,
           child: ScaleTransition(
@@ -418,14 +437,15 @@ class _HankoSealPressState extends State<HankoSealPress>
   }
 }
 
-/// The ink a press leaves (P6): a ring in the seal's coral that leaves the
-/// seal's edge as it lands, spreads and fades. For the storyboard's 44 px
-/// seal, 8 px out at 3 px and 55% at 90 ms, 18 px at 2 px and about 25% at
-/// 160 ms, gone at 240; scaled with the seal.
+/// The ink a press leaves (P6): a ring in the seal's coral (or the press's
+/// [ink]) that leaves the seal's edge as it lands, spreads and fades. For
+/// the storyboard's 44 px seal, 8 px out at 3 px and 55% at 90 ms, 18 px at
+/// 2 px and about 25% at 160 ms, gone at 240; scaled with the seal.
 class _InkRing extends CustomPainter {
-  _InkRing(this.press) : super(repaint: press);
+  _InkRing(this.press, this.ink) : super(repaint: press);
 
   final Animation<double> press;
+  final Color ink;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -442,10 +462,10 @@ class _InkRing extends CustomPainter {
       Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = stroke
-        ..color = AppTheme.hankoCoral.withValues(alpha: 0.55 * (1 - spread)),
+        ..color = ink.withValues(alpha: 0.55 * (1 - spread)),
     );
   }
 
   @override
-  bool shouldRepaint(_InkRing old) => old.press != press;
+  bool shouldRepaint(_InkRing old) => old.press != press || old.ink != ink;
 }
