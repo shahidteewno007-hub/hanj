@@ -2227,8 +2227,9 @@ class AchievementSlip {
   /// Something you did on [context]'s screen may earn an achievement. The
   /// slip waits [feedback] after now, for the action's own motion. [ticked]
   /// says the action already gave its haptic tick (Detail's seal press).
-  /// Asked again for the same screen (Detail learning that the sheet's
-  /// Completed pressed your seal), it takes over what's already waiting.
+  /// A new action takes over what's still waiting: Detail learning that
+  /// the sheet's Completed pressed your seal, or a Favourite marked in the
+  /// sheet just before a status closed it.
   static void expect(BuildContext context,
       {Duration feedback = Duration.zero, bool ticked = false}) {
     if (!Achievements.replaceCards) return;
@@ -2238,10 +2239,8 @@ class AchievementSlip {
     final previous = _expecting?..stop();
     final next = _expecting =
         _Expecting(messenger, route, DateTime.now().add(feedback), ticked);
-    if (previous != null && identical(previous.route, route)) {
-      for (final earns in previous._waiting) {
-        next.add(earns);
-      }
+    for (final earns in previous?._waiting ?? const <List<LiveEarn>>[]) {
+      next.add(earns);
     }
     _earns ??= AchievementsService.instance.liveEarns.listen(_earned);
   }

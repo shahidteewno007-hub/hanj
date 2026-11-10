@@ -23,6 +23,9 @@ import '../../services/offline_cache_service.dart';
 import '../../services/connectivity_service.dart';
 import '../../models/anime_model.dart';
 import '../../models/hanj_shelves.dart';
+import '../../models/achievements.dart' show Achievements;
+import '../../services/achievements_service.dart';
+import '../achievements/achievements_screen.dart' show AchievementSlip;
 import '../anime_detail/anime_detail_screen.dart';
 import 'tonight_watch.dart';
 import 'upcoming_anime.dart';
@@ -255,6 +258,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _loadRecommendations(userSnapshot);
       }
       _loadAiring(retryFailed: true);
+      _feedAchievements(userSnapshot);
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -401,11 +405,21 @@ class _HomeScreenState extends State<HomeScreen> {
       });
       _precacheLede();
       _loadAiring();
+      _feedAchievements(results[1]);
     } catch (_) {
       // The cache couldn't answer: keep what is on screen.
     } finally {
       _reloading = false;
     }
+  }
+
+  /// Achievements (stage 4): Home's whole-list read goes to the record too,
+  /// as Profile's snapshot does, after the frame (the service evaluates a
+  /// moment later, never during build). Nothing with the switch off.
+  void _feedAchievements(QuerySnapshot snapshot) {
+    if (!Achievements.replaceCards) return;
+    WidgetsBinding.instance.addPostFrameCallback(
+        (_) => AchievementsService.instance.observeList(snapshot));
   }
 
   /// The chart and Tonight's Drop, from OfflineCacheService: memory, then a
@@ -1994,6 +2008,36 @@ Future<String?> showHanjListSheet({
                 // Caught: uncaught, a rejected write was a fatal Crashlytics report.
                 firestoreService.addAnimeToList(anime: anime, status: s.$1)
                     .catchError((_) {});
+                // Achievements (stage 4): the entry as these writes leave
+                // it, the draft's shelf and favourite included, as one
+                // action; the slip waits for the sheet to close, on the
+                // screen that opened it.
+                if (Achievements.replaceCards) {
+                  final staged = shelves.staged.isNotEmpty || shelves.favourite == true;
+                  if (context.mounted) {
+                    AchievementSlip.expect(context,
+                        feedback: AchievementSlip.sheetClosing);
+                  }
+                  AchievementsService.instance.noteAction(anime.id, {
+                    'animeId': anime.id,
+                    'title': anime.titleEnglish ?? anime.title,
+                    'imageUrl': anime.imageUrl,
+                    'episodes': anime.episodes,
+                    'averageScore': anime.averageScore,
+                    'genres': anime.genres,
+                    'status': s.$1,
+                    'addedAt': FieldValue.serverTimestamp(),
+                    'lastWatched': FieldValue.serverTimestamp(),
+                    if (staged) ...{
+                      'tags': HanjShelves.tagsFor(
+                          shelf: shelves.staged.firstOrNull,
+                          favourite: shelves.favourite == true),
+                      'tagsUpdatedAt': FieldValue.serverTimestamp(),
+                    },
+                    if (shelves.favourite == true)
+                      'favouritedAt': FieldValue.serverTimestamp(),
+                  }).catchError((Object _) {});
+                }
                 // 4. Shelves picked while the show wasn't on the list go on
                 // its new entry, in a write of their own after it, with the
                 // favourite mark if it was marked too (P7).
@@ -2432,6 +2476,15 @@ class _ShelfPickerState extends State<_ShelfPicker> {
     final list = _list;
     if (list == null) return;
     final write = ++_write;
+    // Achievements (stage 4): a shelf can earn one (Named a masterpiece,
+    // Hidden gem); its slip waits for this sheet to close.
+    if (Achievements.replaceCards) {
+      AchievementSlip.expect(context, feedback: AchievementSlip.sheetClosing);
+      AchievementsService.instance.noteAction(widget.animeId, {
+        'tags': HanjShelves.tagsFor(shelf: on ? name : null, favourite: _favourite),
+        'tagsUpdatedAt': FieldValue.serverTimestamp(),
+      }).catchError((Object _) {});
+    }
     try {
       await list.doc(widget.animeId).update({
         'tags': HanjShelves.tagsFor(shelf: on ? name : null, favourite: _favourite),
@@ -2469,6 +2522,16 @@ class _ShelfPickerState extends State<_ShelfPicker> {
     final list = _list;
     if (list == null) return;
     final write = ++_write;
+    // Achievements (stage 4): the first Favourite earns one; its slip waits
+    // for this sheet to close.
+    if (Achievements.replaceCards) {
+      AchievementSlip.expect(context, feedback: AchievementSlip.sheetClosing);
+      AchievementsService.instance.noteAction(widget.animeId, {
+        'tags': HanjShelves.tagsFor(shelf: _mine.firstOrNull, favourite: on),
+        'tagsUpdatedAt': FieldValue.serverTimestamp(),
+        'favouritedAt': on ? FieldValue.serverTimestamp() : FieldValue.delete(),
+      }).catchError((Object _) {});
+    }
     try {
       await list.doc(widget.animeId).update({
         'tags': HanjShelves.tagsFor(shelf: _mine.firstOrNull, favourite: on),
@@ -4078,6 +4141,19 @@ class _ContinueCardState extends State<_ContinueCard> {
     if (animeId.isEmpty) {
       setState(() => _saving = false);
       return;
+    }
+
+    // Achievements (stage 4): the +1 that finishes a show, reported as it
+    // shows (offline the writes below wait); the slip waits for +1's dip,
+    // which has no tick, so the slip's press gives it.
+    if (Achievements.replaceCards && total > 0 && next >= total) {
+      AchievementSlip.expect(context,
+          feedback: const Duration(milliseconds: 200));
+      AchievementsService.instance.noteAction(animeId, {
+        'currentEpisode': next,
+        'lastWatched': FieldValue.serverTimestamp(),
+        'status': 'COMPLETED',
+      }).catchError((Object _) {});
     }
 
     // Write in the background — no full refetch, so no stutter.
