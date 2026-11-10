@@ -489,21 +489,12 @@ class TierListPoster extends StatelessWidget {
                         ),
                       ),
                     ),
-                    // The date, at the right edge. Expanded and Align put it
-                    // exactly where a Spacer did, but a date with no room
-                    // wraps rather than overflowing (round seven's layout
-                    // test failed on every two-digit day, in the test font).
-                    Expanded(
-                      child: Align(
-                        alignment: Alignment.bottomRight,
-                        child: Padding(
-                          padding: const EdgeInsets.only(bottom: 2),
-                          child: Text(
-                            '${d.day} ${_months[d.month - 1]} ${d.year}',
-                            textAlign: TextAlign.right,
-                            style: AppTheme.hankoSans(fontSize: 10, color: AppTheme.hankoStone, tabular: true),
-                          ),
-                        ),
+                    const Spacer(),
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 2),
+                      child: Text(
+                        '${d.day} ${_months[d.month - 1]} ${d.year}',
+                        style: AppTheme.hankoSans(fontSize: 10, color: AppTheme.hankoStone, tabular: true),
                       ),
                     ),
                   ],
