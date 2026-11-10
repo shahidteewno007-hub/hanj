@@ -1054,15 +1054,21 @@ class TierGauntletPoster extends StatelessWidget {
                         ),
                       ),
                     ),
+                    // The date at the right edge, whole, as the tier list's
+                    // picture prints it (ebc988f).
                     Expanded(
                       child: Align(
                         alignment: Alignment.bottomRight,
                         child: Padding(
                           padding: const EdgeInsets.only(bottom: 2),
-                          child: Text(
-                            '${d.day} ${_months[d.month - 1]} ${d.year}',
-                            textAlign: TextAlign.right,
-                            style: AppTheme.hankoSans(fontSize: 10, color: AppTheme.hankoStone, tabular: true),
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              '${d.day} ${_months[d.month - 1]} ${d.year}',
+                              maxLines: 1,
+                              softWrap: false,
+                              style: AppTheme.hankoSans(fontSize: 10, color: AppTheme.hankoStone, tabular: true),
+                            ),
                           ),
                         ),
                       ),
