@@ -2239,8 +2239,8 @@ class AchievementSlip {
     final previous = _expecting?..stop();
     final next = _expecting =
         _Expecting(messenger, route, DateTime.now().add(feedback), ticked);
-    for (final earns in previous?._waiting ?? const <List<LiveEarn>>[]) {
-      next.add(earns);
+    for (final (earns, tick) in previous?._waiting ?? const <(List<LiveEarn>, bool)>[]) {
+      next._queue(earns, tick);
     }
     _earns ??= AchievementsService.instance.liveEarns.listen(_earned);
   }
@@ -2261,18 +2261,26 @@ class _Expecting {
   final DateTime readyAt;
 
   /// Whether this action's tick has been given: by the action itself, or
-  /// by its first slip.
+  /// claimed by its first slip.
   bool ticked;
 
   /// As long as AchievementsService counts an earn as live.
   final DateTime until = DateTime.now().add(const Duration(minutes: 2));
 
-  final List<List<LiveEarn>> _waiting = [];
+  /// One slip each, with whether it gives its action's tick.
+  final List<(List<LiveEarn>, bool)> _waiting = [];
   Timer? _check;
 
+  /// Earns from this action: the first slip claims the tick, if the
+  /// action had none.
   void add(List<LiveEarn> earns) {
+    _queue(earns, !ticked);
+    ticked = true;
+  }
+
+  void _queue(List<LiveEarn> earns, bool tick) {
     if (DateTime.now().isAfter(until)) return;
-    _waiting.add(earns);
+    _waiting.add((earns, tick));
     _check ??= Timer.periodic(const Duration(milliseconds: 100), (_) => _try());
     _try();
   }
@@ -2310,9 +2318,9 @@ class _Expecting {
     if (!show) return;
     final talkBack =
         MediaQuery.maybeAccessibleNavigationOf(messenger.context) ?? false;
-    for (final earns in _waiting) {
+    for (final (earns, tick) in _waiting) {
       messenger.showSnackBar(SnackBar(
-        content: _UnlockSlip(earns: earns, tick: !ticked),
+        content: _UnlockSlip(earns: earns, tick: tick),
         behavior: SnackBarBehavior.floating,
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -2324,7 +2332,6 @@ class _Expecting {
         duration: const Duration(seconds: 4),
         persist: talkBack,
       ));
-      ticked = true;
     }
     _waiting.clear();
     stop();
@@ -2354,19 +2361,24 @@ class _UnlockSlipState extends State<_UnlockSlip>
     with SingleTickerProviderStateMixin {
   static const double _riseBy = 72;
 
-  late final AnimationController _rise = AnimationController(
+  // The slip's 440 ms on one controller, so a slowed clock (timeDilation)
+  // slows every step alike: it rises until 200 ms, the press starts there
+  // (HankoSealPress, 240 ms) and lands at 290, when the words appear.
+  static const double _pressAt = 200 / 440;
+  static const double _landAt = 290 / 440;
+
+  late final AnimationController _slip = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 200),
-  );
-  late final Animation<Offset> _from = _rise.drive(
+    duration: const Duration(milliseconds: 440),
+  )..addListener(_step);
+  late final Animation<Offset> _from = _slip.drive(
       Tween(begin: const Offset(0, _riseBy), end: Offset.zero)
-          .chain(CurveTween(curve: Curves.decelerate)));
+          .chain(CurveTween(curve: const Interval(0, _pressAt, curve: Curves.decelerate))));
 
   bool _started = false;
   bool _pressed = false;
   bool _words = false;
   int _presses = 0;
-  Timer? _landing;
 
   @override
   void didChangeDependencies() {
@@ -2376,43 +2388,46 @@ class _UnlockSlipState extends State<_UnlockSlip>
     if (MediaQuery.disableAnimationsOf(context)) {
       // Simply there, with the badge pressed; the tick rule unchanged, so
       // the press is still asked for once, after the first frame.
-      _rise.value = 1;
       _pressed = true;
       _words = true;
+      _slip.value = 1;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) setState(() => _presses = 1);
       });
       return;
     }
-    _rise.forward().then((_) {
-      if (!mounted) return;
+    _slip.forward();
+  }
+
+  void _step() {
+    final t = _slip.value;
+    if (!_pressed && t >= _pressAt) {
       setState(() {
         _pressed = true;
         _presses = 1;
       });
-      _landing = Timer(
-          HankoSealPress.duration * (90 / 240), () {
-        if (mounted) setState(() => _words = true);
-      });
-    });
+    }
+    if (!_words && t >= _landAt) setState(() => _words = true);
   }
 
   @override
   void dispose() {
-    _landing?.cancel();
-    _rise.dispose();
+    _slip.dispose();
     super.dispose();
   }
 
+  /// "See": one achievement's sheet over this screen, or for several the
+  /// page, where each is marked New. Through the navigator, since hiding
+  /// the slip takes this widget away.
   void _see() {
     final earns = widget.earns;
+    final nav = Navigator.of(context);
     ScaffoldMessenger.maybeOf(context)?.hideCurrentSnackBar();
     if (earns.length == 1) {
-      unawaited(AchievementsScreen.showSheet(context, earns.first.key)
+      unawaited(AchievementsScreen.showSheet(nav.context, earns.first.key)
           .catchError((Object _) {}));
     } else {
-      Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const AchievementsScreen()));
+      nav.push(MaterialPageRoute(builder: (_) => const AchievementsScreen()));
     }
   }
 
@@ -2447,9 +2462,10 @@ class _UnlockSlipState extends State<_UnlockSlip>
             onPaper: true,
             semanticLabel: title,
           );
+    // The line already says what it is; the title would only repeat it.
     final label = more > 0
-        ? 'New achievements: $title and $more more. $line See them.'
-        : 'New achievement: $title. $line See it.';
+        ? 'New achievements. $line See them.'
+        : 'New achievement. $line See it.';
 
     return AnimatedBuilder(
       animation: _from,
