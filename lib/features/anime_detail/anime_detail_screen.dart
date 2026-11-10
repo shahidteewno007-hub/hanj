@@ -750,6 +750,13 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
         ..hideCurrentSnackBar()
         ..showSnackBar(SnackBar(
           duration: const Duration(seconds: 4),
+          // Since Flutter 3.44 a snack bar with an action stays until it's
+          // tapped or swiped (persist defaults to action != null), so Undo
+          // never left by itself and anything queued behind it (the
+          // achievement slip) waited for good. It goes after its 4 s again;
+          // with TalkBack on it stays until dismissed, as the slip does,
+          // so a screen reader user has the time to reach Undo.
+          persist: MediaQuery.accessibleNavigationOf(context),
           content: Text('Rated ${HankoSeal.formatScore(rating)}.'),
           action: SnackBarAction(
             label: 'Undo',
