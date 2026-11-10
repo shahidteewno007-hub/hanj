@@ -21,6 +21,8 @@ import 'features/auth/email_verification_screen.dart';
 import 'features/onboarding/onboarding_screen.dart';
 import 'features/cards/card_collection_screen.dart';
 import 'features/cards/card_unlock_overlay.dart';
+import 'features/achievements/achievements_screen.dart';
+import 'models/achievements.dart';
 import 'cadre/screens/cadre_lobby_screen.dart';
 import 'features/tier_list/tier_list_home_screen.dart';
 import 'firebase_options.dart';
@@ -80,6 +82,11 @@ Future<void> main() async {
 
     // Card unlock — show the full-screen overlay
     if (type == 'card_unlock') {
+      // Achievements replace Hanj Cards (Achievements.replaceCards): the
+      // phone works out its own record from the same list write, and says
+      // so where you earned it, so a card push in the foreground shows
+      // nothing. Only a deploy can stop the function sending it.
+      if (Achievements.replaceCards) return;
       final cardId    = message.data['cardId']    ?? '';
       final rarity    = message.data['rarity']    ?? 'common';
       final title     = message.notification?.title ?? 'New card unlocked';
@@ -169,7 +176,10 @@ Future<void> main() async {
     if (type == 'card_unlock') {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         NotificationNavigator.navigatorKey.currentState?.push(MaterialPageRoute(
-          builder: (_) => const CardCollectionScreen(),
+          // A tapped card push opens Achievements while they replace cards.
+          builder: (_) => Achievements.replaceCards
+              ? const AchievementsScreen()
+              : const CardCollectionScreen(),
         ));
       });
     }
@@ -182,7 +192,10 @@ Future<void> main() async {
     if (type == 'card_unlock') {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         NotificationNavigator.navigatorKey.currentState?.push(MaterialPageRoute(
-          builder: (_) => const CardCollectionScreen(),
+          // A tapped card push opens Achievements while they replace cards.
+          builder: (_) => Achievements.replaceCards
+              ? const AchievementsScreen()
+              : const CardCollectionScreen(),
         ));
       });
     }
@@ -225,7 +238,11 @@ class HanjApp extends StatelessWidget {
               FirebaseAnalyticsObserver(analytics: FirebaseAnalytics.instance),
             ],
             routes: {
-              '/cards': (_) => const CardCollectionScreen(),
+              // The route keeps its name, so old links and the card_unlock
+              // deep link (notification_service.dart) land somewhere true.
+              '/cards': (_) => Achievements.replaceCards
+                  ? const AchievementsScreen()
+                  : const CardCollectionScreen(),
               '/cadre': (_) => const CadreLobbyScreen(),
               '/tierlist': (_) => const TierListHomeScreen(),
             },
