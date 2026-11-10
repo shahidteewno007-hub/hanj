@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'core/theme/app_theme.dart';
 import 'features/anime_detail/anime_detail_screen.dart' show HankoDetailHeader;
+import 'widgets/hanko_badge.dart';
 import 'widgets/hanko_cover_colour.dart';
 import 'widgets/hanko_field.dart';
 import 'widgets/hanko_print.dart';
@@ -65,6 +66,16 @@ class _Specimen extends StatelessWidget {
         body: SingleChildScrollView(
           padding: EdgeInsets.fromLTRB(AppTheme.hankoGutter, 0, AppTheme.hankoGutter, 40),
           child: _DetailHeaders(),
+        ),
+      );
+    }
+    // ?only=badges shows just the badges, as wide as the window, for
+    // comparing with the design round's frames on web.
+    if (Uri.base.queryParameters['only'] == 'badges') {
+      return const Scaffold(
+        body: SingleChildScrollView(
+          padding: EdgeInsets.fromLTRB(30, 28, 30, 40),
+          child: _Badges(),
         ),
       );
     }
@@ -156,6 +167,15 @@ class _Specimen extends StatelessWidget {
                           'colours are AniList’s, fetched 26–27 October; covers '
                           'are flat blocks of their colour.',
                       child: _DetailHeaders(),
+                    ),
+                    const _Section(
+                      title: 'Badges',
+                      note: 'The achievements’ leisure seals (r9): the outline is the '
+                          'family, the emblem the achievement, the carving the tier '
+                          '(I outline, II double rule, III solid, IV solid with a cut '
+                          'line). Ink, never coral. 24 dp and under is the small cut. '
+                          '?only=badges shows this alone, two columns wide.',
+                      child: _Badges(),
                     ),
                     const _Section(
                       title: 'At 1.5× text size',
@@ -1398,6 +1418,329 @@ class _RulersState extends State<_Rulers> {
           child: HankoRatingRuler(value: 7, tone: HankoSealTone.shu),
         ),
       ],
+    );
+  }
+}
+
+// ── Badges (r9, stage 2) ────────────────────────────────────────────────
+
+/// The badge family, laid out as the design round's frames
+/// (`r9/achievements/badges/final.html`) so the two compare side by side:
+/// all 22 at 20, 24, 32 and 48 dp, each at a representative step's carving;
+/// Finished's four carvings; not yet; on paper; the row icon in stone; and
+/// the corner form.
+class _Badges extends StatelessWidget {
+  const _Badges();
+
+  // The page's headings in its order (decision j), each entry at a
+  // representative step: id, name, carving, step.
+  static const _family = <(String, List<(String, String, int, String)>)>[
+    ('Milestones', [
+      ('finished', 'Finished', 3, '100 finished'),
+      ('episodes', 'Episodes', 2, '1,000 episodes'),
+    ]),
+    ('Taste', [
+      ('sealed', 'Sealed', 2, '10 sealed'),
+      ('finished_sealed', 'Finished and sealed', 2, '10 finished and sealed'),
+      ('whole_ruler', 'The whole ruler', 2, 'single'),
+      ('against_crowd', 'Against the crowd (unlisted)', 2, 'single'),
+    ]),
+    ('Range', [
+      ('genres', 'Genres', 3, 'Every genre'),
+      ('decades', 'Decades', 2, 'Three decades'),
+      ('forms', 'Every form', 2, 'single'),
+      ('full_year', 'A full year', 2, 'single, per year'),
+    ]),
+    ('Staying with it', [
+      ('long_haul', 'The long haul', 3, 'single, a feat'),
+      ('as_it_aired', 'As it aired', 2, 'single'),
+      ('second_chance', 'Second chance', 2, 'single'),
+      ('off_watchlist', 'Off the watchlist', 2, 'single'),
+      ('deep_genre', 'Deep in a genre', 3, 'per genre, a feat'),
+      ('on_the_day', 'On the day (unlisted)', 2, 'single'),
+    ]),
+    ('Your picks', [
+      ('masterpiece', 'Named a masterpiece', 1, 'first'),
+      ('hidden_gem', 'Found a hidden gem', 1, 'first'),
+      ('favourite', 'Marked a favourite', 1, 'first'),
+      ('top9', 'Chose your Top 9', 2, 'single'),
+      ('tier_list', 'Ranked a cast', 1, 'first'),
+    ]),
+    ('Founder', [
+      ('founder', 'Founder', 4, 'the edition plate, page only, No. 1'),
+    ]),
+  ];
+
+  static const _sizes = <double>[20, 24, 32, 48];
+  static const _numerals = ['', 'I', 'II', 'III', 'IV'];
+
+  static Iterable<(String, String, int, String)> get _entries =>
+      _family.expand((group) => group.$2);
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(builder: (context, constraints) {
+      final wide = constraints.maxWidth >= 920;
+      final groups = [for (final (heading, entries) in _family) _group(heading, entries)];
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _label('All 22, on sumi'),
+          if (wide)
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Column(children: groups.sublist(0, 3)),
+                const SizedBox(width: 56),
+                Column(children: groups.sublist(3)),
+              ],
+            )
+          else
+            ...groups,
+          const SizedBox(height: 12),
+          _label('The four carvings: Finished at I, II, III and IV'),
+          for (var tier = 1; tier <= 4; tier++)
+            _row(_numerals[tier], [
+              for (final s in _sizes)
+                _badge('finished', 'Finished', tier, size: s),
+            ]),
+          const SizedBox(height: 12),
+          _label('Not yet: the outline dashed, the emblem in edge'),
+          for (final s in const <double>[24, 48])
+            _row('${s.round()} dp', [
+              for (final id in const ['finished', 'sealed', 'genres', 'long_haul', 'top9'])
+                HankoBadge(
+                  id: id,
+                  size: s,
+                  state: HankoBadgeState.notYet,
+                  semanticLabel: 'Badge, not yet',
+                ),
+            ]),
+          const SizedBox(height: 12),
+          _label('On washi paper: sumi ink; the keyline in the paper’s colour'),
+          _paper(),
+          const SizedBox(height: 20),
+          _label('Profile’s row icon: the badge you show, in the rows’ stone'),
+          Row(
+            children: [
+              const HankoBadge(
+                id: 'finished',
+                tier: 3,
+                size: 24,
+                ink: AppTheme.hankoStone,
+                semanticLabel: 'Badge: 100 finished',
+              ),
+              const SizedBox(width: 16),
+              Text('Achievements',
+                  style: AppTheme.hankoSans(fontSize: AppTheme.hankoListTitleSize)),
+            ],
+          ),
+          const SizedBox(height: 28),
+          _label('The corner: 24 dp, 6 dp past both edges, the 2 dp sumi keyline'),
+          // Profile's monogram: the 64 dp coral seal, its initial in Shippori 30.
+          _corners(const HankoSeal(label: 'A', size: 64, fontSize: 30, semanticLabel: 'A')),
+          const SizedBox(height: 18),
+          _corners(const _Picture()),
+        ],
+      );
+    });
+  }
+
+  Widget _group(String heading, List<(String, String, int, String)> entries) {
+    return SizedBox(
+      width: 420,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Divider(height: 1, thickness: 1, color: AppTheme.hankoHairline),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(child: Text(heading, style: AppTheme.hankoSerif(fontSize: 15))),
+              for (final s in _sizes)
+                SizedBox(
+                    width: 56,
+                    child: Text('${s.round()} dp', textAlign: TextAlign.center, style: _cap)),
+            ],
+          ),
+          const SizedBox(height: 4),
+          for (final (id, name, tier, step) in entries)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(name,
+                            style: AppTheme.hankoSans(
+                                fontSize: AppTheme.hankoLabelSize, weight: FontWeight.w500)),
+                        Text('${_numerals[tier]} · $step', style: _cap),
+                      ],
+                    ),
+                  ),
+                  for (final s in _sizes)
+                    SizedBox(
+                        width: 56,
+                        height: 52,
+                        child: Center(child: _badge(id, name, tier, size: s))),
+                ],
+              ),
+            ),
+          const SizedBox(height: 14),
+        ],
+      ),
+    );
+  }
+
+  static Widget _badge(String id, String name, int tier,
+          {required double size, bool onPaper = false}) =>
+      HankoBadge(
+        id: id,
+        tier: tier,
+        size: size,
+        onPaper: onPaper,
+        number: id == 'founder' ? 1 : null,
+        semanticLabel: 'Badge: $name',
+      );
+
+  Widget _paper() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 22),
+      decoration: BoxDecoration(
+        color: AppTheme.hankoWashi,
+        borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (final s in const <double>[24, 32, 48])
+            Padding(
+              padding: const EdgeInsets.only(bottom: 14),
+              child: Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  for (final (id, name, tier, _) in _entries)
+                    _badge(id, name, tier, size: s, onPaper: true),
+                ],
+              ),
+            ),
+          Wrap(
+            spacing: 28,
+            runSpacing: 12,
+            crossAxisAlignment: WrapCrossAlignment.end,
+            children: [
+              for (final id in const ['finished', 'genres', 'top9'])
+                HankoBadge(
+                  id: id,
+                  size: 48,
+                  state: HankoBadgeState.notYet,
+                  onPaper: true,
+                  semanticLabel: 'Badge, not yet',
+                ),
+              // A print lying on the paper with a badge pressed across its
+              // corner: the washi keyline keeps it clear of dark art.
+              SizedBox(
+                width: 78,
+                height: 106,
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    _poster(const Color(0xFF283A5C), 72, 100),
+                    const Positioned(
+                      right: 0,
+                      bottom: 0,
+                      child: HankoBadge(
+                        id: 'favourite',
+                        size: 32,
+                        onPaper: true,
+                        keyline: true,
+                        semanticLabel: 'Badge: Marked a favourite',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _corners(Widget picture) {
+    return Wrap(
+      spacing: 30,
+      runSpacing: 22,
+      children: [
+        for (final (id, name, tier, _) in _entries)
+          if (id != 'founder')
+            HankoBadgeCorner(
+              id: id,
+              tier: tier,
+              semanticLabel: 'Badge: $name',
+              child: picture,
+            ),
+      ],
+    );
+  }
+
+  Widget _row(String label, List<Widget> badges) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        children: [
+          SizedBox(width: 56, child: Text(label, style: _cap)),
+          for (final b in badges) SizedBox(width: 64, child: Center(child: b)),
+        ],
+      ),
+    );
+  }
+
+  Widget _label(String text) => Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: Text(text,
+            style: AppTheme.hankoSans(
+                fontSize: AppTheme.hankoLabelSize,
+                weight: FontWeight.w500,
+                color: AppTheme.hankoStone)),
+      );
+}
+
+/// A stand-in for a character picture in the 64 dp monogram: light flat
+/// blocks (the specimen loads no images), since a light picture is where the
+/// keyline matters most.
+class _Picture extends StatelessWidget {
+  const _Picture();
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+      child: SizedBox.square(
+        dimension: 64,
+        child: Stack(
+          children: [
+            Positioned.fill(child: Container(color: const Color(0xFFD8C7A2))),
+            // Pale hair, a face, two green eyes.
+            Positioned(
+                left: 6, top: 0, right: 10, height: 40,
+                child: Container(color: const Color(0xFFF1EDE3))),
+            Positioned(
+                left: 16, top: 22, right: 18, bottom: 0,
+                child: Container(color: const Color(0xFFF5DDC9))),
+            Positioned(
+                left: 22, top: 34, width: 6, height: 4,
+                child: Container(color: const Color(0xFF3E9C8A))),
+            Positioned(
+                left: 36, top: 34, width: 6, height: 4,
+                child: Container(color: const Color(0xFF3E9C8A))),
+          ],
+        ),
+      ),
     );
   }
 }
