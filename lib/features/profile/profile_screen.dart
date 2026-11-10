@@ -34,6 +34,9 @@ import '../cards/hanj_card.dart' as hc;
 import '../anime_detail/anime_detail_screen.dart';
 import '../../cadre/screens/cadre_lobby_screen.dart';
 import '../auth/delete_account_screen.dart';
+import '../achievements/achievements_screen.dart';
+import '../../models/achievements.dart';
+import '../../services/achievements_service.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -131,7 +134,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
     super.initState();
     _loadAvatarPrefs();
     _resolveFounderStatus();
-    _loadFeaturedCard();
+    // With achievements in place of Hanj Cards, the row says where your
+    // record stands, so it loads the record instead of the pinned card,
+    // which nothing shows any more (the data stays where it is).
+    if (Achievements.replaceCards) {
+      AchievementsService.instance.load().catchError((Object _) {});
+    } else {
+      _loadFeaturedCard();
+    }
   }
 
   @override
@@ -151,6 +161,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
         setState(() => _featuredCard = Map<String, dynamic>.from(pinned.first as Map));
       }
     } catch (_) {}
+  }
+
+  /// The list snapshot last handed to achievements.
+  QuerySnapshot? _fedToAchievements;
+
+  /// Hands each new list snapshot to achievements, after the frame (never
+  /// from inside build: the service evaluates a moment later). Every
+  /// rebuild passes the same snapshot again, so only a new one is fed.
+  void _feedAchievements(QuerySnapshot? snapshot) {
+    if (snapshot == null || identical(snapshot, _fedToAchievements)) return;
+    _fedToAchievements = snapshot;
+    WidgetsBinding.instance.addPostFrameCallback(
+        (_) => AchievementsService.instance.observeList(snapshot));
   }
 
   Future<void> _loadAvatarPrefs() async {
@@ -222,6 +245,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         stream: _firestoreService.getAnimeList(),
         builder: (context, snapshot) {
           final docs = snapshot.data?.docs ?? [];
+          if (Achievements.replaceCards) _feedAchievements(snapshot.data);
           // The list's state (stage H5). Until the first snapshot the list
           // isn't known, and Profile claims nothing about it: no "0 titles"
           // for someone with a long list. A failed read says so.
@@ -550,6 +574,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             builder: (_) => const ActivityFeedScreen())),
                       ),
                       const SizedBox(height: _groupGap),
+                      // Achievements take the Hanj Cards row's place
+                      // (r9; Achievements.replaceCards): its icon is the
+                      // badge you show, else your latest, in the rows'
+                      // stone, and its line says where your record stands.
+                      // Only this row rebuilds when the record changes.
+                      if (Achievements.replaceCards)
+                        ValueListenableBuilder<AchievementsState>(
+                          valueListenable: AchievementsService.instance.state,
+                          builder: (context, record, _) => _EntryRow(
+                            icon: Icons.style_sharp,
+                            leading: AchievementsScreen.rowIcon(record),
+                            title: 'Achievements',
+                            line: AchievementsScreen.rowLine(record),
+                            onTap: () => Navigator.push(context, MaterialPageRoute(
+                                builder: (_) => const AchievementsScreen())),
+                          ),
+                        )
+                      else
                       // With the card out of the header (see
                       // _pinnedCardInHeader), the row names your pinned
                       // card in words, with no card art.
@@ -2594,12 +2636,16 @@ class _CoverButtonState extends State<_CoverButton> {
 class _EntryRow extends StatelessWidget {
   const _EntryRow({
     required this.icon,
+    this.leading,
     required this.title,
     required this.line,
     required this.onTap,
   });
 
   final IconData icon;
+
+  /// Drawn in place of [icon]: the Achievements row's badge.
+  final Widget? leading;
   final String title;
   final String line;
   final VoidCallback onTap;
@@ -2622,7 +2668,7 @@ class _EntryRow extends StatelessWidget {
               padding: const EdgeInsets.symmetric(vertical: 8),
               child: Row(
                 children: [
-                  Icon(icon, size: 22, color: AppTheme.hankoStone),
+                  leading ?? Icon(icon, size: 22, color: AppTheme.hankoStone),
                   const SizedBox(width: 14),
                   Expanded(
                     child: Column(
