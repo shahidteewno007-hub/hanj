@@ -557,16 +557,18 @@ class _AchievementsScreenState extends State<AchievementsScreen> {
     }
   }
 
-  /// Once the record is known, what's New is noted for this visit and the
+  /// Once something New is in the record, it's noted for this visit and the
   /// page counts as seen. markSeen() is a write, so it's made only when
-  /// there was something new to see.
+  /// there was something new to see. It keeps listening until then, since
+  /// the refresh can find marks a moment after the page opens (found on the
+  /// web emulators: a record read first, then evaluated).
   void _onState() {
     if (_seenHandled || !mounted) return;
     final s = _service.state.value;
     if (!s.known || !s.record.started) return;
-    _seenHandled = true;
     final fresh = s.newKeys;
     if (fresh.isEmpty) return;
+    _seenHandled = true;
     setState(() => _shownNew = fresh);
     WidgetsBinding.instance.addPostFrameCallback(
         (_) => unawaited(_service.markSeen().catchError((Object _) {})));
