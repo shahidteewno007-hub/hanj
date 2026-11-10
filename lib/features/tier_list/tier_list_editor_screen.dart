@@ -19,6 +19,7 @@ import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/theme/app_theme.dart';
+import 'tier_list_anilist.dart';
 import 'tier_list_export_screen.dart';
 import 'tier_list_model.dart';
 import 'tier_list_picker_screen.dart';
@@ -44,6 +45,7 @@ class _TierListEditorScreenState extends State<TierListEditorScreen> {
   static const _moveLeft = CustomSemanticsAction(label: 'Move left');
   static const _moveRight = CustomSemanticsAction(label: 'Move right');
   static const _toTray = CustomSemanticsAction(label: 'Send back to unranked');
+  static const _editTierAction = CustomSemanticsAction(label: 'Edit tier');
 
   TierList get _list => widget.list;
 
@@ -140,8 +142,20 @@ class _TierListEditorScreenState extends State<TierListEditorScreen> {
   }
 
   // ── adding ─────────────────────────────────────────────────
+  /// The anime already on this list, most-used first, for the picker's
+  /// quick picks: their casts are kept, so opening one again is free.
+  List<TierAnime> _listAnime() => [
+        for (final m in _list.mediaByUse())
+          if (_list.sampleOf(m.key) case final TierCharacter c when c.mediaTitle != null)
+            TierAnime(id: m.key, title: c.mediaTitle!, cover: c.mediaCover, color: c.mediaColor),
+      ].take(4).toList();
+
   Future<void> _addCharacters() async {
     final template = tierTemplateById(_list.templateId);
+    final elsewhere = TierListSwitches.tapToFill
+        ? await TierListStore.instance.charactersElsewhere(_list.id, skip: _list.characters.keys.toSet())
+        : const <TierCharacter>[];
+    if (!mounted) return;
     final picked = await Navigator.of(context).push<List<TierCharacter>>(
       MaterialPageRoute(
         fullscreenDialog: true,
@@ -152,6 +166,8 @@ class _TierListEditorScreenState extends State<TierListEditorScreen> {
             characters: template?.characters ?? const [],
             anime: template?.anime ?? const [],
           ),
+          listAnime: TierListSwitches.tapToFill ? _listAnime() : const [],
+          fromOtherLists: elsewhere,
         ),
       ),
     );
@@ -160,6 +176,44 @@ class _TierListEditorScreenState extends State<TierListEditorScreen> {
     if (added > 0) {
       _changed();
       tierToast(context, added == 1 ? 'Added to unranked. Drag or tap to place.' : '$added added to unranked. Drag or tap to place them.');
+    }
+  }
+
+  /// Round nine: the tier [t] was tapped, so pick who goes in it. Picks
+  /// land at its end, characters waiting in the tray included.
+  Future<void> _fillTier(Tier t) async {
+    final template = tierTemplateById(_list.templateId);
+    final placed = {for (final x in _list.tiers) ...x.characterIds};
+    final waiting = [
+      for (final id in _list.unranked)
+        if (_list.characters[id] case final TierCharacter c) c,
+    ];
+    final elsewhere =
+        await TierListStore.instance.charactersElsewhere(_list.id, skip: _list.characters.keys.toSet());
+    if (!mounted) return;
+    final picked = await Navigator.of(context).push<List<TierCharacter>>(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => TierCharacterPickerScreen(
+          alreadyOnList: placed,
+          room: TierList.maxCharacters - _list.count + waiting.length,
+          ideas: TierSearchIdeas(
+            characters: template?.characters ?? const [],
+            anime: template?.anime ?? const [],
+          ),
+          target: TierPickTarget(label: _list.displayName(t), pigment: TierPigment.at(t.pigment)),
+          waiting: waiting,
+          listAnime: _listAnime(),
+          fromOtherLists: elsewhere,
+        ),
+      ),
+    );
+    if (!mounted || picked == null || picked.isEmpty || _list.tierById(t.id) == null) return;
+    final landed = _list.addTo(t.id, picked);
+    if (landed > 0) {
+      _changed();
+      final name = _list.displayName(t);
+      tierToast(context, landed == 1 ? 'Added to $name.' : '$landed added to $name.');
     }
   }
 
@@ -574,20 +628,30 @@ class _TierListEditorScreenState extends State<TierListEditorScreen> {
       onAcceptWithDetails: (d) => _drop(d.data, t.id),
       builder: (context, candidates, _) {
         final hot = _hoverTier == t.id;
+        // Round nine: the plate fills its tier (an unnamed one is named
+        // first: its plate says "Name"); long-press, or the screen reader's
+        // "Edit tier", opens the tier's sheet.
+        const fill = TierListSwitches.tapToFill;
+        final named = t.label.trim().isNotEmpty;
         return IntrinsicHeight(
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               TierPressable(
                 label: '$name. ${n == 1 ? '1 character' : '$n characters'}',
-                hint: 'Rename, recolour or move this tier',
-                onTap: () => _editTier(t),
+                hint: !fill
+                    ? 'Rename, recolour or move this tier'
+                    : (named ? 'Adds characters to this tier' : 'Names this tier'),
+                onTap: fill && named ? () => _fillTier(t) : () => _editTier(t),
+                onLongPress: fill ? () => _editTier(t) : null,
+                customActions: fill ? {_editTierAction: () => _editTier(t)} : null,
                 ringInset: 2,
                 child: TierPlate(
                   label: t.label,
                   pigment: TierPigment.at(t.pigment),
                   width: plateW,
-                  minHeight: tokenW * 1.5 + 30,
+                  // An empty row is a short strip until someone lands in it.
+                  minHeight: fill && n == 0 ? 64 : tokenW * 1.5 + 30,
                   placeholder: 'Name',
                 ),
               ),
@@ -599,13 +663,14 @@ class _TierListEditorScreenState extends State<TierListEditorScreen> {
                   color: hot ? AppTheme.hankoSumi3 : AppTheme.hankoSumi2,
                   padding: const EdgeInsets.all(6),
                   child: n == 0
-                      ? _emptyRowHint(hot)
+                      ? (fill ? _addSlot(t, tokenW, wide: true, hot: hot) : _emptyRowHint(hot))
                       : Wrap(
                           spacing: 6,
                           runSpacing: 8,
                           children: [
                             for (var i = 0; i < n; i++)
                               _token(t.characterIds[i], t.id, i, n, tokenW),
+                            if (fill) _addSlot(t, tokenW, wide: false, hot: hot),
                           ],
                         ),
                 ),
@@ -614,6 +679,59 @@ class _TierListEditorScreenState extends State<TierListEditorScreen> {
           ),
         );
       },
+    );
+  }
+
+  /// Round nine: the dashed slot that ends a row; tap it to pick for this
+  /// tier. An empty row's slot is wide and says so ("Add to S"). The
+  /// plate is the screen reader's and the keyboard's way in, so the slot
+  /// is left out of both.
+  Widget _addSlot(Tier t, double tokenW, {required bool wide, required bool hot}) {
+    final Widget inside;
+    if (wide) {
+      inside = Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: Row(
+          children: [
+            Icon(Icons.add_rounded, size: 18, color: hot ? AppTheme.hankoWashi : AppTheme.hankoStone),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                hot ? 'Drop here' : 'Add to ${_list.displayName(t)}',
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: AppTheme.hankoSans(
+                  fontSize: 13,
+                  weight: FontWeight.w500,
+                  color: hot ? AppTheme.hankoWashi : AppTheme.hankoStone,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    } else {
+      inside = SizedBox(
+        width: tokenW,
+        height: tokenW * 1.5,
+        child: const Icon(Icons.add_rounded, size: 20, color: AppTheme.hankoStone),
+      );
+    }
+    return ExcludeSemantics(
+      child: Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          canRequestFocus: false,
+          onTap: () => _fillTier(t),
+          splashFactory: NoSplash.splashFactory,
+          highlightColor: AppTheme.hankoPressWash,
+          hoverColor: AppTheme.hankoPressWash,
+          child: CustomPaint(
+            painter: const _DashedBox(color: AppTheme.hankoEdge),
+            child: wide ? Align(alignment: Alignment.centerLeft, child: inside) : inside,
+          ),
+        ),
+      ),
     );
   }
 
@@ -786,11 +904,20 @@ class _TierListEditorScreenState extends State<TierListEditorScreen> {
                             child: TierEyebrow(n == 0 ? 'Unranked' : 'Unranked  ·  $n',
                                 color: AppTheme.hankoStoneHi),
                           ),
-                          TierMainButton(
-                            label: _list.isEmpty ? 'Add characters' : 'Add more',
-                            icon: Icons.person_add_alt_1_rounded,
-                            onTap: _list.isFull ? null : _addCharacters,
-                          ),
+                          // Round nine: the main way in is the tier you tap,
+                          // so adding to the tray is the second way.
+                          if (TierListSwitches.tapToFill)
+                            TierGhostButton(
+                              label: _list.isEmpty ? 'Add characters' : 'Add more',
+                              icon: Icons.person_add_alt_1_rounded,
+                              onTap: _list.isFull ? null : _addCharacters,
+                            )
+                          else
+                            TierMainButton(
+                              label: _list.isEmpty ? 'Add characters' : 'Add more',
+                              icon: Icons.person_add_alt_1_rounded,
+                              onTap: _list.isFull ? null : _addCharacters,
+                            ),
                         ],
                       ),
                     ),
@@ -802,7 +929,9 @@ class _TierListEditorScreenState extends State<TierListEditorScreen> {
                           child: Text(
                             _dragging != null
                                 ? 'Drop here to take them out of their tier.'
-                                : 'Search an anime, pick its characters, then drag them into tiers or tap one to place it.',
+                                : TierListSwitches.tapToFill
+                                    ? 'Tap a tier to choose who goes in it. Or add characters here and place them later.'
+                                    : 'Search an anime, pick its characters, then drag them into tiers or tap one to place it.',
                             style: AppTheme.hankoSans(fontSize: 13, color: AppTheme.hankoStone, height: 1.35),
                           ),
                         )
@@ -829,6 +958,45 @@ class _TierListEditorScreenState extends State<TierListEditorScreen> {
       },
     );
   }
+}
+
+/// A dashed rectangle, an empty place to fill (round nine), in one path.
+class _DashedBox extends CustomPainter {
+  const _DashedBox({required this.color});
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const dash = 4.0, gap = 3.0;
+    final r = (Offset.zero & size).deflate(0.5);
+    final path = Path();
+    void side(Offset a, Offset b) {
+      final len = (b - a).distance;
+      if (len == 0) return;
+      final dir = (b - a) / len;
+      for (var d = 0.0; d < len; d += dash + gap) {
+        final e = d + dash < len ? d + dash : len;
+        path
+          ..moveTo(a.dx + dir.dx * d, a.dy + dir.dy * d)
+          ..lineTo(a.dx + dir.dx * e, a.dy + dir.dy * e);
+      }
+    }
+
+    side(r.topLeft, r.topRight);
+    side(r.topRight, r.bottomRight);
+    side(r.bottomRight, r.bottomLeft);
+    side(r.bottomLeft, r.topLeft);
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_DashedBox old) => old.color != color;
 }
 
 // ── the character's sheet ────────────────────────────────────

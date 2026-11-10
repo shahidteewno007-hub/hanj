@@ -17,6 +17,7 @@ import 'package:hanj/features/tier_list/tier_list_home_screen.dart';
 import 'package:hanj/features/tier_list/tier_list_model.dart';
 import 'package:hanj/features/tier_list/tier_list_picker_screen.dart';
 import 'package:hanj/features/tier_list/tier_list_templates.dart';
+import 'package:hanj/features/tier_list/tier_list_widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// A list from [templateId] with fourteen characters, twelve of them placed.
@@ -141,7 +142,13 @@ void main() {
         final plate = find.bySemanticsLabel(RegExp('^${RegExp.escape(top)}\\.'), skipOffstage: false).first;
         await tester.ensureVisible(plate);
         await tester.pump(const Duration(milliseconds: 300));
-        await tester.tap(plate);
+        // Round nine: a tap on a plate picks for its tier, and the tier's
+        // sheet is a long-press.
+        if (TierListSwitches.tapToFill) {
+          await tester.longPress(plate);
+        } else {
+          await tester.tap(plate);
+        }
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 500));
         expect(find.text('Edit tier'), findsOneWidget);

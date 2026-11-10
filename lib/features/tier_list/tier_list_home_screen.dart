@@ -51,7 +51,8 @@ class _TierListHomeScreenState extends State<TierListHomeScreen> {
           'This device keeps up to ${TierListStore.maxLists} tier lists. Delete one to start another.');
       return;
     }
-    _open(t.create(id: TierListStore.freshId()), fresh: true);
+    // Round nine: a new list opens on its board, not on the picker.
+    _open(t.create(id: TierListStore.freshId()), fresh: !TierListSwitches.tapToFill);
   }
 
   Future<void> _listMenu(TierList list, String action) async {
