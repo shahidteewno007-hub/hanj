@@ -235,6 +235,7 @@ class _TonightWatchSheetState extends State<TonightWatchSheet>
   // a 360 dp phone and Open stays on the first screen.
   static const double _printWidth = 168;
   static const double _printHeight = 238;
+  static const double _glowWidth = 48 + _printWidth + AppTheme.hankoGutter;
 
   // The pick's mood's top ten, and the rest of them in a shuffled order,
   // for Another pick (with _pickOnBand).
@@ -1078,15 +1079,26 @@ class _TonightWatchSheetState extends State<TonightWatchSheet>
       builder: (context, colour) => HankoField(
         colour: colour,
         solidTo: 0.75,
+        // Unclipped, so the print's shadow falls past the band's foot.
         child: Stack(
+          clipBehavior: Clip.none,
           children: [
-            // A pool of the colour behind the print, where no text sits.
+            // A pool of the colour behind the print, where no text sits:
+            // 48 dp past the print's left edge, to the band's right edge
+            // (past it would light the scrim beside a wide window's sheet),
+            // its centre on the print's.
             Positioned(
               top: 4,
-              right: AppTheme.hankoGutter - 48,
-              width: _printWidth + 96,
+              right: 0,
+              width: _glowWidth,
               height: _printHeight + 48,
-              child: IgnorePointer(child: _PickGlow(colour: colour)),
+              child: IgnorePointer(
+                child: _PickGlow(
+                  colour: colour,
+                  centre: const Alignment(
+                      (48 + _printWidth / 2) / _glowWidth * 2 - 1, 0),
+                ),
+              ),
             ),
             // The band fades in from the sheet, as Home's from the page.
             Positioned(
@@ -1644,11 +1656,13 @@ class _ShowColourState extends State<_ShowColour> {
 
 /// A pool of the pick's colour behind its print (round nine), as Home's
 /// hero has one: the field rule's glow, lighter than the band, where no
-/// text sits. It crossfades with the band, at once with Remove animations.
+/// text sits, centred at [centre]. It crossfades with the band, at once
+/// with Remove animations.
 class _PickGlow extends StatelessWidget {
-  const _PickGlow({required this.colour});
+  const _PickGlow({required this.colour, required this.centre});
 
   final Color? colour;
+  final Alignment centre;
 
   @override
   Widget build(BuildContext context) {
@@ -1660,7 +1674,8 @@ class _PickGlow extends StatelessWidget {
           ? Duration.zero
           : const Duration(milliseconds: 240),
       decoration: BoxDecoration(
-        gradient: RadialGradient(colors: [glow ?? clear, clear]),
+        gradient:
+            RadialGradient(center: centre, colors: [glow ?? clear, clear]),
       ),
     );
   }
