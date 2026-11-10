@@ -2236,7 +2236,7 @@ class _Monogram extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final seal = ProfileScreen.badgeOnSeal
+    final seal = _ProfileScreenState._badgeShown
         ? MediaQuery.withNoTextScaling(
             child: HankoSeal(label: initial, size: size, fontSize: 30))
         : HankoSeal(label: initial, size: size, fontSize: 30);
