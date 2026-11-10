@@ -418,7 +418,8 @@ String _together(String name) => name.replaceAll('Top 9', 'Top${_nb}9');
 String? _levelOf(MarkRef ref) {
   final steps = ref.achievement.steps;
   if (steps.length < 2) return null;
-  return 'level ${steps.indexOf(ref.step) + 1} of ${steps.length}';
+  // Non-breaking, so large text never leaves "2" alone on a line.
+  return 'level$_nb${steps.indexOf(ref.step) + 1}${_nb}of$_nb${steps.length}';
 }
 
 /// What you have toward [a]'s counts, from the last evaluation; null where
