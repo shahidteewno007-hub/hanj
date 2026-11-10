@@ -192,6 +192,34 @@ class AchievementsService {
     _entries = _withStamps(entries);
     _debounce?.cancel();
     _debounce = Timer(_settle, () => _run(() => _evaluate()));
+    if (!_listConfirmed) unawaited(_confirmList());
+  }
+
+  /// When the list confirmation was last asked of the server.
+  DateTime? _confirmAskedAt;
+
+  /// A list fed from the phone's cache never becomes confirmed by itself:
+  /// the server's confirmation of a cached result is a metadata-only change,
+  /// which Profile's and Home's streams never hear (found on the web in
+  /// stage 3). So an unconfirmed list fed here is read once from the server,
+  /// which is what confirms it. Offline the read fails at once and the
+  /// record simply waits; a later feed asks again, at most once a minute.
+  Future<void> _confirmList() async {
+    final uid = _uid;
+    final now = DateTime.now();
+    final asked = _confirmAskedAt;
+    if (uid == null || _listConfirmed) return;
+    if (asked != null && now.difference(asked) < const Duration(minutes: 1)) return;
+    _confirmAskedAt = now;
+    try {
+      final snap = await _userDoc(uid)
+          .collection('animeList')
+          .get(const GetOptions(source: Source.server));
+      if (_uid != uid || _listConfirmed) return;
+      observeEntries({for (final d in snap.docs) d.id: d.data()}, fromServer: true);
+    } catch (_) {
+      // Offline, or refused: the cached list stands, unconfirmed.
+    }
   }
 
   /// [entries] as the rules read them, with your own actions' dates
@@ -310,39 +338,53 @@ class AchievementsService {
   }
 
   /// Shows [markKey] on your profile, in the corner (decision c). Only a
-  /// mark in your record; false when it isn't, or the write failed.
+  /// mark in your record, and never Founder (decision f: it has its stamp
+  /// under your name); false when it isn't, or the write failed.
+  ///
+  /// The badge is shown at once (stage 5): offline, Firestore's write
+  /// waits for the server, and Profile would wait with it. A refused write
+  /// puts the badge you had back.
   Future<bool> setBadge(String markKey) async {
     final uid = _user();
     if (uid == null) return false;
     await _loaded;
-    if (!_state.value.record.marks.containsKey(markKey)) return false;
-    try {
-      await _userDoc(uid).set({
-        'badge': {'mark': markKey, 'place': 'corner'},
-      }, SetOptions(merge: true));
-    } catch (_) {
-      return false;
-    }
-    if (_uid != uid) return true;
-    _publish(badge: markKey);
-    await _saveLocal(uid);
-    return true;
+    if (!_state.value.record.marks.containsKey(markKey) || !canShow(markKey)) return false;
+    return _writeBadge(uid, markKey);
   }
 
-  /// Takes your badge off your profile. False when the write failed.
+  /// Takes your badge off your profile, at once. False when the write
+  /// failed, and the badge is back.
   Future<bool> clearBadge() async {
     final uid = _user();
     if (uid == null) return false;
     await _loaded;
+    return _writeBadge(uid, null);
+  }
+
+  /// Whether [markKey] may be shown on a profile: any mark but Founder's.
+  static bool canShow(String markKey) =>
+      Achievements.parse(markKey)?.achievement.id != 'founder';
+
+  Future<bool> _writeBadge(String uid, String? markKey) async {
+    final before = _state.value.badge;
+    _publish(badge: markKey, clearBadge: markKey == null);
+    await _saveLocal(uid);
     try {
-      await _userDoc(uid).set({'badge': FieldValue.delete()}, SetOptions(merge: true));
+      await _userDoc(uid).set({
+        'badge': markKey == null
+            ? FieldValue.delete()
+            : {'mark': markKey, 'place': 'corner'},
+      }, SetOptions(merge: true));
+      return true;
     } catch (_) {
+      // Put back what was there, unless the account or the badge has
+      // changed since (a later choice stands).
+      if (_uid == uid && _state.value.badge == markKey) {
+        _publish(badge: before, clearBadge: before == null);
+        await _saveLocal(uid);
+      }
       return false;
     }
-    if (_uid != uid) return true;
-    _publish(clearBadge: true);
-    await _saveLocal(uid);
-    return true;
   }
 
   /// Delete Account: forgets this phone's copy of the account's record and
@@ -392,6 +434,7 @@ class AchievementsService {
     _writing.clear();
     _debounce?.cancel();
     _dayOneTriedAt = null;
+    _confirmAskedAt = null;
     _state.value = AchievementsState(uid: uid);
   }
 
@@ -744,10 +787,13 @@ class AchievementsService {
     );
   }
 
-  /// users/{uid}.badge's mark, when it's one you've earned.
+  /// users/{uid}.badge's mark, when it's one you've earned and may show
+  /// (never Founder, even if a modified app wrote it).
   static String? _badgeFrom(Object? stored, AchievementRecord record) {
     final mark = stored is Map ? stored['mark'] : stored;
-    return mark is String && record.marks.containsKey(mark) ? mark : null;
+    return mark is String && record.marks.containsKey(mark) && canShow(mark)
+        ? mark
+        : null;
   }
 
   /// A Firestore document's fields with Timestamps as DateTimes, as the
