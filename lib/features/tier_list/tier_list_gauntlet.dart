@@ -646,6 +646,8 @@ class _TierGauntletScreenState extends State<TierGauntletScreen> {
   Widget _finishRow() {
     final ready = _list.gauntletReady;
     final cleared = _list.clearsAll;
+    // Once they fall at a phase, the finish is a phase never reached.
+    final fallen = _list.fallsAt != null;
     final all = 'Clears all ${_list.phaseCountWord}';
     return IntrinsicHeight(
       child: Row(
@@ -656,7 +658,9 @@ class _TierGauntletScreenState extends State<TierGauntletScreen> {
             child: ColoredBox(
               color: AppTheme.hankoSumi2,
               child: TierPressable(
-                label: !ready ? '$all: every phase needs an opponent first' : '$all: ${cleared ? 'marked' : 'open'}',
+                label: !ready
+                    ? '$all: every phase needs an opponent first'
+                    : '$all: ${cleared ? 'marked' : (fallen ? 'not reached' : 'open')}',
                 hint: !ready ? null : (cleared ? 'Leaves the answer open' : 'Marks that $_who clears them all'),
                 selected: ready ? cleared : null,
                 onTap: ready ? _markClear : null,
@@ -679,7 +683,9 @@ class _TierGauntletScreenState extends State<TierGauntletScreen> {
                         width: 64,
                         child: Center(
                           child: _MarkBox(
-                            mark: cleared ? GauntletMark.falls : GauntletMark.open,
+                            mark: cleared
+                                ? GauntletMark.falls
+                                : (fallen ? GauntletMark.notReached : GauntletMark.open),
                             enabled: ready,
                             presses: _presses[TierList.verdictClear] ?? 0,
                             sealLabel: 'Clears',
@@ -795,28 +801,28 @@ class _MarkBox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    switch (mark) {
-      case GauntletMark.open:
-        return Opacity(
+    final Widget content = switch (mark) {
+      GauntletMark.open => Opacity(
           opacity: enabled ? 1 : 0.35,
           child: HankoSeal.unrated(size: 36, width: 52, showAdd: editing && enabled),
-        );
-      case GauntletMark.falls:
-        final seal = HankoSeal(label: sealLabel, size: 36, width: 56);
-        return editing ? HankoSealPress(presses: presses, child: seal) : seal;
-      case GauntletMark.beats:
-        return Column(
+        ),
+      GauntletMark.falls => HankoSeal(label: sealLabel, size: 36, width: 56),
+      GauntletMark.beats => Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             const Icon(Icons.check_rounded, size: 22, color: AppTheme.hankoWashi),
             const SizedBox(height: 2),
             MediaQuery.withNoTextScaling(child: const TierEyebrow('Beats', color: AppTheme.hankoStoneHi)),
           ],
-        );
-      case GauntletMark.notReached:
-        // Stone, not ash: ash is only just 4.5:1 on the phases' grounds.
-        return Text('—', style: AppTheme.hankoSans(fontSize: 18, color: AppTheme.hankoStone));
-    }
+        ),
+      // Stone, not ash: ash is only just 4.5:1 on the phases' grounds.
+      GauntletMark.notReached => Text('—', style: AppTheme.hankoSans(fontSize: 18, color: AppTheme.hankoStone)),
+    };
+    // On the board one press stays in place whatever the box shows, so the
+    // seal that stamps it is pressed in: a press made with the seal starts
+    // at rest (HankoSealPress presses when its count goes up). At rest it
+    // draws its child exactly; with Remove animations the seal just appears.
+    return editing ? HankoSealPress(presses: presses, child: content) : content;
   }
 }
 
@@ -1155,7 +1161,9 @@ class TierGauntletPoster extends StatelessWidget {
                     width: 60,
                     child: Center(
                       child: _MarkBox(
-                        mark: cleared ? GauntletMark.falls : GauntletMark.open,
+                        mark: cleared
+                            ? GauntletMark.falls
+                            : (list.fallsAt != null ? GauntletMark.notReached : GauntletMark.open),
                         enabled: true,
                         presses: 0,
                         sealLabel: 'Clears',

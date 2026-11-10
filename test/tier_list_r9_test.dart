@@ -23,6 +23,7 @@ import 'package:hanj/features/tier_list/tier_list_picker_screen.dart';
 import 'package:hanj/features/tier_list/tier_list_store.dart';
 import 'package:hanj/features/tier_list/tier_list_templates.dart';
 import 'package:hanj/features/tier_list/tier_list_widgets.dart';
+import 'package:hanj/widgets/hanko_seal.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 TierCharacter _who(int i) => TierCharacter(
@@ -155,6 +156,48 @@ void main() {
       });
     }
 
+    for (final reduce in [false, true]) {
+      testWidgets('marking a phase ${reduce ? 'with Remove animations: the seal just appears' : 'presses the seal in'}',
+          (tester) async {
+        _phone(tester, 1.0);
+        final g = _gauntlet();
+        await tester.pumpWidget(MaterialApp(
+          theme: AppTheme.darkTheme,
+          home: Builder(
+            builder: (context) => MediaQuery(
+              data: MediaQuery.of(context).copyWith(disableAnimations: reduce),
+              child: TierGauntletScreen(list: g),
+            ),
+          ),
+        ));
+        await tester.pump(const Duration(milliseconds: 400));
+        final box = find.bySemanticsLabel(RegExp(r'^Phase 3: open'));
+        await tester.ensureVisible(box);
+        await tester.pump(const Duration(milliseconds: 300));
+        await tester.tap(box);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 30));
+        double scale() => tester
+            .widget<ScaleTransition>(find
+                .ancestor(
+                  of: find.byWidgetPredicate((w) => w is HankoSeal && w.label == 'Falls'),
+                  matching: find.byType(ScaleTransition),
+                )
+                .first)
+            .scale
+            .value;
+        if (reduce) {
+          expect(scale(), 1.0, reason: 'no motion: at rest at once');
+        } else {
+          expect(scale(), greaterThan(1.05), reason: '30 ms in, the seal is still falling onto the paper');
+        }
+        await tester.pump(const Duration(milliseconds: 400));
+        expect(scale(), 1.0, reason: 'pressed in');
+        expect(_drain(tester), isEmpty);
+        await _finish(tester);
+      });
+    }
+
     testWidgets('a gauntlet: pick the challenger, then mark where they fall, open it again, clear them all',
         (tester) async {
       _phone(tester, 1.0);
@@ -190,6 +233,8 @@ void main() {
       expect(g.markOf(2), GauntletMark.beats);
       expect(g.markOf(4), GauntletMark.notReached);
       expect(find.text('Falls at Phase 3'), findsOneWidget);
+      expect(find.bySemanticsLabel(RegExp(r'^Clears all five: not reached'), skipOffstage: false), findsOneWidget,
+          reason: 'past the fall, the finish is never reached');
 
       await tester.tap(find.bySemanticsLabel(RegExp(r'^Phase 3: Gojo Satoru falls here')));
       await _settle(tester);
