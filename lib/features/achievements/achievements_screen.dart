@@ -18,6 +18,7 @@ import '../../widgets/hanko_paper.dart';
 import '../../widgets/hanko_print.dart';
 import '../../widgets/hanko_seal.dart';
 import '../anime_detail/anime_detail_screen.dart';
+import '../profile/profile_screen.dart' show ProfileScreen;
 import '../search/search_screen.dart';
 
 /// Achievements (r9 stage 3; Shahid, 2026-11-10: "Stamp book, prints on
@@ -57,6 +58,11 @@ class AchievementsScreen extends StatefulWidget {
 
   @override
   State<AchievementsScreen> createState() => _AchievementsScreenState();
+
+  /// The badge you've just chosen to show (stage 5), until Profile has
+  /// pressed it onto your monogram's corner: the press plays once, when
+  /// you're back on Profile, never on an ordinary visit. Null otherwise.
+  static String? pressOnProfile;
 
   /// The record's latest mark: the newest date, and on a tie (day one's
   /// marks can share a day) the deepest carving, so the most visible badge
@@ -162,6 +168,7 @@ class AchievementsScreen extends StatefulWidget {
     final name = shown is String && shown.trim().isNotEmpty
         ? shown.trim()
         : (user.displayName ?? '');
+    final avatar = data['avatarImageUrl'];
     final s = AchievementsService.instance.state.value;
     final held = _Held.of(s.record);
     final shows = _Shows(
@@ -185,6 +192,7 @@ class AchievementsScreen extends StatefulWidget {
         totals: s.totals,
         factsComplete: s.factsComplete,
         name: name,
+        avatarUrl: avatar is String ? avatar : null,
       ),
     );
   }
@@ -569,6 +577,10 @@ class _AchievementsScreenState extends State<AchievementsScreen> {
   List<String> _top9 = const [];
   bool _isFounder = false;
 
+  /// The character picture you picked in Edit Profile, for the sheet's
+  /// preview of your header (stage 5); null for your seal.
+  String? _avatarUrl;
+
   // Nothing for 400 ms (lead §2.4): the list usually comes from Firestore's
   // cache faster than that, and a flash of "Reading…" would be noise.
   bool _patient = false;
@@ -660,10 +672,12 @@ class _AchievementsScreenState extends State<AchievementsScreen> {
       if (!mounted) return;
       final top9 = data['top9'];
       final name = data['displayName'];
+      final avatar = data['avatarImageUrl'];
       setState(() {
         if (name is String && name.trim().isNotEmpty) _name = name.trim();
         _top9 = top9 is List ? [for (final id in top9) '$id'] : const [];
         _isFounder = data['isFounder'] == true;
+        _avatarUrl = avatar is String ? avatar : null;
       });
     } catch (_) {
       // Offline with nothing cached: the slip goes without a Top 9's order.
@@ -974,6 +988,7 @@ class _AchievementsScreenState extends State<AchievementsScreen> {
         totals: s.totals,
         factsComplete: s.factsComplete,
         name: _name,
+        avatarUrl: _avatarUrl,
       ),
     );
   }
@@ -1754,6 +1769,7 @@ class _Sheet extends StatelessWidget {
     required this.totals,
     required this.factsComplete,
     required this.name,
+    required this.avatarUrl,
   });
 
   final _Held held;
@@ -1761,6 +1777,10 @@ class _Sheet extends StatelessWidget {
   final AchievementTotals? totals;
   final bool factsComplete;
   final String name;
+
+  /// Your picked picture, for "On your profile"'s preview; null for your
+  /// seal.
+  final String? avatarUrl;
 
   @override
   Widget build(BuildContext context) {
@@ -1790,6 +1810,12 @@ class _Sheet extends StatelessWidget {
             ),
             const SizedBox(height: 18),
             if (held.earned) _slip(context) else _notYet(),
+            // Stage 5: earned, and never Founder (decision f).
+            if (ProfileScreen.badgeOnSeal &&
+                held.earned &&
+                AchievementsService.canShow(held.topKey))
+              _OnYourProfile(
+                  markKey: held.topKey, name: name, avatarUrl: avatarUrl),
             if (a.tiered) ..._levels(),
             if (a.repeats && held.marks.length > 1) ..._instances(),
             if (reel.isNotEmpty) ..._behind(context, reel),
@@ -2179,6 +2205,192 @@ class _Sheet extends StatelessWidget {
         ),
       ),
     ];
+  }
+}
+
+// ── Your badge on Profile: the sheet's choice (stage 5) ─────────────────
+
+/// "On your profile" (stage 5; Shahid, 2026-11-10: "Corner only"; decision
+/// b): under the record slip of an achievement you've earned, a preview of
+/// your own header with this badge pressed on your monogram's corner, as
+/// Profile will show it, then one washi button: "Show on your profile",
+/// "Show instead of 100 finished" when another is shown (so replacing is
+/// never a surprise), or "Take it off". One badge at a time, nothing until
+/// you choose, and a line that says who can see it before you share it.
+///
+/// The choice shows at once (AchievementsService publishes before the
+/// write lands, since offline the write waits for the server); a refused
+/// write puts it back, with a quiet line that names no cause. Never
+/// offered for Founder (decision f).
+class _OnYourProfile extends StatefulWidget {
+  const _OnYourProfile({
+    required this.markKey,
+    required this.name,
+    required this.avatarUrl,
+  });
+
+  /// The mark this sheet offers: the achievement's highest level, or its
+  /// newest for one that repeats.
+  final String markKey;
+  final String name;
+  final String? avatarUrl;
+
+  @override
+  State<_OnYourProfile> createState() => _OnYourProfileState();
+}
+
+class _OnYourProfileState extends State<_OnYourProfile> {
+  final _service = AchievementsService.instance;
+
+  // The last change was refused; cleared by the next one.
+  bool _refused = false;
+
+  Future<void> _choose(String? shown) async {
+    final key = widget.markKey;
+    final showing = shown != key;
+    setState(() => _refused = false);
+    if (showing) AchievementsScreen.pressOnProfile = key;
+    final ok = showing ? await _service.setBadge(key) : await _service.clearBadge();
+    if (!ok) {
+      if (AchievementsScreen.pressOnProfile == key) {
+        AchievementsScreen.pressOnProfile = null;
+      }
+      if (mounted) setState(() => _refused = true);
+    } else if (!showing && AchievementsScreen.pressOnProfile == key) {
+      AchievementsScreen.pressOnProfile = null;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ref = Achievements.parse(widget.markKey);
+    if (ref == null) return const SizedBox.shrink();
+    return ValueListenableBuilder<AchievementsState>(
+      valueListenable: _service.state,
+      builder: (context, s, _) {
+        final shown = s.badge;
+        final mine = shown == widget.markKey;
+        final other = shown == null || mine ? null : Achievements.parse(shown)?.title;
+        final label = mine
+            ? 'Take it off'
+            : other != null
+                ? 'Show instead of $other'
+                : 'Show on your profile';
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(top: 28, bottom: 12),
+              child: Semantics(
+                header: true,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.baseline,
+                  textBaseline: TextBaseline.alphabetic,
+                  children: [
+                    Expanded(
+                      child: Text('On your profile',
+                          style: AppTheme.hankoSerif(
+                              fontSize: AppTheme.hankoSectionSize, height: 1.3)),
+                    ),
+                    if (mine) ...[
+                      const SizedBox(width: 12),
+                      Text('Shown',
+                          style: AppTheme.hankoSans(
+                              fontSize: AppTheme.hankoLabelSize,
+                              color: AppTheme.hankoStone)),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+            _preview(ref),
+            const SizedBox(height: 14),
+            _WashiButton(label: label, onTap: () => _choose(shown)),
+            const SizedBox(height: 12),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Padding(
+                  padding: EdgeInsets.only(top: 1),
+                  child: Icon(Icons.visibility_outlined,
+                      size: 16, color: AppTheme.hankoStone),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                      'One badge at a time. Signed-in Hanj users can see it.',
+                      style: AppTheme.hankoSans(
+                          fontSize: AppTheme.hankoMetaSize,
+                          color: AppTheme.hankoStone,
+                          height: 1.4)),
+                ),
+              ],
+            ),
+            if (_refused) ...[
+              const SizedBox(height: 8),
+              Semantics(
+                liveRegion: true,
+                child: Text('Your profile couldn’t be changed just now.',
+                    style: AppTheme.hankoSans(
+                        fontSize: AppTheme.hankoMetaSize,
+                        color: AppTheme.hankoWashi,
+                        height: 1.4)),
+              ),
+            ],
+          ],
+        );
+      },
+    );
+  }
+
+  /// Your header as Profile draws it, with this badge on your monogram's
+  /// corner: your picture (or your seal, its initial held at 30, as on
+  /// Profile) and your name, on sumi. Read as one line.
+  Widget _preview(MarkRef ref) {
+    final user = FirebaseAuth.instance.currentUser;
+    final initial = (user?.displayName ?? user?.email ?? 'A')[0].toUpperCase();
+    final name = widget.name.isNotEmpty ? widget.name : (user?.displayName ?? '');
+    final seal = MediaQuery.withNoTextScaling(
+        child: HankoSeal(label: initial, size: 64, fontSize: 30));
+    final url = widget.avatarUrl;
+    final picture = url == null || url.isEmpty
+        ? seal
+        : ClipRRect(
+            borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+            child: SizedBox.square(
+              dimension: 64,
+              child: Image.network(url,
+                  fit: BoxFit.cover, errorBuilder: (_, _, _) => seal),
+            ),
+          );
+    return Semantics(
+      container: true,
+      label: 'Preview: your profile picture with ${ref.title} on its corner',
+      child: ExcludeSemantics(
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 22),
+          decoration: BoxDecoration(
+            color: AppTheme.hankoSumi,
+            borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+          ),
+          child: Row(
+            children: [
+              HankoBadgeCorner(
+                id: ref.achievement.id,
+                tier: ref.carving,
+                semanticLabel: ref.title,
+                child: picture,
+              ),
+              const SizedBox(width: 22),
+              Expanded(
+                child: Text(name,
+                    style: AppTheme.hankoSerif(fontSize: 22, height: 1.2)),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 

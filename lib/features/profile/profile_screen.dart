@@ -37,9 +37,23 @@ import '../auth/delete_account_screen.dart';
 import '../achievements/achievements_screen.dart';
 import '../../models/achievements.dart';
 import '../../services/achievements_service.dart';
+import 'dart:async' show Timer;
+import '../../widgets/hanko_badge.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
+
+  // ── Your badge on your picture (achievements stage 5; Shahid,
+  //    2026-11-10: "Corner only") ──
+  // The badge you choose on an achievement's sheet is pressed across the
+  // lower-right corner of your monogram or picture: 24 dp, 6 dp past both
+  // edges, with its sumi keyline, painted outside the monogram's box so
+  // nothing in the header moves. It's its own button, opening its sheet.
+  // Your initial is held at 30 at every text size, so a W or a Q's tail
+  // never runs under the stamp. The sheet's "On your profile" choice
+  // follows this switch too. False gives stage 4's Profile back exactly,
+  // and the sheet without the choice. Needs Achievements.replaceCards.
+  static const bool badgeOnSeal = true;
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -142,13 +156,46 @@ class _ProfileScreenState extends State<ProfileScreen> {
     } else {
       _loadFeaturedCard();
     }
+    if (_badgeShown) {
+      AchievementsService.instance.state.addListener(_onRecord);
+      _onRecord();
+    }
   }
 
   @override
   void dispose() {
+    if (_badgeShown) AchievementsService.instance.state.removeListener(_onRecord);
+    _badge.dispose();
     _scroll.dispose();
     super.dispose();
   }
+
+  /// Whether the badge you choose shows on your monogram (stage 5).
+  static const bool _badgeShown =
+      ProfileScreen.badgeOnSeal && Achievements.replaceCards;
+
+  /// The badge you show, apart from the rest of the record, so only the
+  /// header rebuilds, and only when the badge itself changes (the record
+  /// is published several times as it's worked out). The service holds
+  /// only an earned mark, never Founder's.
+  final _badge = ValueNotifier<String?>(null);
+
+  void _onRecord() => _badge.value = AchievementsService.instance.state.value.badge;
+
+  /// The Achievements row's line while a badge is shown (stage 5): "On
+  /// your profile: 100 finished". What's new still comes first, since it's
+  /// what changed; null leaves the row's usual line.
+  static String? _badgeLine(AchievementsState s) {
+    final badge = s.badge;
+    if (!_badgeShown || badge == null) return null;
+    if (Achievements.countAchievements(s.newKeys) > 0) return null;
+    final title = Achievements.parse(badge)?.title;
+    return title == null ? null : 'On your profile: $title';
+  }
+
+  /// Links your badge's button to the stamp on the monogram, wherever the
+  /// header has laid the monogram out (beside the name or above it).
+  final _badgeLink = LayerLink();
 
   Future<void> _loadFeaturedCard() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
@@ -606,7 +653,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             icon: Icons.style_sharp,
                             leading: AchievementsScreen.rowIcon(record),
                             title: 'Achievements',
-                            line: AchievementsScreen.rowLine(record),
+                            line: _badgeLine(record) ??
+                                AchievementsScreen.rowLine(record),
                             onTap: () => Navigator.push(context, MaterialPageRoute(
                                 builder: (_) => const AchievementsScreen())),
                           ),
@@ -907,7 +955,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
   ///
   /// [onWall]: it lies on Print Room's wall of covers (P5), where all text
   /// is washi and the Founder badge is a stamp.
+  ///
+  /// With your badge shown (stage 5), the header rebuilds when it changes.
   Widget _buildHeader(User? user, String initial, {bool onWall = false}) {
+    if (!_badgeShown) return _header(user, initial, onWall: onWall, badge: null);
+    return ValueListenableBuilder<String?>(
+      valueListenable: _badge,
+      builder: (context, badge, _) =>
+          _header(user, initial, onWall: onWall, badge: badge),
+    );
+  }
+
+  Widget _header(User? user, String initial,
+      {required bool onWall, required String? badge}) {
     final name = user?.displayName ?? 'Anime Fan';
     final since = user?.metadata.creationTime?.year;
     final founder = _founderStatus.isFounder && _founderStatus.number != null;
@@ -944,7 +1004,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ],
         ],
       );
-      final monogram = _Monogram(initial: initial, imageUrl: _avatarImageUrl);
+      final monogram = _badgeShown
+          ? CompositedTransformTarget(
+              link: _badgeLink,
+              child: _Monogram(
+                  initial: initial, imageUrl: _avatarImageUrl, badge: badge),
+            )
+          : _Monogram(initial: initial, imageUrl: _avatarImageUrl, badge: null);
       // Beside the monogram when there are 200 px there and the name's
       // longest word fits them; otherwise under it. In Print Room (P5) the
       // two centre on each other, 16 apart, as frame 05 sets them.
@@ -972,7 +1038,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             );
     });
 
-    final editable = Semantics(
+    final editProfile = Semantics(
       hint: 'Edit profile',
       child: InkWell(
         onTap: () async {
@@ -988,6 +1054,41 @@ class _ProfileScreenState extends State<ProfileScreen> {
         child: identity,
       ),
     );
+
+    // Your badge is its own button (stage 5, lead review §2.2): a sibling
+    // laid over Edit Profile, never inside its InkWell, or a screen reader
+    // would find a control inside a control. Its 48 dp target follows the
+    // stamp wherever the monogram is (the link), and covers the monogram's
+    // lower-right quarter; the rest of the header still opens Edit
+    // Profile. A screen reader reaches it after the header.
+    final shownRef = badge == null ? null : Achievements.parse(badge);
+    final editable = badge == null || shownRef == null
+        ? editProfile
+        : Stack(
+            clipBehavior: Clip.none,
+            children: [
+              editProfile,
+              Positioned(
+                left: 0,
+                top: 0,
+                child: CompositedTransformFollower(
+                  link: _badgeLink,
+                  showWhenUnlinked: false,
+                  targetAnchor: Alignment.bottomRight,
+                  followerAnchor: Alignment.center,
+                  // The stamp's centre: 6 dp in from the monogram's corner
+                  // (18 of its 24 dp on the monogram, 6 past each edge).
+                  offset: const Offset(
+                      HankoBadgeCorner.overhang - HankoBadgeCorner.size / 2,
+                      HankoBadgeCorner.overhang - HankoBadgeCorner.size / 2),
+                  child: _BadgeButton(
+                    label: 'Your badge, ${shownRef.title}',
+                    onTap: () => AchievementsScreen.showSheet(context, badge),
+                  ),
+                ),
+              ),
+            ],
+          );
 
     final card = _pinnedCardInHeader ? _featuredCard : null;
     return Padding(
@@ -2117,32 +2218,263 @@ class _ProfileScreenState extends State<ProfileScreen> {
 /// Edit Profile takes its place, in the same square; if that image fails, the
 /// seal shows instead. The name beside it says who this is, so it is left
 /// out of the screen-reader tree.
+///
+/// Your badge (stage 5, [ProfileScreen.badgeOnSeal]) is pressed across its
+/// lower-right corner, painted outside the 64 px box, so the header's
+/// layout doesn't change; the initial is then held at 30 at every text
+/// size (it's a mark, not text you read), so it never runs under the stamp.
 class _Monogram extends StatelessWidget {
-  const _Monogram({required this.initial, this.imageUrl});
+  const _Monogram({required this.initial, this.imageUrl, required this.badge});
 
   final String initial;
   final String? imageUrl;
+
+  /// The mark you show, or null for none.
+  final String? badge;
 
   static const double size = 64;
 
   @override
   Widget build(BuildContext context) {
-    final seal = HankoSeal(label: initial, size: size, fontSize: 30);
+    final seal = ProfileScreen.badgeOnSeal
+        ? MediaQuery.withNoTextScaling(
+            child: HankoSeal(label: initial, size: size, fontSize: 30))
+        : HankoSeal(label: initial, size: size, fontSize: 30);
     final url = imageUrl;
+    final picture = url == null || url.isEmpty
+        ? seal
+        : ClipRRect(
+            borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+            child: SizedBox.square(
+              dimension: size,
+              child: Image.network(
+                url,
+                fit: BoxFit.cover,
+                errorBuilder: (_, _, _) => seal,
+              ),
+            ),
+          );
+    final ref = badge == null ? null : Achievements.parse(badge!);
     return ExcludeSemantics(
-      child: url == null || url.isEmpty
-          ? seal
-          : ClipRRect(
-              borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
-              child: SizedBox.square(
-                dimension: size,
-                child: Image.network(
-                  url,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, _, _) => seal,
+      child: ref == null
+          ? picture
+          // The corner's own boundary: the press's ink ring spreads past
+          // the stamp, unclipped, and repaints only this.
+          : RepaintBoundary(
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  picture,
+                  Positioned(
+                    right: -HankoBadgeCorner.overhang,
+                    bottom: -HankoBadgeCorner.overhang,
+                    child: _CornerStamp(markKey: badge!, ref: ref),
+                  ),
+                ],
+              ),
+            ),
+    );
+  }
+}
+
+/// Your badge's stamp on the monogram's corner (stage 5): the badge's 24 dp
+/// corner form with its sumi keyline, as HankoBadgeCorner draws it.
+///
+/// When you've just chosen it (AchievementsScreen.pressOnProfile), it's
+/// pressed on once you're back on Profile: P6's seal press in washi ink
+/// rather than coral, since it isn't a verdict (decision i), once the page
+/// or sheet you chose it on has gone. Never on an ordinary visit, and
+/// nothing loops; with Remove animations on it's simply there.
+class _CornerStamp extends StatefulWidget {
+  const _CornerStamp({required this.markKey, required this.ref});
+
+  final String markKey;
+  final MarkRef ref;
+
+  @override
+  State<_CornerStamp> createState() => _CornerStampState();
+}
+
+class _CornerStampState extends State<_CornerStamp> {
+  int _presses = 0;
+
+  // Hidden until it's pressed on, so it doesn't sit there first.
+  bool _waiting = false;
+  Timer? _wait;
+  Animation<double>? _covered;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _check();
+  }
+
+  @override
+  void didUpdateWidget(_CornerStamp oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.markKey == widget.markKey) return;
+    _stopWaiting();
+    _check();
+  }
+
+  @override
+  void dispose() {
+    _stopWaiting();
+    super.dispose();
+  }
+
+  void _stopWaiting() {
+    _wait?.cancel();
+    _wait = null;
+    _covered?.removeStatusListener(_onCovered);
+    _covered = null;
+    _waiting = false;
+  }
+
+  /// Whether this stamp was just chosen, and Profile is the screen on top
+  /// (ModalRoute.of rebuilds this when that changes). A page over Profile
+  /// is gone once its transition is; a sheet takes its closing time. Runs
+  /// before a build, so it sets state directly.
+  void _check() {
+    final route = ModalRoute.of(context);
+    if (_wait != null || _covered != null) return;
+    if (AchievementsScreen.pressOnProfile != widget.markKey) {
+      // Not chosen just now, or the choice was refused: simply there.
+      _waiting = false;
+      return;
+    }
+    _waiting = true;
+    if (route != null && !route.isCurrent) return;
+    AchievementsScreen.pressOnProfile = null;
+    if (MediaQuery.disableAnimationsOf(context)) {
+      // Remove animations: simply there, pressed (the press still ticks).
+      _waiting = false;
+      _presses++;
+      return;
+    }
+    final covered = route?.secondaryAnimation;
+    if (covered != null && covered.status != AnimationStatus.dismissed) {
+      _covered = covered..addStatusListener(_onCovered);
+    } else {
+      _wait = Timer(AchievementSlip.sheetClosing, _press);
+    }
+  }
+
+  void _onCovered(AnimationStatus status) {
+    if (status != AnimationStatus.dismissed) return;
+    _covered?.removeStatusListener(_onCovered);
+    _covered = null;
+    _press();
+  }
+
+  void _press() {
+    _wait = null;
+    if (!mounted) return;
+    setState(() {
+      _waiting = false;
+      _presses++;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return HankoSealPress(
+      presses: _presses,
+      ink: AppTheme.hankoWashi,
+      child: _waiting
+          ? const SizedBox.square(dimension: HankoBadgeCorner.size)
+          : HankoBadge(
+              id: widget.ref.achievement.id,
+              tier: widget.ref.carving,
+              size: HankoBadgeCorner.size,
+              keyline: true,
+              semanticLabel: 'Your badge, ${widget.ref.title}',
+            ),
+    );
+  }
+}
+
+/// Your badge's own button (stage 5): a 48 dp target centred on the stamp,
+/// laid over the header beside Edit Profile, never inside it. One screen
+/// reader stop, "Your badge, 100 finished", with the tap and keyboard focus
+/// in that node (CLAUDE.md). The stamp itself is painted by the monogram,
+/// so the button draws only its focus ring, round the stamp, when a
+/// keyboard has focus.
+class _BadgeButton extends StatefulWidget {
+  const _BadgeButton({required this.label, required this.onTap});
+
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  State<_BadgeButton> createState() => _BadgeButtonState();
+}
+
+class _BadgeButtonState extends State<_BadgeButton> {
+  bool _focused = false;
+
+  @override
+  void initState() {
+    super.initState();
+    FocusManager.instance.addHighlightModeListener(_onHighlightMode);
+  }
+
+  @override
+  void dispose() {
+    FocusManager.instance.removeHighlightModeListener(_onHighlightMode);
+    super.dispose();
+  }
+
+  // A switch between keyboard and touch shows or hides the ring at once.
+  void _onHighlightMode(FocusHighlightMode _) {
+    if (_focused && mounted) setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ring = _focused &&
+        FocusManager.instance.highlightMode == FocusHighlightMode.traditional;
+    // The stamp with its 2 dp keyline, and 3 dp of air round that.
+    const ringSide = HankoBadgeCorner.size + 2 * 2 + 2 * 3;
+    return Semantics(
+      container: true,
+      button: true,
+      label: widget.label,
+      child: SizedBox.square(
+        dimension: AppTheme.hankoTouch,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            Positioned.fill(
+              child: Material(
+                type: MaterialType.transparency,
+                child: InkWell(
+                  onTap: widget.onTap,
+                  onFocusChange: (focused) => setState(() => _focused = focused),
+                  splashFactory: NoSplash.splashFactory,
+                  highlightColor: Colors.transparent,
+                  hoverColor: Colors.transparent,
+                  focusColor: Colors.transparent,
+                  child: const ExcludeSemantics(child: SizedBox.expand()),
                 ),
               ),
             ),
+            if (ring)
+              IgnorePointer(
+                child: SizedBox.square(
+                  dimension: ringSide,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      border: Border.all(color: AppTheme.hankoWashi),
+                      borderRadius:
+                          BorderRadius.circular(AppTheme.hankoRadius + 5),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
     );
   }
 }
