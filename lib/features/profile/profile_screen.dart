@@ -138,7 +138,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     // record stands, so it loads the record instead of the pinned card,
     // which nothing shows any more (the data stays where it is).
     if (Achievements.replaceCards) {
-      AchievementsService.instance.load().catchError((Object _) {});
+      _beginRecord().catchError((Object _) {});
     } else {
       _loadFeaturedCard();
     }
@@ -161,6 +161,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
         setState(() => _featuredCard = Map<String, dynamic>.from(pinned.first as Map));
       }
     } catch (_) {}
+  }
+
+  /// The account Profile last asked to begin its record for, this session.
+  static String? _recordAskedFor;
+
+  /// Loads your record for the row. Day one waits for a list the server has
+  /// confirmed, and Profile's own snapshots can't give it one: once Home has
+  /// read the list they come from the cache, and the server's confirmation
+  /// is a metadata-only change the stream never hears (see the list's
+  /// comment in build). So until your record has begun, Profile asks for
+  /// it once a session (refresh, as the page does on open), and the row
+  /// says "Your record so far" before you've opened the page.
+  Future<void> _beginRecord() async {
+    final service = AchievementsService.instance;
+    await service.load();
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null || uid == _recordAskedFor) return;
+    if (service.state.value.record.started) return;
+    _recordAskedFor = uid;
+    await service.refresh();
   }
 
   /// The list snapshot last handed to achievements.

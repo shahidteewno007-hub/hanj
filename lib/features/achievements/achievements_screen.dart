@@ -44,8 +44,10 @@ import '../search/search_screen.dart';
 ///
 /// The record itself is AchievementsService's (worked out on the phone from
 /// the list). This page reads the list once more for the shows' titles and
-/// covers, feeds that snapshot to the service, so it doesn't read the list a
-/// second time, and asks for a refresh once the server has answered.
+/// covers, feeds each snapshot to the service, and asks it to refresh. A
+/// snapshot from the cache doesn't count as confirmed (the service's rule:
+/// the cache can hold part of a list), so the refresh reads the list once
+/// from the server while the record needs it.
 /// Opened from Profile's row, from the /cards route while
 /// [Achievements.replaceCards] is on, and from a tapped card_unlock
 /// notification.
@@ -282,14 +284,15 @@ class _Shows {
   }
 
   /// The shows behind an achievement that the list alone can name, newest
-  /// first. The ones that need the activity log or AniList's facts (a drop
-  /// and a return, the forms, the decades) name only their deciding show,
-  /// so their sheet never lists shows that don't belong.
+  /// first. Decades and Every form count every finished show, so those are
+  /// theirs. The ones that need the activity log or a season (a drop and a
+  /// return, a full year) name only their deciding show, so their sheet
+  /// never lists shows that don't belong.
   List<String> behind(Achievement a, String? param) {
     bool Function(Map<String, dynamic> e)? test;
     var bySeal = false;
     switch (a.id) {
-      case 'finished':
+      case 'finished' || 'decades' || 'forms':
         test = _finished;
       case 'episodes':
         test = (e) => _episodes(e) > 0;
@@ -407,6 +410,10 @@ String _shortDate(RecordMark m) {
 String _titleOf(MarkRef ref, RecordMark mark) =>
     ref.achievement.id == 'founder' && mark.n != null ? 'Founder #${mark.n}' : ref.title;
 
+/// [name] with "Top 9" held on one line, as the brief's 1.3x rule asks of
+/// counts ("Top 9" never splits).
+String _together(String name) => name.replaceAll('Top 9', 'Top${_nb}9');
+
 /// What a space or the sheet says about the level: "level 4 of 6".
 String? _levelOf(MarkRef ref) {
   final steps = ref.achievement.steps;
@@ -484,8 +491,8 @@ class _AchievementsScreenState extends State<AchievementsScreen> {
   }
 
   /// Reads the whole list (no order, no filter: the rules need all of it),
-  /// and hands each snapshot to the service, post-frame, so it reads the list
-  /// no second time. The refresh waits for the server's answer, or 3 s.
+  /// and hands each snapshot to the service, post-frame. The refresh starts
+  /// with the first snapshot, or after 3 s without one.
   void _listen() {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
@@ -508,9 +515,12 @@ class _AchievementsScreenState extends State<AchievementsScreen> {
       _entries = {for (final d in snap.docs) d.id: d.data()};
       _listFailed = false;
     });
+    // A snapshot from the cache never hears the server confirm it (that's
+    // metadata only), so the refresh doesn't wait for one: it reads the
+    // list itself when nothing confirmed has been fed.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _service.observeList(snap);
-      if (!snap.metadata.isFromCache) _refreshOnce();
+      _refreshOnce();
     });
   }
 
@@ -1084,9 +1094,9 @@ class _DayOneCard extends StatelessWidget {
                             ),
                             const SizedBox(height: 8),
                             Text(
-                              h.achievement.repeats
+                              _together(h.achievement.repeats
                                   ? h.achievement.name
-                                  : _titleOf(h.top, h.topMark),
+                                  : _titleOf(h.top, h.topMark)),
                               textAlign: TextAlign.center,
                               style: style.copyWith(height: 1.3),
                             ),
@@ -1342,22 +1352,32 @@ class _Space extends StatelessWidget {
     final String name;
     final String line;
     if (!earned) {
-      name = a.name;
+      name = _together(a.name);
       line = _notYetLine(a);
     } else if (a.id == 'founder') {
       name = _titleOf(held.top, held.topMark);
-      line = 'One of the first 50';
+      line = 'One of the first${_nb}50';
     } else if (a.repeats) {
       name = a.name;
       line = [for (final m in held.marks) m.$2.param].join(', ');
     } else {
-      name = _titleOf(held.top, held.topMark);
+      name = _together(_titleOf(held.top, held.topMark));
       line = _shortDate(held.topMark);
     }
 
     final matH = width * 1.06;
     final Widget art;
-    if (!earned) {
+    if (earned && a.id == 'founder') {
+      // Founder is a plate on the page, not a print (decision f): no mat and
+      // no room for one.
+      art = HankoBadge(
+        id: a.id,
+        tier: held.top.carving,
+        size: _spaceBadge,
+        number: held.topMark.n,
+        semanticLabel: name,
+      );
+    } else if (!earned) {
       art = SizedBox(
         height: matH,
         child: Center(
@@ -1379,7 +1399,7 @@ class _Space extends StatelessWidget {
       earned
           ? '$name${level == null ? '' : ', ${a.name}, $level'}'
           : '${a.name}. Not yet',
-      line,
+      if (line != 'Not yet') line,
     ].where((s) => s.isNotEmpty).join('. ');
 
     return Semantics(
