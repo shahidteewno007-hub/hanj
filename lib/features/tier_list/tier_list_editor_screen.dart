@@ -12,6 +12,7 @@
 //    Screen readers get the same moves as custom actions.
 // Every change saves itself on the device half a second later.
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -64,6 +65,9 @@ class _TierListEditorScreenState extends State<TierListEditorScreen> {
   bool _insertAfter = false;
   Timer? _autoScroll;
   double _autoSpeed = 0;
+
+  /// Round nine: Edit tiers, where the board becomes a list of its tiers.
+  bool _editing = false;
 
   static const _trayId = '\u0000tray';
 
@@ -123,7 +127,9 @@ class _TierListEditorScreenState extends State<TierListEditorScreen> {
     if (tierId == null || tierId == _trayId) return 'Unranked';
     final t = _list.tierById(tierId);
     if (t == null) return 'Unranked';
-    return t.label.trim().isEmpty ? 'tier ${_list.indexOfTier(t.id) + 1}' : '${t.label} tier';
+    if (t.label.trim().isNotEmpty) return '${t.label} tier';
+    // Round nine: an unnamed tier is "Tier 3" everywhere.
+    return TierListSwitches.editTiers ? _list.displayName(t) : 'tier ${_list.indexOfTier(t.id) + 1}';
   }
 
   /// Runs a move, then keeps keyboard focus on the character who moved and
@@ -316,7 +322,7 @@ class _TierListEditorScreenState extends State<TierListEditorScreen> {
   Future<void> _editTier(Tier tier) async {
     final result = await showTierSheet<_TierEdit>(
       context,
-      (_) => _TierSheet(list: _list, tier: tier),
+      (_) => _TierSheet(list: _list, tier: tier, onLive: _changed),
     );
     if (!mounted || result == null) return;
     switch (result) {
@@ -339,6 +345,10 @@ class _TierListEditorScreenState extends State<TierListEditorScreen> {
           });
         }
       case _TierDeleted():
+        if (TierListSwitches.editTiers) {
+          _removeTier(tier);
+          return;
+        }
         final had = tier.characterIds.length;
         if (_list.removeTier(tier.id)) {
           _changed();
@@ -347,6 +357,46 @@ class _TierListEditorScreenState extends State<TierListEditorScreen> {
           }
         }
     }
+  }
+
+  /// Round nine: removes a tier, its characters going back to unranked as
+  /// Delete tier did, with Undo, which puts back the tiers and every place
+  /// exactly as they were.
+  void _removeTier(Tier t) {
+    final name = _list.displayName(t);
+    final had = t.characterIds.length;
+    final snapshot = TierList.fromJson(jsonDecode(jsonEncode(_list.toJson())));
+    if (!_list.removeTier(t.id)) return;
+    _changed();
+    tierToast(
+      context,
+      switch (had) {
+        0 => 'Removed $name.',
+        1 => 'Removed $name. 1 character went back to unranked.',
+        _ => 'Removed $name. $had characters went back to unranked.',
+      },
+      actionLabel: 'Undo',
+      onAction: snapshot == null
+          ? null
+          : () {
+              if (!mounted) return;
+              _list.restoreFrom(snapshot);
+              _changed();
+              _announce('$name is back');
+            },
+    );
+  }
+
+  void _stepTier(Tier t, int step) {
+    if (!_list.moveTier(t.id, step)) return;
+    _changed();
+    _announce('${_list.displayName(t)}: ${_list.indexOfTier(t.id) + 1} of ${_list.tiers.length}');
+  }
+
+  void _setEditing(bool on) {
+    if (_editing == on) return;
+    setState(() => _editing = on);
+    _announce(on ? 'Editing tiers' : 'Done editing tiers');
   }
 
   Future<void> _renameList() async {
@@ -363,6 +413,8 @@ class _TierListEditorScreenState extends State<TierListEditorScreen> {
 
   Future<void> _menu(String value) async {
     switch (value) {
+      case 'edit-tiers':
+        _setEditing(true);
       case 'rename':
         await _renameList();
       case 'add-tier':
@@ -438,7 +490,7 @@ class _TierListEditorScreenState extends State<TierListEditorScreen> {
     );
     final tint = _coverTint();
 
-    return Scaffold(
+    final page = Scaffold(
       backgroundColor: AppTheme.hankoSumi,
       body: SafeArea(
         child: Column(
@@ -448,7 +500,7 @@ class _TierListEditorScreenState extends State<TierListEditorScreen> {
             Center(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 860),
-                child: _topBar(),
+                child: _editing ? _editTopBar() : _topBar(),
               ),
             ),
             Expanded(
@@ -484,11 +536,35 @@ class _TierListEditorScreenState extends State<TierListEditorScreen> {
                           _header(),
                           const SizedBox(height: 14),
                           for (final t in _list.tiers) ...[
-                            KeyedSubtree(key: ValueKey('tier-${t.id}'), child: _tierRow(t, plateW, tokenW)),
+                            KeyedSubtree(
+                              key: ValueKey('tier-${t.id}'),
+                              child: _editing ? _editRow(t, plateW) : _tierRow(t, plateW, tokenW),
+                            ),
                             const SizedBox(height: 2),
                           ],
                           const SizedBox(height: 10),
-                          if (_list.tiers.length < TierList.maxTiers)
+                          if (TierListSwitches.editTiers)
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: [
+                                if (_list.tiers.length < TierList.maxTiers)
+                                  TierGhostButton(
+                                    label: 'Add a tier',
+                                    icon: Icons.add_rounded,
+                                    dense: true,
+                                    onTap: () => _menu('add-tier'),
+                                  ),
+                                if (!_editing)
+                                  TierGhostButton(
+                                    label: 'Edit tiers',
+                                    icon: Icons.tune_rounded,
+                                    dense: true,
+                                    onTap: () => _setEditing(true),
+                                  ),
+                              ],
+                            )
+                          else if (_list.tiers.length < TierList.maxTiers)
                             Align(
                               alignment: Alignment.centerLeft,
                               child: TierGhostButton(
@@ -505,9 +581,106 @@ class _TierListEditorScreenState extends State<TierListEditorScreen> {
                 ],
               ),
             ),
-            _tray(tokenW),
+            if (!_editing) _tray(tokenW),
           ],
         ),
+      ),
+    );
+    if (!TierListSwitches.editTiers) return page;
+    // Round nine: Back leaves Edit tiers before it leaves the list.
+    return PopScope(
+      canPop: !_editing,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && _editing) _setEditing(false);
+      },
+      child: page,
+    );
+  }
+
+  /// Round nine: Edit tiers' top bar. Back and Done both leave the mode.
+  Widget _editTopBar() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 4, 12, 4),
+      child: Row(
+        children: [
+          IconButton(
+            tooltip: 'Back',
+            icon: const Icon(Icons.arrow_back_rounded, color: AppTheme.hankoWashi),
+            onPressed: () => _setEditing(false),
+          ),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 10),
+              child: Semantics(
+                header: true,
+                child: Text('Edit tiers', style: AppTheme.hankoSerif(fontSize: 20)),
+              ),
+            ),
+          ),
+          const SizedBox(width: 6),
+          TierMainButton(label: 'Done', icon: Icons.check_rounded, onTap: () => _setEditing(false)),
+        ],
+      ),
+    );
+  }
+
+  /// Round nine: a tier in Edit tiers, as a short strip: its plate (tap to
+  /// rename or recolour it), how many it holds, then up, down and remove.
+  Widget _editRow(Tier t, double plateW) {
+    final i = _list.indexOfTier(t.id);
+    final n = t.characterIds.length;
+    final name = _list.displayName(t);
+    final canRemove = _list.tiers.length > TierList.minTiers;
+    Widget action(IconData icon, String label, VoidCallback? onTap) => IconButton(
+          tooltip: label,
+          icon: Icon(icon, color: onTap == null ? AppTheme.hankoEdge : AppTheme.hankoWashi),
+          onPressed: onTap,
+        );
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          TierPressable(
+            label: '$name. ${n == 1 ? '1 character' : '$n characters'}',
+            hint: 'Rename or recolour this tier',
+            onTap: () => _editTier(t),
+            ringInset: 2,
+            child: TierPlate(
+              label: t.label,
+              pigment: TierPigment.at(t.pigment),
+              width: plateW,
+              minHeight: 56,
+              placeholder: 'Name',
+            ),
+          ),
+          Expanded(
+            child: ColoredBox(
+              color: AppTheme.hankoSumi2,
+              child: Row(
+                children: [
+                  const SizedBox(width: 12),
+                  // The count, as a figure: the plate's spoken label says it
+                  // in words.
+                  const ExcludeSemantics(child: Icon(Icons.person_rounded, size: 16, color: AppTheme.hankoAsh)),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: ExcludeSemantics(
+                      child: Text(
+                        '$n',
+                        maxLines: 1,
+                        style: AppTheme.hankoSans(fontSize: 14, weight: FontWeight.w500, color: AppTheme.hankoStone, tabular: true),
+                      ),
+                    ),
+                  ),
+                  action(Icons.arrow_upward_rounded, 'Move $name up', i > 0 ? () => _stepTier(t, -1) : null),
+                  action(Icons.arrow_downward_rounded, 'Move $name down',
+                      i < _list.tiers.length - 1 ? () => _stepTier(t, 1) : null),
+                  action(Icons.delete_outline_rounded, 'Remove $name', canRemove ? () => _removeTier(t) : null),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -568,6 +741,7 @@ class _TierListEditorScreenState extends State<TierListEditorScreen> {
             itemBuilder: (_) => [
               _menuItem('rename', Icons.edit_rounded, 'Rename list'),
               _menuItem('add-tier', Icons.playlist_add_rounded, 'Add a tier'),
+              if (TierListSwitches.editTiers) _menuItem('edit-tiers', Icons.tune_rounded, 'Edit tiers'),
               _menuItem('unrank', Icons.move_down_rounded, 'Send everyone to unranked'),
               _menuItem('delete', Icons.delete_outline_rounded, 'Delete list'),
             ],
@@ -1056,7 +1230,7 @@ class _CharacterSheet extends StatelessWidget {
                         const SizedBox(height: 8),
                         TierEyebrow(current == null
                             ? 'Unranked'
-                            : '${current.label.trim().isEmpty ? 'Unnamed tier' : current.label}  ·  ${i + 1} of ${slot.length}'),
+                            : '${current.label.trim().isEmpty ? (TierListSwitches.editTiers ? list.displayName(current) : 'Unnamed tier') : current.label}  ·  ${i + 1} of ${slot.length}'),
                       ],
                     ),
                   ),
@@ -1193,9 +1367,14 @@ class _TierDeleted extends _TierEdit {
 }
 
 class _TierSheet extends StatefulWidget {
-  const _TierSheet({required this.list, required this.tier});
+  const _TierSheet({required this.list, required this.tier, required this.onLive});
   final TierList list;
   final Tier tier;
+
+  /// Round nine: the sheet saves as you type, so the plate behind it
+  /// changes with it and swiping the sheet away keeps the name. Called
+  /// after each change.
+  final VoidCallback onLive;
 
   @override
   State<_TierSheet> createState() => _TierSheetState();
@@ -1206,9 +1385,28 @@ class _TierSheetState extends State<_TierSheet> {
   late int _pigment = widget.tier.pigment;
 
   @override
+  void initState() {
+    super.initState();
+    if (TierListSwitches.editTiers) _name.addListener(_liveName);
+  }
+
+  @override
   void dispose() {
     _name.dispose();
     super.dispose();
+  }
+
+  void _liveName() {
+    final before = widget.tier.label;
+    widget.list.renameTier(widget.tier.id, _name.text);
+    if (widget.tier.label != before) widget.onLive();
+  }
+
+  void _setPigment(int p) {
+    setState(() => _pigment = p);
+    if (!TierListSwitches.editTiers) return;
+    widget.list.setPigment(widget.tier.id, p);
+    widget.onLive();
   }
 
   void _done() => Navigator.pop(context, _TierSaved(_name.text, _pigment));
@@ -1307,7 +1505,7 @@ class _TierSheetState extends State<_TierSheet> {
                           TierPressable(
                             label: TierPigment.all[p].name,
                             selected: p == _pigment,
-                            onTap: () => setState(() => _pigment = p),
+                            onTap: () => _setPigment(p),
                             child: SizedBox(
                               width: AppTheme.hankoTouch,
                               height: AppTheme.hankoTouch,

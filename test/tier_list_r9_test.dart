@@ -91,6 +91,72 @@ void main() {
         await _finish(tester);
       });
     }
+
+    if (TierListSwitches.editTiers) {
+      testWidgets('Edit tiers: remove a tier and Undo it, move one, ${scale}x text', (tester) async {
+        _phone(tester, scale);
+        final list = _sample('anime-dads');
+        String places() => [for (final t in list.tiers) '${t.id}:${t.characterIds.join(",")}'].join(' ');
+        final before = places();
+        final topId = list.tiers.first.id;
+        final second = list.tiers[1];
+        await _show(tester, TierListEditorScreen(list: list));
+        // From the top bar's menu (the button under the board is off screen
+        // at large text).
+        await tester.tap(find.byTooltip('More'));
+        await _settle(tester);
+        await tester.tap(find.text('Edit tiers').last);
+        await _settle(tester);
+        expect(find.text('Done'), findsOneWidget, reason: 'the top bar says Edit tiers, with Done');
+        expect(_drain(tester), isEmpty, reason: 'Edit tiers');
+
+        // Remove the second tier: its characters go to unranked.
+        final had = second.characterIds.length;
+        expect(had, greaterThan(0));
+        await tester.tap(find.byTooltip('Remove ${second.label}'));
+        await _settle(tester);
+        expect(list.tierById(second.id), isNull);
+        expect(list.unranked.length, 2 + had);
+        expect(find.text('Undo'), findsOneWidget);
+        await tester.tap(find.text('Undo'));
+        await _settle(tester);
+        expect(places(), before, reason: 'Undo puts every place back');
+
+        // Move the top tier down one.
+        await tester.tap(find.byTooltip('Move ${list.tiers.first.label} down'));
+        await _settle(tester);
+        expect(list.tiers[1].id, topId);
+        expect(_drain(tester), isEmpty, reason: 'after the moves');
+
+        await tester.tap(find.text('Done'));
+        await _settle(tester);
+        expect(find.text('Done'), findsNothing);
+        await _finish(tester);
+      });
+
+      testWidgets('the tier sheet saves as you type, and swiping it away keeps the name, ${scale}x text',
+          (tester) async {
+        _phone(tester, scale);
+        final list = _sample('blank', n: 2, placed: 0);
+        await _show(tester, TierListEditorScreen(list: list));
+        // An unnamed tier's plate opens its sheet, to name it.
+        final plate = find.bySemanticsLabel(RegExp(r'^Tier 1, unnamed\.'), skipOffstage: false).first;
+        await tester.ensureVisible(plate);
+        await tester.pump(const Duration(milliseconds: 300));
+        await tester.tap(plate);
+        await _settle(tester);
+        expect(find.text('Edit tier'), findsOneWidget);
+        await tester.enterText(find.byType(TextField), 'Peak');
+        await tester.pump();
+        expect(list.tiers.first.label, 'Peak', reason: 'saved before Done');
+        // Dismiss the sheet without Done.
+        tester.state<NavigatorState>(find.byType(Navigator).first).pop();
+        await _settle(tester);
+        expect(list.tiers.first.label, 'Peak');
+        expect(_drain(tester), isEmpty);
+        await _finish(tester);
+      });
+    }
   }
 
   for (final scale in [1.0, 1.3]) {

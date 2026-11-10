@@ -292,7 +292,9 @@ class TierListPoster extends StatelessWidget {
     final parts = <String>[list.title];
     for (final t in list.tiers) {
       final names = [for (final id in t.characterIds) list.characters[id]?.name ?? ''];
-      final label = t.label.trim().isEmpty ? 'Unnamed tier' : t.label;
+      final label = t.label.trim().isEmpty
+          ? (TierListSwitches.editTiers ? list.displayName(t) : 'Unnamed tier')
+          : t.label;
       parts.add(names.isEmpty ? '$label: nobody' : '$label: ${names.join(', ')}');
     }
     return parts.join('. ');
