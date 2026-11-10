@@ -128,6 +128,7 @@ class TierList {
     Map<int, TierCharacter>? characters,
     required this.createdAt,
     DateTime? updatedAt,
+    this.verdict,
   })  : unranked = unranked ?? <int>[],
         characters = characters ?? <int, TierCharacter>{},
         updatedAt = updatedAt ?? createdAt;
@@ -154,6 +155,13 @@ class TierList {
   final Map<int, TierCharacter> characters;
   final DateTime createdAt;
   DateTime updatedAt;
+
+  /// A gauntlet's answer (round nine): the id of the tier where its
+  /// challenger falls, [verdictClear] when they clear every phase, or null
+  /// while the list leaves it open. Tier lists never set it.
+  String? verdict;
+
+  static const String verdictClear = 'clear';
 
   int get count => characters.length;
   int get rankedCount => count - unranked.length;
@@ -249,6 +257,68 @@ class TierList {
     return move(characterId, toTierId: target == tiers.length ? null : tiers[target].id, index: at);
   }
 
+  /// Puts [picked] at the end of the tier [tierId] (round nine: a tier you
+  /// tapped). New characters join the list, up to [maxCharacters]; ones
+  /// waiting in the unranked tray move up. Anyone already in a tier stays
+  /// where they are. Returns how many landed in the tier.
+  int addTo(String tierId, Iterable<TierCharacter> picked) {
+    final tier = tierById(tierId);
+    if (tier == null) return 0;
+    var landed = 0;
+    for (final c in picked) {
+      if (characters.containsKey(c.id)) {
+        if (!unranked.remove(c.id)) continue;
+      } else {
+        if (isFull) continue;
+        characters[c.id] = c;
+      }
+      tier.characterIds.add(c.id);
+      landed++;
+    }
+    if (landed > 0) _touch();
+    return landed;
+  }
+
+  /// Makes [c] the only one in the tier [tierId], as a gauntlet's slot
+  /// holds one: whoever was there leaves the list, and if [c] was already
+  /// on it (in another slot, or the tray) they move here. Returns false
+  /// when nothing changed.
+  bool setSlot(String tierId, TierCharacter c) {
+    final tier = tierById(tierId);
+    if (tier == null) return false;
+    if (tier.characterIds.length == 1 && tier.characterIds.first == c.id) return false;
+    final isNew = !characters.containsKey(c.id);
+    final leaving = tier.characterIds.where((o) => o != c.id).length;
+    if (isNew && count - leaving >= maxCharacters) return false;
+    // A verdict on this slot stays with whoever holds it next.
+    final kept = verdict;
+    for (final old in List.of(tier.characterIds)) {
+      if (old != c.id) remove(old);
+    }
+    if (isNew) {
+      characters[c.id] = c;
+      tier.characterIds.insert(0, c.id);
+    } else {
+      move(c.id, toTierId: tierId, index: 0);
+    }
+    verdict = kept;
+    _dropStaleVerdict();
+    _touch();
+    return true;
+  }
+
+  /// Takes everyone in the tier [tierId] off the list. Returns how many
+  /// left.
+  int clearTier(String tierId) {
+    final tier = tierById(tierId);
+    if (tier == null) return 0;
+    final gone = List.of(tier.characterIds);
+    for (final id in gone) {
+      remove(id);
+    }
+    return gone.length;
+  }
+
   /// Takes [characterId] off the list altogether.
   bool remove(int characterId) {
     if (characters.remove(characterId) == null) return false;
@@ -256,8 +326,40 @@ class TierList {
       t.characterIds.remove(characterId);
     }
     unranked.remove(characterId);
+    _dropStaleVerdict();
     _touch();
     return true;
+  }
+
+  /// Puts back the tiers, places and verdict of [snapshot] (an Undo): a
+  /// copy of this list taken before the change, through JSON.
+  void restoreFrom(TierList snapshot) {
+    tiers
+      ..clear()
+      ..addAll(snapshot.tiers);
+    unranked
+      ..clear()
+      ..addAll(snapshot.unranked);
+    characters
+      ..clear()
+      ..addAll(snapshot.characters);
+    verdict = snapshot.verdict;
+    _touch();
+  }
+
+  /// A tier's name for people: its label, or "Tier 3" while it has none.
+  String displayName(Tier t) {
+    final l = t.label.trim();
+    return l.isEmpty ? 'Tier ${indexOfTier(t.id) + 1}' : l;
+  }
+
+  /// A verdict only means something while its tier exists and holds
+  /// someone.
+  void _dropStaleVerdict() {
+    final v = verdict;
+    if (v == null || v == verdictClear) return;
+    final t = tierById(v);
+    if (t == null || t.characterIds.isEmpty) verdict = null;
   }
 
   /// Sends every placed character back to the tray, keeping the tiers.
@@ -307,6 +409,7 @@ class TierList {
     if (i < 0) return false;
     unranked.addAll(tiers[i].characterIds);
     tiers.removeAt(i);
+    _dropStaleVerdict();
     _touch();
     return true;
   }
@@ -365,6 +468,7 @@ class TierList {
         'characters': [for (final c in characters.values) c.toJson()],
         'createdAt': createdAt.millisecondsSinceEpoch,
         'updatedAt': updatedAt.millisecondsSinceEpoch,
+        if (verdict != null) 'verdict': verdict,
       };
 
   /// Reads a saved list. Anything inconsistent (a character in two places,
@@ -399,6 +503,13 @@ class TierList {
     DateTime at(Object? ms) => ms is int
         ? DateTime.fromMillisecondsSinceEpoch(ms)
         : DateTime.fromMillisecondsSinceEpoch(0);
+    // Saves from before round nine have no verdict; one naming a tier that
+    // is gone, or empty, is dropped.
+    final v = json['verdict'];
+    final verdict = v == verdictClear ||
+            (v is String && tiers.any((t) => t.id == v && t.characterIds.isNotEmpty))
+        ? v as String
+        : null;
     return TierList(
       id: id,
       title: (json['title'] as String?) ?? 'Tier list',
@@ -409,6 +520,7 @@ class TierList {
       characters: chars,
       createdAt: at(json['createdAt']),
       updatedAt: at(json['updatedAt']),
+      verdict: verdict,
     );
   }
 }

@@ -103,8 +103,34 @@ TierListTemplate? tierTemplateById(String id) {
   for (final t in kTierTemplates) {
     if (t.id == id) return t;
   }
+  if (TierListSwitches.gauntlet && id == kGauntletTemplate.id) return kGauntletTemplate;
   return null;
 }
+
+/// Round nine: the Gauntlet. One challenger against five opponents, one
+/// phase after another, each harder: how far do they go? People post these
+/// as questions ("How far does Naruto get?") and answer them in the
+/// replies. The first tier holds the challenger and each phase one
+/// opponent; `TierList.verdict` keeps where the challenger falls, if the
+/// list says. tier_list_gauntlet.dart draws the board and the picture.
+/// It isn't in [kTierTemplates]: it has its own card on the start screen.
+const kGauntletTemplate = TierListTemplate(
+  id: 'gauntlet',
+  name: 'Gauntlet',
+  title: 'Gauntlet',
+  prompt: 'Five fights in a row, each one harder.',
+  kind: TierTemplateKind.power,
+  tiers: ['Challenger', 'Phase 1', 'Phase 2', 'Phase 3', 'Phase 4', 'Phase 5'],
+  // Gold for the challenger; the phases warm from bamboo to peony as they
+  // get harder.
+  pigments: [_gold, _bamboo, _teal, _sky, _wisteria, _peony],
+  icon: Icons.sports_mma_rounded,
+  // Round seven checked each name against the picker's own AniList search.
+  characters: [
+    'Naruto Uzumaki', 'Monkey D. Luffy', 'Gojo Satoru', 'Goku', 'Saitama',
+    'Sukuna', 'Madara Uchiha', 'Levi', 'Roronoa Zoro', 'Meruem',
+  ],
+);
 
 // Pigment indexes (TierPigment.all), for templates whose floor is a
 // "who?" or "trash" row rather than the next colour down.

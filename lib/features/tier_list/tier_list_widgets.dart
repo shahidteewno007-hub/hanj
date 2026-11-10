@@ -22,6 +22,27 @@ import 'package:flutter/semantics.dart';
 import '../../core/theme/app_theme.dart';
 import 'tier_list_model.dart';
 
+/// Round nine's switches (2026-11-10). Each false gives `07faabe`'s look
+/// and behaviour back for its part; all four false give `07faabe` itself.
+abstract final class TierListSwitches {
+  /// A new list opens on its board, and tapping a tier picks characters
+  /// for that tier, with quick picks in the picker. Off: the picker opens
+  /// first, and everyone lands in the unranked tray.
+  static const bool tapToFill = true;
+
+  /// Edit tiers: remove, reorder and rename tiers in one place, with Undo,
+  /// and a tier sheet that saves as you type. Unnamed tiers are "Tier N".
+  static const bool editTiers = true;
+
+  /// Each row tinted with its tier's colour, and two lines of name under
+  /// every face.
+  static const bool boardLook = true;
+
+  /// The Gauntlet template (tier_list_gauntlet.dart): one challenger
+  /// against five phases.
+  static const bool gauntlet = true;
+}
+
 /// A tier colour.
 class TierPigment {
   const TierPigment(this.name, this.color, {this.ink = AppTheme.hankoSumi});
@@ -610,8 +631,9 @@ class TierTextSelection extends StatelessWidget {
       );
 }
 
-/// A short floating message in Hanko's colours.
-void tierToast(BuildContext context, String message) {
+/// A short floating message in Hanko's colours, with an optional action
+/// (Undo) that keeps it up a little longer.
+void tierToast(BuildContext context, String message, {String? actionLabel, VoidCallback? onAction}) {
   final messenger = ScaffoldMessenger.maybeOf(context);
   if (messenger == null) return;
   messenger
@@ -621,6 +643,9 @@ void tierToast(BuildContext context, String message) {
       backgroundColor: AppTheme.hankoSumi3,
       behavior: SnackBarBehavior.floating,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppTheme.hankoRadius)),
-      duration: const Duration(seconds: 3),
+      duration: Duration(seconds: onAction == null ? 3 : 6),
+      action: onAction == null
+          ? null
+          : SnackBarAction(label: actionLabel ?? 'Undo', textColor: AppTheme.hankoWashi, onPressed: onAction),
     ));
 }
