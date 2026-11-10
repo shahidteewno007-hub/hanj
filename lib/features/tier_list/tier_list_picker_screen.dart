@@ -24,6 +24,14 @@ class TierSearchIdeas {
   bool get isEmpty => anime.isEmpty && characters.isEmpty;
 }
 
+/// The tier a pick is for (round nine): what was picked lands there, and
+/// the header names it in the tier's own colour.
+class TierPickTarget {
+  const TierPickTarget({required this.label, required this.pigment});
+  final String label;
+  final TierPigment pigment;
+}
+
 enum _Mode { anime, characters }
 
 class TierCharacterPickerScreen extends StatefulWidget {
@@ -32,6 +40,12 @@ class TierCharacterPickerScreen extends StatefulWidget {
     required this.alreadyOnList,
     required this.room,
     this.ideas = const TierSearchIdeas(),
+    this.target,
+    this.waiting = const [],
+    this.listAnime = const [],
+    this.fromOtherLists = const [],
+    this.single = false,
+    this.current,
   });
 
   /// Character ids already on the list; shown as such and not pickable.
@@ -40,6 +54,24 @@ class TierCharacterPickerScreen extends StatefulWidget {
   /// How many more the list can take.
   final int room;
   final TierSearchIdeas ideas;
+
+  /// Round nine: the tier these picks are for, or null for the tray.
+  final TierPickTarget? target;
+
+  /// Quick picks, shown before anything is typed (round nine), none of
+  /// them a request: characters waiting in the tray (picking one moves them
+  /// to [target]), the anime already on the list (tap opens the cast), and
+  /// characters from the person's other lists.
+  final List<TierCharacter> waiting;
+  final List<TierAnime> listAnime;
+  final List<TierCharacter> fromOtherLists;
+
+  /// One pick, and the picker closes with it (a gauntlet's slot). Remove
+  /// closes with an empty list.
+  final bool single;
+
+  /// Who holds the slot now, in [single] mode.
+  final TierCharacter? current;
 
   @override
   State<TierCharacterPickerScreen> createState() => _TierCharacterPickerScreenState();
@@ -176,8 +208,14 @@ class _TierCharacterPickerScreenState extends State<TierCharacterPickerScreen> {
 
   bool _onList(int id) => widget.alreadyOnList.contains(id);
 
+  late final Set<int> _waitingIds = {for (final c in widget.waiting) c.id};
+
   void _toggle(TierCharacter c) {
     if (_onList(c.id)) return;
+    if (widget.single) {
+      Navigator.of(context).pop(<TierCharacter>[c]);
+      return;
+    }
     setState(() {
       if (_picked.remove(c.id) == null) {
         if (_picked.length >= widget.room) {
@@ -246,12 +284,47 @@ class _TierCharacterPickerScreenState extends State<TierCharacterPickerScreen> {
           ),
           const SizedBox(width: 4),
           Expanded(
-            child: Semantics(
-              header: true,
-              child: Text('Add characters', style: AppTheme.hankoSerif(fontSize: 20)),
-            ),
+            child: widget.target == null
+                ? Semantics(
+                    header: true,
+                    child: Text('Add characters', style: AppTheme.hankoSerif(fontSize: 20)),
+                  )
+                : _targetTitle(widget.target!),
           ),
         ],
+      ),
+    );
+  }
+
+  /// "Add to [S]", the tier as a chip in its own colour (round nine).
+  Widget _targetTitle(TierPickTarget t) {
+    final verb = widget.single ? 'Pick for' : 'Add to';
+    return Semantics(
+      header: true,
+      label: '$verb ${t.label}',
+      child: ExcludeSemantics(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Wrap(
+            spacing: 10,
+            runSpacing: 6,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Text(verb, style: AppTheme.hankoSerif(fontSize: 20)),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: t.pigment.color,
+                  borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+                ),
+                child: Text(
+                  t.label,
+                  style: AppTheme.hankoSerif(fontSize: 17, color: t.pigment.ink, height: 1.2),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -367,7 +440,9 @@ class _TierCharacterPickerScreenState extends State<TierCharacterPickerScreen> {
   Widget _castView() {
     final a = _open!;
     final tint = a.color == null ? null : AppTheme.hankoCoverTint(Color(a.color!));
-    final mainLeft = _cast.any((p) => p.role == 'MAIN' && !_onList(p.character.id) && !_picked.containsKey(p.character.id));
+    // One pick at a time has no use for the whole main cast.
+    final mainLeft = !widget.single &&
+        _cast.any((p) => p.role == 'MAIN' && !_onList(p.character.id) && !_picked.containsKey(p.character.id));
     final header = Container(
       decoration: tint == null
           ? null
@@ -484,6 +559,7 @@ class _TierCharacterPickerScreenState extends State<TierCharacterPickerScreen> {
                     pick: p,
                     picked: _picked.containsKey(p.character.id),
                     onList: _onList(p.character.id),
+                    waiting: _waitingIds.contains(p.character.id),
                     showAnime: showAnime,
                     onTap: () => _toggle(p.character),
                   );
@@ -505,10 +581,13 @@ class _TierCharacterPickerScreenState extends State<TierCharacterPickerScreen> {
       children: [
         Text(
           _mode == _Mode.anime
-              ? 'Find an anime, then pick from its cast. Your picks stay while you search another, so one list can mix shows.'
+              ? (widget.single
+                  ? 'Find an anime, then pick from its cast.'
+                  : 'Find an anime, then pick from its cast. Your picks stay while you search another, so one list can mix shows.')
               : 'Find anyone by name, from any anime.',
           style: AppTheme.hankoSans(fontSize: 14, color: AppTheme.hankoStone, height: 1.4),
         ),
+        ..._quickPicks(),
         if (!ideas.isEmpty) ...[
           const SizedBox(height: 20),
           if (ideas.characters.isNotEmpty) ...[
@@ -537,6 +616,66 @@ class _TierCharacterPickerScreenState extends State<TierCharacterPickerScreen> {
           ],
         ],
       ],
+    );
+  }
+
+  /// Round nine's quick picks, before anything is typed. None asks AniList
+  /// anything: the tray, the anime already on the list (their casts are
+  /// kept six hours) and the person's other lists.
+  List<Widget> _quickPicks() {
+    final waiting = [for (final c in widget.waiting) if (!_onList(c.id)) c];
+    final others = [for (final c in widget.fromOtherLists) if (!_onList(c.id)) c];
+    // Faces first, one tap each; the anime rows open a cast, a tap more.
+    return [
+      if (waiting.isNotEmpty) ...[
+        const SizedBox(height: 20),
+        TierEyebrow('Waiting in unranked  ·  ${waiting.length}'),
+        const SizedBox(height: 8),
+        _strip(waiting),
+      ],
+      if (others.isNotEmpty) ...[
+        const SizedBox(height: 20),
+        const TierEyebrow('From your other lists'),
+        const SizedBox(height: 8),
+        _strip(others),
+      ],
+      if (widget.listAnime.isNotEmpty) ...[
+        const SizedBox(height: 20),
+        const TierEyebrow('Anime on this list'),
+        const SizedBox(height: 2),
+        for (final a in widget.listAnime) _AnimeRow(anime: a, onTap: () => _openCast(a)),
+      ],
+    ];
+  }
+
+  /// A row of pickable faces that scrolls sideways.
+  Widget _strip(List<TierCharacter> people) {
+    final s = MediaQuery.textScalerOf(context);
+    const w = 64.0;
+    // The tile's portrait, two lines of name and one of anime, as _grid
+    // measures them.
+    final h = w * 1.5 + 5 + s.scale(13) * 1.2 * 2 + s.scale(11) * 1.3 + 4;
+    return SizedBox(
+      height: h,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: people.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 8),
+        itemBuilder: (_, i) {
+          final c = people[i];
+          return SizedBox(
+            width: w,
+            child: _PickTile(
+              pick: TierPick(c),
+              picked: _picked.containsKey(c.id),
+              onList: false,
+              waiting: false,
+              showAnime: true,
+              onTap: () => _toggle(c),
+            ),
+          );
+        },
+      ),
     );
   }
 
@@ -570,7 +709,56 @@ class _TierCharacterPickerScreenState extends State<TierCharacterPickerScreen> {
         ),
       );
 
+  /// One pick closes the picker, so there is no Add: just who is there now,
+  /// with Remove.
+  Widget _singleFooter() {
+    final now = widget.current;
+    return Container(
+      decoration: const BoxDecoration(
+        color: AppTheme.hankoSumi2,
+        border: Border(top: BorderSide(color: AppTheme.hankoHairline)),
+      ),
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+      constraints: const BoxConstraints(minHeight: AppTheme.hankoTouch + 20),
+      child: Row(
+        children: [
+          Expanded(
+            child: now == null
+                ? Text(
+                    'Tap someone to choose them.',
+                    style: AppTheme.hankoSans(fontSize: 13, color: AppTheme.hankoStone),
+                  )
+                : Row(
+                    children: [
+                      ExcludeSemantics(child: CharacterPortrait(character: now, width: 26, showName: false)),
+                      const SizedBox(width: 10),
+                      Flexible(
+                        child: Text(
+                          'Now: ${now.name}',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTheme.hankoSans(fontSize: 13, weight: FontWeight.w500, color: AppTheme.hankoStoneHi),
+                        ),
+                      ),
+                    ],
+                  ),
+          ),
+          if (now != null) ...[
+            const SizedBox(width: 10),
+            TierGhostButton(
+              label: 'Remove',
+              icon: Icons.close_rounded,
+              dense: true,
+              onTap: () => Navigator.of(context).pop(const <TierCharacter>[]),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   Widget _footer() {
+    if (widget.single) return _singleFooter();
     final n = _picked.length;
     final faces = _picked.values.toList().reversed.take(5).toList();
     return Container(
@@ -770,6 +958,7 @@ class _PickTile extends StatelessWidget {
     required this.pick,
     required this.picked,
     required this.onList,
+    required this.waiting,
     required this.showAnime,
     required this.onTap,
   });
@@ -777,6 +966,9 @@ class _PickTile extends StatelessWidget {
   final TierPick pick;
   final bool picked;
   final bool onList;
+
+  /// In the unranked tray (round nine): pickable, and picking moves them.
+  final bool waiting;
   final bool showAnime;
   final VoidCallback onTap;
 
@@ -790,7 +982,9 @@ class _PickTile extends StatelessWidget {
       _ => null,
     };
     final sub = showAnime ? c.mediaTitle : role;
-    final state = onList ? 'already on this list' : (picked ? 'picked' : 'not picked');
+    final state = onList
+        ? 'already on this list'
+        : '${waiting ? 'waiting in unranked, ' : ''}${picked ? 'picked' : 'not picked'}';
     return TierPressable(
       label: '${c.name}${sub == null ? '' : ', $sub'}, $state',
       selected: picked,
@@ -827,14 +1021,15 @@ class _PickTile extends StatelessWidget {
                       child: const Icon(Icons.check_rounded, size: 16, color: AppTheme.hankoSumi),
                     ),
                   ),
-                if (onList)
+                if (onList || waiting)
                   Positioned(
                     left: 6,
                     bottom: 8,
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                       color: AppTheme.hankoSumi,
-                      child: Text('On list', style: AppTheme.hankoSans(fontSize: 11, weight: FontWeight.w500)),
+                      child: Text(onList ? 'On list' : 'Unranked',
+                          style: AppTheme.hankoSans(fontSize: 11, weight: FontWeight.w500)),
                     ),
                   ),
               ],

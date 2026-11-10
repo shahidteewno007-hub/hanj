@@ -293,6 +293,141 @@ void main() {
     });
   });
 
+  group('round nine: filling a tier you tapped', () {
+    test('new picks and ones waiting in the tray land at the tier’s end; placed ones stay', () {
+      final l = _list()..addCharacters([_c(1), _c(2)]);
+      l.move(2, toTierId: 't1');
+      expect(l.addTo('t0', [_c(3), _c(1), _c(2), _c(4)]), 3);
+      expect(l.tiers[0].characterIds, [3, 1, 4], reason: '2 is in t1 already, so it stays there');
+      expect(l.tiers[1].characterIds, [2]);
+      expect(l.unranked, isEmpty);
+      expect(l.addTo('nope', [_c(5)]), 0);
+      _expectConsistent(l);
+    });
+
+    test('stops adding new characters at the most a list holds, but still moves waiting ones', () {
+      final l = _list()..addCharacters([for (var i = 0; i < TierList.maxCharacters; i++) _c(i)]);
+      expect(l.addTo('t0', [_c(9999), _c(0)]), 1);
+      expect(l.contains(9999), isFalse);
+      expect(l.tiers[0].characterIds, [0]);
+      _expectConsistent(l);
+    });
+  });
+
+  group('round nine: a gauntlet’s slots and verdict', () {
+    test('a slot holds one: the one it held leaves the list', () {
+      final l = _list();
+      expect(l.setSlot('t1', _c(1)), isTrue);
+      expect(l.setSlot('t1', _c(1)), isFalse, reason: 'already there');
+      expect(l.setSlot('t1', _c(2)), isTrue);
+      expect(l.tiers[1].characterIds, [2]);
+      expect(l.contains(1), isFalse);
+      _expectConsistent(l);
+    });
+
+    test('someone already in another slot moves, and that slot empties', () {
+      final l = _list()
+        ..setSlot('t0', _c(1))
+        ..setSlot('t1', _c(2));
+      expect(l.setSlot('t2', _c(1)), isTrue);
+      expect(l.tiers[0].characterIds, isEmpty);
+      expect(l.tiers[2].characterIds, [1]);
+      _expectConsistent(l);
+    });
+
+    test('the verdict stays with its slot when its opponent changes, and goes when the slot empties', () {
+      final l = _list()
+        ..setSlot('t0', _c(1))
+        ..setSlot('t1', _c(2))
+        ..setSlot('t2', _c(3));
+      l.verdict = 't2';
+      l.setSlot('t2', _c(4));
+      expect(l.verdict, 't2');
+      // Moving t2's opponent into t1 empties t2.
+      l.setSlot('t1', _c(4));
+      expect(l.verdict, isNull);
+      l.verdict = 't1';
+      expect(l.clearTier('t1'), 1);
+      expect(l.verdict, isNull);
+      l.verdict = TierList.verdictClear;
+      l.remove(1);
+      expect(l.verdict, TierList.verdictClear, reason: 'clearing every phase isn’t tied to one slot');
+      _expectConsistent(l);
+    });
+
+    test('setVerdict refuses a tier that is gone or empty', () {
+      final l = _list()..setSlot('t1', _c(1));
+      expect(l.setVerdict('t2'), isFalse, reason: 't2 is empty');
+      expect(l.setVerdict('nope'), isFalse);
+      expect(l.setVerdict('t1'), isTrue);
+      expect(l.setVerdict('t1'), isFalse, reason: 'no change');
+      expect(l.setVerdict(TierList.verdictClear), isTrue);
+      expect(l.setVerdict(null), isTrue);
+      expect(l.verdict, isNull);
+    });
+
+    test('removing the verdict’s tier drops the verdict', () {
+      final l = _list()..setSlot('t1', _c(1));
+      l.verdict = 't1';
+      expect(l.removeTier('t1'), isTrue);
+      expect(l.verdict, isNull);
+      _expectConsistent(l);
+    });
+  });
+
+  group('round nine: undo, names and saves', () {
+    test('restoreFrom undoes a tier’s removal exactly', () {
+      final l = _list()..addCharacters([_c(1), _c(2), _c(3)]);
+      l.move(1, toTierId: 't0');
+      l.move(2, toTierId: 't0');
+      l.move(3, toTierId: 't2');
+      final before = jsonEncode(l.toJson()..remove('updatedAt'));
+      final snapshot = TierList.fromJson(jsonDecode(jsonEncode(l.toJson())))!;
+      l.removeTier('t0');
+      expect(l.unranked, [1, 2]);
+      l.restoreFrom(snapshot);
+      expect(jsonEncode(l.toJson()..remove('updatedAt')), before);
+      _expectConsistent(l);
+    });
+
+    test('an unnamed tier is called by its place', () {
+      final l = _list()..renameTier('t1', '   ');
+      expect(l.displayName(l.tiers[1]), 'Tier 2');
+      expect(l.displayName(l.tiers[0]), 'T0');
+    });
+
+    test('a list without a verdict saves exactly as before round nine', () {
+      final l = _list()..addCharacters([_c(1)]);
+      final json = l.toJson();
+      expect(json.containsKey('verdict'), isFalse);
+      expect(json.keys, ['v', 'id', 'title', 'prompt', 'template', 'tiers', 'unranked', 'characters', 'createdAt', 'updatedAt']);
+    });
+
+    test('verdicts round-trip, and one naming a missing or empty tier is dropped', () {
+      final l = _list()..setSlot('t1', _c(1));
+      l.verdict = 't1';
+      expect(TierList.fromJson(jsonDecode(jsonEncode(l.toJson())))!.verdict, 't1');
+      l.verdict = TierList.verdictClear;
+      expect(TierList.fromJson(jsonDecode(jsonEncode(l.toJson())))!.verdict, TierList.verdictClear);
+      final json = jsonDecode(jsonEncode(l.toJson())) as Map<String, dynamic>;
+      expect(TierList.fromJson({...json, 'verdict': 't2'})!.verdict, isNull, reason: 't2 is empty');
+      expect(TierList.fromJson({...json, 'verdict': 'gone'})!.verdict, isNull);
+      expect(TierList.fromJson({...json, 'verdict': 7})!.verdict, isNull);
+      expect(TierList.fromJson(json..remove('verdict'))!.verdict, isNull, reason: 'a save from before round nine');
+    });
+
+    test('the gauntlet template: a challenger and five phases, one colour each', () {
+      final t = kGauntletTemplate;
+      expect(t.tiers, ['Challenger', 'Phase 1', 'Phase 2', 'Phase 3', 'Phase 4', 'Phase 5']);
+      expect(t.pigmentsOrRamp.length, t.tiers.length);
+      expect(kTierTemplates.any((x) => x.id == t.id), isFalse, reason: 'it has its own card, not a shelf');
+      final l = t.create(id: 'g');
+      expect(l.tiers.length, 6);
+      expect(l.verdict, isNull);
+      if (TierListSwitches.gauntlet) expect(tierTemplateById(t.id), same(t));
+    });
+  });
+
   group('tier colours', () {
     test('every label prints at 4.5:1 or better on its colour', () {
       for (final p in TierPigment.all) {

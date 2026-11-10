@@ -43,6 +43,11 @@ class TierListStore {
   /// at once when none is running.
   Future<void> get idle => _pending == 0 ? Future<void>.value() : _queue;
 
+  /// Tests only: forget what was loaded, so the next [loadAll] reads the
+  /// (mock) preferences again.
+  @visibleForTesting
+  void forgetLoaded() => _lists = null;
+
   /// A new list id: time plus a little randomness, base 36.
   static String freshId() =>
       '${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}'
@@ -123,6 +128,32 @@ class TierListStore {
       debugPrint('Tier list delete failed: $e');
       return false;
     }
+  }
+
+  /// Characters on the other saved lists (every list but [exceptId]),
+  /// leaving out [skip]: those on the most lists first, then those from the
+  /// most recently edited (round nine's quick picks). Reads only what's
+  /// saved on the device; never throws.
+  Future<List<TierCharacter>> charactersElsewhere(String exceptId,
+      {Set<int> skip = const {}, int max = 18}) async {
+    final lists = await loadAll();
+    final uses = <int, int>{};
+    final seen = <int, TierCharacter>{}; // most recently edited list first
+    for (final l in lists) {
+      if (l.id == exceptId) continue;
+      for (final c in l.characters.values) {
+        if (skip.contains(c.id)) continue;
+        uses[c.id] = (uses[c.id] ?? 0) + 1;
+        seen.putIfAbsent(c.id, () => c);
+      }
+    }
+    final ids = seen.keys.toList();
+    final order = {for (var i = 0; i < ids.length; i++) ids[i]: i};
+    ids.sort((a, b) {
+      final d = uses[b]!.compareTo(uses[a]!);
+      return d != 0 ? d : order[a]!.compareTo(order[b]!);
+    });
+    return [for (final id in ids.take(max)) seen[id]!];
   }
 
   List<String> _index(SharedPreferences prefs) =>
