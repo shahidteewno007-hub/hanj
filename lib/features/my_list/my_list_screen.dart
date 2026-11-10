@@ -44,6 +44,10 @@ class _MyListScreenState extends State<MyListScreen> {
   ///    sort, then for each status count and the board);
   ///  - the counts per status, which only the old list shows, aren't worked
   ///    out;
+  ///  - the search field, the status tabs and the two square buttons are
+  ///    kept from one build to the next while what they show is unchanged,
+  ///    so the list landing (or any rebuild of it) doesn't rebuild them: they
+  ///    were about a third of the widgets built the frame it landed in;
   ///  - the frame the list lands in builds only the rows on screen, and the
   ///    rows just below them follow a frame later (MyListLanding).
   /// False gives 27e16b1 back.
@@ -54,6 +58,25 @@ class _MyListScreenState extends State<MyListScreen> {
   QuerySnapshot? _readFrom;
   List<QueryDocumentSnapshot> _readDocs = const [];
   Map<QueryDocumentSnapshot, Map<String, dynamic>> _read = Map.identity();
+
+  // _lightOpen: widgets kept from the last build, by slot, with what they
+  // were made from.
+  final Map<String, (Object?, Widget)> _kept = {};
+
+  /// [fresh], or with _lightOpen the widget kept in [slot] if it was made
+  /// from the same [from]. Flutter doesn't rebuild a widget it's handed
+  /// again, so a kept one costs nothing. Only for widgets that depend on
+  /// nothing but [from] and the state's own fields.
+  Widget _keep(String slot, Object? from, Widget fresh) {
+    if (!_lightOpen) return fresh;
+    final kept = _kept[slot];
+    if (kept != null && kept.$1 == from) return kept.$2;
+    _kept[slot] = (from, fresh);
+    return fresh;
+  }
+
+  // The titles the shuffle button picks from: the list as last built.
+  List<QueryDocumentSnapshot> _shuffleFrom = const [];
 
   final _firestoreService = FirestoreService();
   final _searchController = TextEditingController();
@@ -286,6 +309,7 @@ class _MyListScreenState extends State<MyListScreen> {
     int totalEps,
     Map<String, dynamic> Function(QueryDocumentSnapshot) dataOf,
   ) {
+    _shuffleFrom = allDocs;
     // The selected status's shows, newest first, for its board.
     final mine = [
       for (final d in allDocs)
@@ -345,24 +369,24 @@ class _MyListScreenState extends State<MyListScreen> {
                     ],
                   ),
                 ),
-                _SquareButton(
+                _keep('sort', null, _SquareButton(
                   icon: Icons.swap_vert_rounded,
                   label: 'Sort',
                   onTap: _showPrintedSortSheet,
-                ),
+                )),
                 const SizedBox(width: 8),
-                _SquareButton(
+                _keep('shuffle', null, _SquareButton(
                   icon: Icons.shuffle_rounded,
                   label: 'Open one at random',
-                  onTap: () => _openRandom(allDocs),
-                ),
+                  onTap: () => _openRandom(_shuffleFrom),
+                )),
               ],
             ),
           ),
         ),
 
         // ── Search ────────────────────────────────────
-        SliverToBoxAdapter(
+        _keep('search', _searchQuery, SliverToBoxAdapter(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
             child: TextField(
@@ -392,10 +416,10 @@ class _MyListScreenState extends State<MyListScreen> {
               ),
             ),
           ),
-        ),
+        )),
 
         // ── Status tabs ───────────────────────────────
-        SliverToBoxAdapter(
+        _keep('tabs', _selectedStatus, SliverToBoxAdapter(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
             child: HankoTabStrip(
@@ -404,7 +428,7 @@ class _MyListScreenState extends State<MyListScreen> {
               onSelect: (i) => setState(() => _selectedStatus = _statuses[i]),
             ),
           ),
-        ),
+        )),
 
         // ── The selected status, as a board ───────────
         if (loaded && _searchQuery.isEmpty && mine.isNotEmpty)
