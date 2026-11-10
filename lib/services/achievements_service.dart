@@ -174,6 +174,8 @@ class AchievementsService {
   /// Profile's and Home's list snapshot: the whole list. Evaluated a moment
   /// later, once snapshots settle, never during a frame.
   void observeList(QuerySnapshot<Object?> snapshot) {
+    // Locked until Hanj+ (see _user): not even the entries are copied.
+    if (!kAchievementsEnabled) return;
     observeEntries({
       for (final d in snapshot.docs)
         if (d.data() case final Map<String, dynamic> data) d.id: data,
@@ -404,7 +406,13 @@ class AchievementsService {
   // ── Loading ─────────────────────────────────────────────────────────────
 
   /// The signed-in uid, loading its record when the account changed.
+  ///
+  /// Locked until Hanj+ (kAchievementsEnabled): no one is signed in as far
+  /// as the record goes, so every call returns before it reads, writes or
+  /// asks AniList anything, the state stays signed out (no record, no
+  /// badge) and liveEarns never carries an earn.
   String? _user() {
+    if (!kAchievementsEnabled) return null;
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid != _uid) {
       _reset(uid);

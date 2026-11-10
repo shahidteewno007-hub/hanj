@@ -2444,7 +2444,9 @@ class AchievementSlip {
   /// sheet just before a status closed it.
   static void expect(BuildContext context,
       {Duration feedback = Duration.zero, bool ticked = false}) {
-    if (!Achievements.replaceCards) return;
+    // Locked until Hanj+ (kAchievementsEnabled): nothing can be earned, so
+    // nothing waits and nothing listens.
+    if (!Achievements.replaceCards || !kAchievementsEnabled) return;
     final messenger = ScaffoldMessenger.maybeOf(context);
     final route = ModalRoute.of(context);
     if (messenger == null || route == null) return;

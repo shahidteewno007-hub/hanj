@@ -171,8 +171,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   /// Whether the badge you choose shows on your monogram (stage 5).
-  static const bool _badgeShown =
-      ProfileScreen.badgeOnSeal && Achievements.replaceCards;
+  /// Locked until Hanj+ (kAchievementsEnabled), the header is 07faabe's.
+  static const bool _badgeShown = ProfileScreen.badgeOnSeal &&
+      Achievements.replaceCards && kAchievementsEnabled;
 
   /// The badge you show, apart from the rest of the record, so only the
   /// header rebuilds, and only when the badge itself changes (the record
@@ -646,7 +647,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       // badge you show, else your latest, in the rows'
                       // stone, and its line says where your record stands.
                       // Only this row rebuilds when the record changes.
-                      if (Achievements.replaceCards)
+                      // Locked until Hanj+ (kAchievementsEnabled), there's
+                      // no row at all, and Hanj Cards' stays removed.
+                      if (Achievements.replaceCards && kAchievementsEnabled)
                         ValueListenableBuilder<AchievementsState>(
                           valueListenable: AchievementsService.instance.state,
                           builder: (context, record, _) => _EntryRow(
@@ -659,7 +662,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 builder: (_) => const AchievementsScreen())),
                           ),
                         )
-                      else
+                      else if (!Achievements.replaceCards)
                       // With the card out of the header (see
                       // _pinnedCardInHeader), the row names your pinned
                       // card in words, with no card art.
@@ -672,7 +675,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         onTap: () => Navigator.push(context, MaterialPageRoute(
                             builder: (_) => const CardCollectionScreen())),
                       ),
-                      const SizedBox(height: _rowGap),
+                      if (!Achievements.replaceCards || kAchievementsEnabled)
+                        const SizedBox(height: _rowGap),
                       _EntryRow(
                         icon: Icons.grid_view_sharp,
                         title: 'Ranking Cards',

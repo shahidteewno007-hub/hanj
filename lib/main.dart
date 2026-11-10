@@ -174,6 +174,9 @@ Future<void> main() async {
   FirebaseMessaging.onMessageOpenedApp.listen((message) {
     final type = message.data['type'] ?? '';
     if (type == 'card_unlock') {
+      // Locked until Hanj+ (kAchievementsEnabled): a tapped card push
+      // opens the app where it was, and nothing over it.
+      if (Achievements.replaceCards && !kAchievementsEnabled) return;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         NotificationNavigator.navigatorKey.currentState?.push(MaterialPageRoute(
           // A tapped card push opens Achievements while they replace cards.
@@ -190,6 +193,8 @@ Future<void> main() async {
     if (message == null) return;
     final type = message.data['type'] ?? '';
     if (type == 'card_unlock') {
+      // Locked until Hanj+: as above, nothing opens.
+      if (Achievements.replaceCards && !kAchievementsEnabled) return;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         NotificationNavigator.navigatorKey.currentState?.push(MaterialPageRoute(
           // A tapped card push opens Achievements while they replace cards.
@@ -240,8 +245,13 @@ class HanjApp extends StatelessWidget {
             routes: {
               // The route keeps its name, so old links and the card_unlock
               // deep link (notification_service.dart) land somewhere true.
+              // Locked until Hanj+ (kAchievementsEnabled), it stays
+              // registered, so the deep link never throws, and closes at
+              // once (_ClosesAtOnce): the app stays where it was.
               '/cards': (_) => Achievements.replaceCards
-                  ? const AchievementsScreen()
+                  ? (kAchievementsEnabled
+                      ? const AchievementsScreen()
+                      : const _ClosesAtOnce())
                   : const CardCollectionScreen(),
               '/cadre': (_) => const CadreLobbyScreen(),
               '/tierlist': (_) => const TierListHomeScreen(),
@@ -291,6 +301,31 @@ class AuthWrapper extends StatelessWidget {
       },
     );
   }
+}
+
+// /cards while achievements are locked until Hanj+ (kAchievementsEnabled).
+// NotificationService pushes it by name when a card_unlock push is tapped,
+// so it must build something: the app's sumi, popped after its first frame,
+// so you stay on the screen you were on. Nothing else pushes /cards.
+class _ClosesAtOnce extends StatefulWidget {
+  const _ClosesAtOnce();
+
+  @override
+  State<_ClosesAtOnce> createState() => _ClosesAtOnceState();
+}
+
+class _ClosesAtOnceState extends State<_ClosesAtOnce> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) Navigator.of(context).maybePop();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      const ColoredBox(color: Color(0xFF121110));
 }
 
 // Decides whether a signed-in, verified user still needs onboarding.

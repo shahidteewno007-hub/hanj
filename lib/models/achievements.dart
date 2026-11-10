@@ -21,6 +21,19 @@
 
 import 'hanj_shelves.dart';
 
+/// Achievements are locked for everyone, owner included, until Hanj+ ships
+/// (Shahid, 2026-11-11: "lock behind Hanj+ which we will work on later").
+///
+/// Compile-time on purpose, as kLokiEnabled is: with it off,
+/// AchievementsService reads and writes nothing (no record, no badge, no
+/// AniList facts, no live earns), Profile has no Achievements row and no
+/// corner badge, a card_unlock push shows and opens nothing, and no slip
+/// waits for an earn. Every hook in Home, Detail and Ranking Cards stays
+/// where it is and returns at once. Hanj Cards stay removed (Achievements.replaceCards). True gives the whole
+/// feature back exactly as built (c769dc5). No Hanj+ check yet: Hanj+
+/// isn't scoped.
+const bool kAchievementsEnabled = false;
+
 /// The groups, in the order the Achievements page shows them (decision j):
 /// the ones most people fill early first, so the page opens lit.
 enum AchievementGroup {
