@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show ScrollDirection;
@@ -95,9 +97,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _flight && _printRoom && id.isNotEmpty ? (place, id) : null;
 
   /// The route that opens [anime] from its print at [place] (P7): the
-  /// flight, handing Detail the show's colour if a print elsewhere has read
-  /// it (Profile's favourites show none of their own), as Home's _showRoute
-  /// does; with the flight off, the push.
+  /// flight, handing Detail the show's colour if it has been read, as Home's
+  /// _showRoute does. Profile's favourites show none of their own, so
+  /// Profile reads it (_readColours), as a print elsewhere may have; with
+  /// the flight off, the push.
   static Route<void> _showRoute(BuildContext context, Anime anime,
       {required String place}) {
     final tag = _printTag(place, anime.id);
@@ -113,6 +116,52 @@ class _ProfileScreenState extends State<ProfileScreen> {
       still: MediaQuery.disableAnimationsOf(context),
       builder: (_) => AnimeDetailScreen(anime: anime, flight: flight),
     );
+  }
+
+  // ── The favourites' colours (P7's question P7-3) ──
+  // Profile's favourites show no colour of their own, so on a show's first
+  // open the flight handed Detail none: Detail faded in on sumi, and its
+  // colour came with AniList's answer, 1–3 s later on the phone. So Profile
+  // reads each favourite's colour from its cover (HankoCoverColour, as
+  // Home's mats and fields are read), once the favourites are known and
+  // after the wall's own frame, and the flight floods Detail in it, as
+  // Home's prints do. Nothing on Profile shows the colour, so nothing
+  // repaints when it arrives. Off, nothing is read, as before.
+  static const bool _favouriteColours = true;
+
+  /// The favourites' covers already asked for (_favouriteColours): each is
+  /// read once while Profile is open, and HankoCoverColour keeps what it
+  /// reads.
+  final Set<String> _coloursAsked = <String>{};
+
+  /// Reads the colours of [favourites]' covers not yet asked for
+  /// (_favouriteColours), out of the frames that build the page: after the
+  /// page's frame and, with the wall under them ([afterWall]), the wall's,
+  /// which P5's _NextFrame builds a frame later. Each is read from the
+  /// stored URL that _openEntry hands _showRoute, so its peek finds it.
+  /// Unawaited, with errors ignored: HankoCoverColour never throws, and an
+  /// unhandled async error is a fatal Crashlytics report (CLAUDE.md).
+  void _readColours(List<Map<String, dynamic>> favourites,
+      {required bool afterWall}) {
+    if (!_favouriteColours || !_flight) return;
+    final urls = <String>[];
+    for (final e in favourites) {
+      final url = e['imageUrl'];
+      if (url is String && url.isNotEmpty && _coloursAsked.add(url)) {
+        urls.add(url);
+      }
+    }
+    if (urls.isEmpty) return;
+    void read(Duration _) {
+      if (!mounted) return;
+      for (final url in urls) {
+        HankoCoverColour.ofUrl(url).ignore();
+      }
+    }
+
+    final binding = WidgetsBinding.instance;
+    binding.addPostFrameCallback(
+        afterWall ? (_) => binding.addPostFrameCallback(read) : read);
   }
 
   static const _avatarGradients = [
@@ -307,6 +356,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
           final wall = favourites == null
               ? null
               : _wallFor(_wallCovers(entries, favourites));
+          // Their colours, for their flight (P7-3), read after the wall.
+          if (favourites != null) {
+            _readColours(favourites, afterWall: wall != null);
+          }
 
           return MediaQuery.removePadding(
             context: context,
