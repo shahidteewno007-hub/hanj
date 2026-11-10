@@ -16,6 +16,7 @@ import '../../widgets/hanko_cover_colour.dart';
 import '../../widgets/hanko_field.dart';
 import '../../widgets/hanko_paper.dart';
 import '../../widgets/hanko_print.dart';
+import '../../widgets/hanko_seal.dart';
 import '../anime_detail/anime_detail_screen.dart';
 import '../search/search_screen.dart';
 
@@ -122,6 +123,69 @@ class AchievementsScreen extends StatefulWidget {
       ink: AppTheme.hankoStone,
       number: ref.achievement.id == 'founder' ? s.record.marks[key]?.n : null,
       semanticLabel: 'Badge: ${ref.title}',
+    );
+  }
+
+  /// One achievement's sheet, over whatever screen you're on: the unlock
+  /// slip's "See" (stage 4) opens it where you earned it, without leaving
+  /// Detail or Home (lead §5.2). It reads the list and your user document
+  /// for the sheet's shows and your name, from the phone's cache first
+  /// (Detail and Home have just read them), and from the server only when
+  /// the cache has nothing. Never throws; offline with nothing cached, the
+  /// sheet opens with the record alone.
+  static Future<void> showSheet(BuildContext context, String key) async {
+    final ref = Achievements.parse(key);
+    final user = FirebaseAuth.instance.currentUser;
+    if (ref == null || user == null) return;
+    final doc = FirebaseFirestore.instance.collection('users').doc(user.uid);
+    Future<T?> cacheFirst<T>(
+        Future<T> Function(GetOptions options) read, bool Function(T) empty) async {
+      try {
+        final cached = await read(const GetOptions(source: Source.cache));
+        if (!empty(cached)) return cached;
+      } catch (_) {}
+      try {
+        return await read(const GetOptions());
+      } catch (_) {
+        return null;
+      }
+    }
+
+    final list = await cacheFirst<QuerySnapshot<Map<String, dynamic>>>(
+        (o) => doc.collection('animeList').get(o), (s) => s.docs.isEmpty);
+    final me = await cacheFirst<DocumentSnapshot<Map<String, dynamic>>>(
+        (o) => doc.get(o), (d) => !d.exists);
+    if (!context.mounted) return;
+    final data = me?.data() ?? const <String, dynamic>{};
+    final top9 = data['top9'];
+    final shown = data['displayName'];
+    final name = shown is String && shown.trim().isNotEmpty
+        ? shown.trim()
+        : (user.displayName ?? '');
+    final s = AchievementsService.instance.state.value;
+    final held = _Held.of(s.record);
+    final shows = _Shows(
+      {for (final d in list?.docs ?? const []) d.id: d.data()},
+      top9 is List ? [for (final id in top9) '$id'] : const [],
+    )..spread(held);
+    final still = MediaQuery.disableAnimationsOf(context);
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: AppTheme.hankoSumi2,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(
+            top: Radius.circular(AppTheme.hankoSheetRadius)),
+      ),
+      sheetAnimationStyle: still ? AnimationStyle.noAnimation : null,
+      builder: (sheetContext) => _Sheet(
+        held: held[ref.achievement.id]!,
+        shows: shows,
+        totals: s.totals,
+        factsComplete: s.factsComplete,
+        name: name,
+      ),
     );
   }
 }
@@ -352,6 +416,8 @@ class _Shows {
   String? showFor(Achievement a, String? param, RecordMark mark) {
     final named = mark.show;
     if (named != null && entries.containsKey(named)) return named;
+    final spread = _spread['${a.id}|$param'];
+    if (spread != null) return spread;
     String? best;
     var bestSeal = -1.0;
     for (final id in behind(a, param)) {
@@ -362,6 +428,52 @@ class _Shows {
       }
     }
     return best;
+  }
+
+  /// The shows [spread] chose, by achievement id and parameter.
+  final Map<String, String> _spread = {};
+
+  /// Stage 3's recommendation, taken in stage 4 (Shahid, 2026-11-10: "go
+  /// with your recommendations for everything"): on an imported record the
+  /// same highest-rated show stood behind Finished, Episodes, Sealed,
+  /// Genres, Decades and Every form, so most mats were one colour. Walking
+  /// the spaces in the page's order, a space whose mark names no show takes
+  /// the highest-rated show behind it that no earlier space already shows,
+  /// and only when every one is taken the highest-rated again. A mark that
+  /// names its show keeps it. True to the rule either way: the print is
+  /// "a show behind it", never "the one that decided it" (lead §2.3).
+  void spread(Map<String, _Held> held) {
+    _spread.clear();
+    if (entries.isEmpty) return;
+    final used = <String>{};
+    for (final group in AchievementGroup.values) {
+      for (final a in Achievements.inGroup(group)) {
+        final h = held[a.id];
+        if (h == null || !h.earned || a.id == 'founder') continue;
+        final named = h.topMark.show;
+        if (named != null && entries.containsKey(named)) {
+          used.add(named);
+          continue;
+        }
+        String? best, fresh;
+        var bestSeal = -1.0, freshSeal = -1.0;
+        for (final id in behind(a, h.top.param)) {
+          final s = _seal(entries[id]!) ?? 0;
+          if (s > bestSeal) {
+            best = id;
+            bestSeal = s;
+          }
+          if (!used.contains(id) && s > freshSeal) {
+            fresh = id;
+            freshSeal = s;
+          }
+        }
+        final pick = fresh ?? best;
+        if (pick == null) continue;
+        _spread['${a.id}|${h.top.param}'] = pick;
+        used.add(pick);
+      }
+    }
   }
 
   /// The deciding show, then the rest behind it.
@@ -644,6 +756,7 @@ class _AchievementsScreenState extends State<AchievementsScreen> {
 
     final shows = _entries == null ? _Shows.empty : _Shows(_entries!, _top9);
     final held = _Held.of(record);
+    shows.spread(held);
     final founder = _isFounder || held['founder']!.earned;
     final listedEarned = [
       for (final a in Achievements.catalogue)
@@ -2066,5 +2179,320 @@ class _Sheet extends StatelessWidget {
         ),
       ),
     ];
+  }
+}
+
+// ── Earning one live: the slip (stage 4) ─────────────────────────────────
+
+/// The unlock slip (stage 4; Shahid, 2026-11-10: "Paper slip where you
+/// earned it"; decision h): when something you just did earns an
+/// achievement, a small paper slip comes up on the screen where you did it,
+/// once the action's own feedback is over (your seal's press, +1's dip, the
+/// status sheet closing), so the two never compete. The badge is pressed
+/// into it with the house press in the badge's own ink, sumi on washi,
+/// never coral (decision i); one line in the record's journal voice; and
+/// "See", which opens that achievement's sheet right there.
+///
+/// It's a SnackBar with paper for content, so it takes its turn in the
+/// app's one ScaffoldMessenger queue: it waits behind any snack bar already
+/// up, "Rated 8.5. Undo" included, and never covers it (lead §5.2: never
+/// cover the user's escape hatch). It stays 4 s, or until dismissed while
+/// TalkBack is on; it swipes away. Several earned by one action share one
+/// slip: the highest-carved badge and "and 2 more", and "See" opens the
+/// page, where each is marked New. With Remove animations on it's simply
+/// there with the badge pressed. One haptic tick per action: the press
+/// ticks only when the action had no tick of its own.
+///
+/// Never for an import, day one or another phone: AchievementsService's
+/// liveEarns carries only marks decided by what you just did here. No
+/// push, no overlay over everything, no confetti.
+///
+/// How a screen uses it, with [Achievements.replaceCards] on: [expect]
+/// just before reporting the action to AchievementsService (noteAction or
+/// noteTop9). One listener for the whole app takes the earns, so a screen
+/// under another (Home under Detail) never shows a second slip for the
+/// same action; the slip belongs to the screen that last acted, and shows
+/// only while that screen is the one on top. If you leave it before the
+/// slip's turn, there's no slip: what you earned is marked New on the page.
+class AchievementSlip {
+  AchievementSlip._();
+
+  static StreamSubscription<List<LiveEarn>>? _earns;
+  static _Expecting? _expecting;
+
+  /// Something you did on [context]'s screen may earn an achievement. The
+  /// slip waits [feedback] after now, for the action's own motion. [ticked]
+  /// says the action already gave its haptic tick (Detail's seal press).
+  static void expect(BuildContext context,
+      {Duration feedback = Duration.zero, bool ticked = false}) {
+    if (!Achievements.replaceCards) return;
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    final route = ModalRoute.of(context);
+    if (messenger == null || route == null) return;
+    _expecting?.stop();
+    _expecting = _Expecting(messenger, route, DateTime.now().add(feedback), ticked);
+    _earns ??= AchievementsService.instance.liveEarns.listen(_earned);
+  }
+
+  static void _earned(List<LiveEarn> earns) {
+    final e = _expecting;
+    if (e == null || earns.isEmpty) return;
+    e.add(earns);
+  }
+}
+
+/// The screen that last acted, and the earns waiting for its slip.
+class _Expecting {
+  _Expecting(this.messenger, this.route, this.readyAt, this.ticked);
+
+  final ScaffoldMessengerState messenger;
+  final ModalRoute<dynamic> route;
+  final DateTime readyAt;
+
+  /// Whether this action's tick has been given: by the action itself, or
+  /// by its first slip.
+  bool ticked;
+
+  /// As long as AchievementsService counts an earn as live.
+  final DateTime until = DateTime.now().add(const Duration(minutes: 2));
+
+  final List<List<LiveEarn>> _waiting = [];
+  Timer? _check;
+
+  void add(List<LiveEarn> earns) {
+    if (DateTime.now().isAfter(until)) return;
+    _waiting.add(earns);
+    _check ??= Timer.periodic(const Duration(milliseconds: 100), (_) => _try());
+    _try();
+  }
+
+  void stop() {
+    _check?.cancel();
+    _check = null;
+  }
+
+  /// Shows what's waiting once the feedback is over and the screen is the
+  /// one on top. A sheet you acted in (the Favourite or a shelf in the
+  /// status sheet) counts as closed onto the screen that opened it. A page
+  /// that has gone takes its slip with it.
+  void _try() {
+    final now = DateTime.now();
+    if (!messenger.mounted || now.isAfter(until)) {
+      _waiting.clear();
+      stop();
+      return;
+    }
+    if (now.isBefore(readyAt)) return;
+    final bool show;
+    if (route.isCurrent) {
+      show = true;
+    } else if (!route.isActive) {
+      if (route is! PopupRoute) {
+        _waiting.clear();
+        stop();
+        return;
+      }
+      show = true;
+    } else {
+      show = false;
+    }
+    if (!show) return;
+    final talkBack =
+        MediaQuery.maybeAccessibleNavigationOf(messenger.context) ?? false;
+    for (final earns in _waiting) {
+      messenger.showSnackBar(SnackBar(
+        content: _UnlockSlip(earns: earns, tick: !ticked),
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        padding: EdgeInsets.zero,
+        margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+        shape: const RoundedRectangleBorder(),
+        // The paper's own print shadow falls outside it.
+        clipBehavior: Clip.none,
+        duration: const Duration(seconds: 4),
+        persist: talkBack,
+      ));
+      ticked = true;
+    }
+    _waiting.clear();
+    stop();
+  }
+}
+
+/// The slip itself: washi paper, the badge pressed into it, one line, and
+/// "See". The motion is lead §5.2's, as approved in final-f15-motion: the
+/// slip rises 72 dp over 200 ms, decelerating, with the badge's dashed
+/// space on it; the badge is pressed into the space with HankoSealPress in
+/// sumi (it lands at 290 ms, when the words appear) and settles at 440 ms.
+/// Only the slip's leaf moves. Nothing loops.
+class _UnlockSlip extends StatefulWidget {
+  const _UnlockSlip({required this.earns, required this.tick});
+
+  /// One action's earns, highest carving first.
+  final List<LiveEarn> earns;
+
+  /// Whether the press gives the action's tick.
+  final bool tick;
+
+  @override
+  State<_UnlockSlip> createState() => _UnlockSlipState();
+}
+
+class _UnlockSlipState extends State<_UnlockSlip>
+    with SingleTickerProviderStateMixin {
+  static const double _riseBy = 72;
+
+  late final AnimationController _rise = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 200),
+  );
+  late final Animation<Offset> _from = _rise.drive(
+      Tween(begin: const Offset(0, _riseBy), end: Offset.zero)
+          .chain(CurveTween(curve: Curves.decelerate)));
+
+  bool _started = false;
+  bool _pressed = false;
+  bool _words = false;
+  int _presses = 0;
+  Timer? _landing;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_started) return;
+    _started = true;
+    if (MediaQuery.disableAnimationsOf(context)) {
+      // Simply there, with the badge pressed; the tick rule unchanged, so
+      // the press is still asked for once, after the first frame.
+      _rise.value = 1;
+      _pressed = true;
+      _words = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) setState(() => _presses = 1);
+      });
+      return;
+    }
+    _rise.forward().then((_) {
+      if (!mounted) return;
+      setState(() {
+        _pressed = true;
+        _presses = 1;
+      });
+      _landing = Timer(
+          HankoSealPress.duration * (90 / 240), () {
+        if (mounted) setState(() => _words = true);
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _landing?.cancel();
+    _rise.dispose();
+    super.dispose();
+  }
+
+  void _see() {
+    final earns = widget.earns;
+    ScaffoldMessenger.maybeOf(context)?.hideCurrentSnackBar();
+    if (earns.length == 1) {
+      unawaited(AchievementsScreen.showSheet(context, earns.first.key)
+          .catchError((Object _) {}));
+    } else {
+      Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const AchievementsScreen()));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final earns = widget.earns;
+    final first = earns.first;
+    final ref = first.ref;
+    final more = earns.length - 1;
+    var line = Achievements.line(first.key, first.mark);
+    if (more > 0) {
+      final stem = line.endsWith('.') ? line.substring(0, line.length - 1) : line;
+      line = '$stem, and $more more.';
+    }
+    final title = ref == null ? '' : _titleOf(ref, first.mark);
+    final badge = ref == null
+        ? const SizedBox.square(dimension: 48)
+        : HankoBadge(
+            id: ref.achievement.id,
+            tier: ref.carving,
+            size: 48,
+            onPaper: true,
+            number: ref.achievement.id == 'founder' ? first.mark.n : null,
+            semanticLabel: 'Badge: $title',
+          );
+    final space = ref == null
+        ? const SizedBox.square(dimension: 48)
+        : HankoBadge(
+            id: ref.achievement.id,
+            size: 48,
+            state: HankoBadgeState.notYet,
+            onPaper: true,
+            semanticLabel: title,
+          );
+    final label = more > 0
+        ? 'New achievements: $title and $more more. $line See them.'
+        : 'New achievement: $title. $line See it.';
+
+    return AnimatedBuilder(
+      animation: _from,
+      builder: (context, child) =>
+          Transform.translate(offset: _from.value, child: child),
+      child: Semantics(
+        container: true,
+        button: true,
+        label: label,
+        child: InkWell(
+          onTap: _see,
+          splashFactory: NoSplash.splashFactory,
+          borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+          child: ExcludeSemantics(
+            child: HankoPaper(
+              child: Row(
+                children: [
+                  HankoSealPress(
+                    presses: _presses,
+                    ink: HankoPaper.ink,
+                    tick: widget.tick,
+                    child: _pressed ? badge : space,
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Visibility(
+                      visible: _words,
+                      maintainSize: true,
+                      maintainAnimation: true,
+                      maintainState: true,
+                      child: Text(line,
+                          style: AppTheme.hankoSerif(
+                              fontSize: 17, color: HankoPaper.ink, height: 1.25)),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Visibility(
+                    visible: _words,
+                    maintainSize: true,
+                    maintainAnimation: true,
+                    maintainState: true,
+                    child: Text('See',
+                        style: AppTheme.hankoSans(
+                            fontSize: AppTheme.hankoBodySize,
+                            weight: FontWeight.w600,
+                            color: HankoPaper.ink)
+                        .copyWith(decoration: TextDecoration.underline)),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
