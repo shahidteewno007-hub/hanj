@@ -1,3 +1,4 @@
+import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:flutter/widgets.dart';
 
 /// My List's scroll view (r9), built lighter the frame the list lands in.
@@ -48,7 +49,8 @@ class _MyListLandingState extends State<MyListLanding> {
 
   @override
   Widget build(BuildContext context) => CustomScrollView(
-        cacheExtent: _settled ? null : 0,
+        scrollCacheExtent:
+            _settled ? null : const ScrollCacheExtent.pixels(0),
         slivers: widget.slivers,
       );
 }
