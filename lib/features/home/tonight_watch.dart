@@ -7,6 +7,8 @@ import '../../core/theme/app_theme.dart';
 import '../../models/anime_model.dart';
 import '../../services/anilist_service.dart';
 import '../../services/firestore_service.dart';
+import '../../widgets/hanko_cover_colour.dart';
+import '../../widgets/hanko_field.dart';
 import '../../widgets/hanko_print.dart';
 import '../anime_detail/anime_detail_screen.dart';
 
@@ -224,6 +226,21 @@ class _TonightWatchSheetState extends State<TonightWatchSheet>
   // own. False: the outlined tiles, and a request for each mood tapped.
   static const bool _moodBoards = true;
 
+  // The pick as a hero print, 168 x 238 from 104 x 156, on a band of its
+  // own colour, with Another pick. False: the row, and Why this pick?
+  static const bool _pickOnBand = true;
+
+  // The pick's print: Print Room's "art is the largest thing on every
+  // screen", short of Detail's 208 so the reason keeps 136 dp beside it on
+  // a 360 dp phone and Open stays on the first screen.
+  static const double _printWidth = 168;
+  static const double _printHeight = 238;
+
+  // The pick's mood's top ten, and the rest of them in a shuffled order,
+  // for Another pick (with _pickOnBand).
+  List<Anime> _top = const [];
+  List<Anime> _queue = [];
+
   // ── Every mood's top ten, from one AniList request (round nine) ──
   // The filters each mood's searchAnime sends (type, isAdult, genre,
   // sort), ten each: the ten a pick has always been drawn from. Kept in
@@ -381,6 +398,13 @@ class _TonightWatchSheetState extends State<TonightWatchSheet>
         _recommendation = pick;
         _reasonText     = _reasons[moodObj.label] ?? 'A great pick for tonight.';
         _isLoading      = false;
+        if (_pickOnBand) {
+          _top = results.take(10).toList();
+          _queue = [
+            for (final anime in _top)
+              if (anime.id != pick.id) anime,
+          ]..shuffle();
+        }
       });
     } catch (_) {
       if (!mounted) return;
@@ -527,8 +551,24 @@ class _TonightWatchSheetState extends State<TonightWatchSheet>
       _recommendation = null;
       _reasonText = null;
       _isLoading = false;
+      _top = const [];
+      _queue = [];
     });
     _fadeCtrl.forward();
+  }
+
+  // Another of the mood's ten, with no request (round nine): the rest come
+  // in a shuffled order, so none comes back until all have been shown.
+  void _another() {
+    final current = _recommendation;
+    if (current == null || _top.length < 2) return;
+    if (_queue.isEmpty) {
+      _queue = [
+        for (final anime in _top)
+          if (anime.id != current.id) anime,
+      ]..shuffle();
+    }
+    setState(() => _recommendation = _queue.removeAt(0));
   }
 
   @override
@@ -597,7 +637,8 @@ class _TonightWatchSheetState extends State<TonightWatchSheet>
           Expanded(
             // Round nine: with Remove animations on, a step changes at once.
             // The step's fade ran regardless before.
-            child: _moodBoards && MediaQuery.disableAnimationsOf(context)
+            child: (_moodBoards || _pickOnBand) &&
+                    MediaQuery.disableAnimationsOf(context)
                 ? (_step == 0 ? _buildMoodStep() : _buildResultStep())
                 : FadeTransition(
                     opacity: _fadeAnim,
@@ -812,6 +853,7 @@ class _TonightWatchSheetState extends State<TonightWatchSheet>
     final anime   = _recommendation!;
     final moodObj = _moods.firstWhere((m) => m.label == _mood,
         orElse: () => _moods.first);
+    if (_pickOnBand) return _buildPickOnBand(anime, moodObj);
     final title = anime.titleEnglish ?? anime.title;
     final facts = anime.genres.take(2).join(' · ');
     final score = anime.averageScore == null
@@ -1000,6 +1042,229 @@ class _TonightWatchSheetState extends State<TonightWatchSheet>
         width: 104, height: 156,
         child: ColoredBox(color: AppTheme.hankoSumi3),
       );
+
+  // ── Step 1, round nine: the pick on its band ──────────────────
+  // The pick as a hero print on a band of its own colour, as Home's hero
+  // and watchlist band have theirs (Print Room): the mood and the reason
+  // beside the print, the band faded in from the sheet and out at the
+  // print's foot, so the title and its facts sit on the sheet's sumi 2,
+  // where stone and ai keep their contrast. The print is 168 x 238, from
+  // 104 x 156, with the large shadow and the 460 px cover (a hero's). One
+  // button for the show, as before, with Open drawn at its foot; Another
+  // pick and Change the vibe are buttons of their own under it.
+  Widget _buildPickOnBand(Anime anime, _Option moodObj) {
+    final title = anime.titleEnglish ?? anime.title;
+    final facts = anime.genres.take(2).join(' · ');
+    final score = anime.averageScore == null
+        ? null
+        : (anime.averageScore! / 10).toStringAsFixed(1);
+    final line = _poolLine(moodObj, _top.length);
+    final still = MediaQuery.disableAnimationsOf(context);
+    void openShow() {
+      Navigator.pop(context);
+      Navigator.push(context,
+          MaterialPageRoute(
+              builder: (_) => AnimeDetailScreen(anime: anime)));
+    }
+
+    final quiet = AppTheme.hankoSans(
+        fontSize: AppTheme.hankoMetaSize,
+        color: AppTheme.hankoStone,
+        height: 1.4);
+    // Everything on the band is washi, as on every field.
+    final band = _ShowColour(
+      colour: _poolColours[anime.id],
+      url: anime.imageUrl,
+      builder: (context, colour) => HankoField(
+        colour: colour,
+        solidTo: 0.75,
+        child: Stack(
+          children: [
+            // A pool of the colour behind the print, where no text sits.
+            Positioned(
+              top: 4,
+              right: AppTheme.hankoGutter - 48,
+              width: _printWidth + 96,
+              height: _printHeight + 48,
+              child: IgnorePointer(child: _PickGlow(colour: colour)),
+            ),
+            // The band fades in from the sheet, as Home's from the page.
+            Positioned(
+              left: 0,
+              top: 0,
+              right: 0,
+              height: 40,
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        AppTheme.hankoSumi2,
+                        AppTheme.hankoSumi2.withValues(alpha: 0),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                  AppTheme.hankoGutter, 28, AppTheme.hankoGutter, 32),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(moodObj.icon,
+                                size: 16, color: AppTheme.hankoWashi),
+                            const SizedBox(width: 8),
+                            Flexible(
+                              child: Text(moodObj.label,
+                                  style: AppTheme.hankoSans(
+                                      fontSize: AppTheme.hankoMetaSize,
+                                      weight: FontWeight.w500,
+                                      height: 1.3)),
+                            ),
+                          ],
+                        ),
+                        // The reason is Hanj speaking, in the voice's face.
+                        if (_reasonText != null) ...[
+                          const SizedBox(height: 10),
+                          Text(_reasonText!,
+                              style: AppTheme.hankoSerif(
+                                  fontSize: AppTheme.hankoFeaturedSize,
+                                  height: 1.3)),
+                        ],
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  // Another pick swaps the print in a short crossfade.
+                  AnimatedSwitcher(
+                    duration: still
+                        ? Duration.zero
+                        : const Duration(milliseconds: 200),
+                    child: HankoPrint(
+                      key: ValueKey(anime.id),
+                      url: anime.imageUrl,
+                      width: _printWidth,
+                      height: _printHeight,
+                      lift: HankoPrintLift.large,
+                      sharp: true,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    final words = Padding(
+      padding: const EdgeInsets.fromLTRB(
+          AppTheme.hankoGutter, 4, AppTheme.hankoGutter, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // The whole title: the sheet scrolls, so it's never cut.
+          Text(title,
+              style: AppTheme.hankoSerif(
+                  fontSize: AppTheme.hankoDisplaySize, height: 1.2)),
+          if (facts.isNotEmpty || score != null) ...[
+            const SizedBox(height: 8),
+            // The crowd's score in indigo, so it never reads as yours.
+            Text.rich(
+              TextSpan(
+                style: quiet,
+                children: [
+                  TextSpan(text: facts),
+                  if (score != null) ...[
+                    TextSpan(text: facts.isEmpty ? 'AniList ' : ' · AniList '),
+                    TextSpan(
+                      text: score,
+                      style: AppTheme.hankoSans(
+                        fontSize: AppTheme.hankoMetaSize,
+                        weight: FontWeight.w500,
+                        color: AppTheme.hankoAi,
+                        height: 1.4,
+                        tabular: true,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+          if (line != null) ...[
+            const SizedBox(height: 4),
+            Text(line, style: quiet),
+          ],
+          const SizedBox(height: 18),
+          const _HankoTile(label: 'Open', main: true, expand: true),
+        ],
+      ),
+    );
+
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _PrintButton(
+            label: [
+              'Open $title',
+              if (facts.isNotEmpty) facts,
+              if (score != null) 'AniList $score',
+            ].join(', '),
+            onTap: openShow,
+            builder: (context, _) => Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [band, words],
+            ),
+          ),
+          const SizedBox(height: 10),
+          Padding(
+            padding:
+                const EdgeInsets.symmetric(horizontal: AppTheme.hankoGutter),
+            child: Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: [
+                if (_top.length > 1)
+                  _HankoTile(label: 'Another pick', onTap: _another),
+                _HankoTile(label: 'Change the vibe', onTap: _reset),
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
+        ],
+      ),
+    );
+  }
+
+  // Where the pick is from, in one line, in place of Why this pick?'s
+  // three checks, one of which ("Highly rated by the community") wasn't
+  // true of the moods AniList sorts by popularity or trend. [n] is how
+  // many the pick was drawn from.
+  static String? _poolLine(_Option mood, int n) {
+    if (n < 2) return null;
+    final count = n <= 10 ? _counts[n - 2] : '$n';
+    return switch (mood.sort) {
+      'SCORE_DESC' => 'One of AniList’s $count best-rated ${mood.genre} titles.',
+      'POPULARITY_DESC' =>
+        'One of AniList’s $count most popular ${mood.genre} titles.',
+      _ => 'One of $count ${mood.genre} titles trending on AniList.',
+    };
+  }
+
+  static const _counts = [
+    'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten',
+  ];
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -1312,6 +1577,90 @@ class _MoodHand extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// The pick's colour, for its band and its glow (round nine): AniList's
+/// own (coverImage.color) when the boards' request brought it, else read
+/// from the cover itself by HankoCoverColour, as Home's prints are (no
+/// request, nothing stored). Null until it's read, and for a grey cover,
+/// so the band stays the sheet's sumi 2.
+class _ShowColour extends StatefulWidget {
+  const _ShowColour({
+    required this.colour,
+    required this.url,
+    required this.builder,
+  });
+
+  final Color? colour;
+  final String? url;
+  final Widget Function(BuildContext context, Color? colour) builder;
+
+  @override
+  State<_ShowColour> createState() => _ShowColourState();
+}
+
+class _ShowColourState extends State<_ShowColour> {
+  Color? _read;
+
+  @override
+  void initState() {
+    super.initState();
+    _readCover();
+  }
+
+  @override
+  void didUpdateWidget(_ShowColour oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.url != widget.url || oldWidget.colour != widget.colour) {
+      _readCover();
+    }
+  }
+
+  void _readCover() {
+    final url = widget.url;
+    if (widget.colour != null || url == null || url.isEmpty) {
+      _read = null;
+      return;
+    }
+    if (HankoCoverColour.knows(url)) {
+      _read = HankoCoverColour.peek(url);
+      return;
+    }
+    _read = null;
+    // HankoCoverColour never throws, so nothing here can reach Crashlytics.
+    HankoCoverColour.ofUrl(url).then((colour) {
+      if (!mounted || widget.url != url || widget.colour != null) return;
+      setState(() => _read = colour);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      widget.builder(context, widget.colour ?? _read);
+}
+
+/// A pool of the pick's colour behind its print (round nine), as Home's
+/// hero has one: the field rule's glow, lighter than the band, where no
+/// text sits. It crossfades with the band, at once with Remove animations.
+class _PickGlow extends StatelessWidget {
+  const _PickGlow({required this.colour});
+
+  final Color? colour;
+
+  @override
+  Widget build(BuildContext context) {
+    final glow = AppTheme.hankoField(colour,
+        cap: AppTheme.hankoFieldGlowCap, mix: AppTheme.hankoFieldGlowMix);
+    final clear = (glow ?? AppTheme.hankoSumi2).withValues(alpha: 0);
+    return AnimatedContainer(
+      duration: MediaQuery.disableAnimationsOf(context)
+          ? Duration.zero
+          : const Duration(milliseconds: 240),
+      decoration: BoxDecoration(
+        gradient: RadialGradient(colors: [glow ?? clear, clear]),
       ),
     );
   }
