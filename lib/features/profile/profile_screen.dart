@@ -2328,6 +2328,8 @@ class _CornerStampState extends State<_CornerStamp> {
     _wait = null;
     _covered?.removeStatusListener(_onCovered);
     _covered = null;
+    _scrolled?.removeListener(_onScroll);
+    _scrolled = null;
     _waiting = false;
   }
 
@@ -2337,7 +2339,7 @@ class _CornerStampState extends State<_CornerStamp> {
   /// before a build, so it sets state directly.
   void _check() {
     final route = ModalRoute.of(context);
-    if (_wait != null || _covered != null) return;
+    if (_wait != null || _covered != null || _scrolled != null) return;
     if (AchievementsScreen.pressOnProfile != widget.markKey) {
       // Not chosen just now, or the choice was refused: simply there.
       _waiting = false;
@@ -2356,7 +2358,7 @@ class _CornerStampState extends State<_CornerStamp> {
     if (covered != null && covered.status != AnimationStatus.dismissed) {
       _covered = covered..addStatusListener(_onCovered);
     } else {
-      _wait = Timer(AchievementSlip.sheetClosing, _press);
+      _wait = Timer(AchievementSlip.sheetClosing, _whenSeen);
     }
   }
 
@@ -2364,7 +2366,49 @@ class _CornerStampState extends State<_CornerStamp> {
     if (status != AnimationStatus.dismissed) return;
     _covered?.removeStatusListener(_onCovered);
     _covered = null;
-    _press();
+    _whenSeen();
+  }
+
+  // Profile's scroll, while the stamp waits to come into view.
+  ScrollPosition? _scrolled;
+  bool _lookAgain = false;
+
+  /// The press is for you to see: Profile is often scrolled down to the
+  /// Achievements row when you come back (the header is built anyway, so
+  /// it would press out of sight). So it waits until the stamp is on
+  /// screen, below the bar, and presses as you scroll up to it.
+  void _whenSeen() {
+    _wait = null;
+    if (!mounted) return;
+    if (_onScreen()) return _press();
+    final position = Scrollable.maybeOf(context)?.position;
+    if (position == null) return _press();
+    _scrolled = position..addListener(_onScroll);
+  }
+
+  // Each scroll is checked after its frame, once the header is laid out
+  // where the scroll put it.
+  void _onScroll() {
+    if (_lookAgain) return;
+    _lookAgain = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _lookAgain = false;
+      if (!mounted || _scrolled == null || !_onScreen()) return;
+      _scrolled?.removeListener(_onScroll);
+      _scrolled = null;
+      _press();
+    });
+  }
+
+  bool _onScreen() {
+    final box = context.findRenderObject();
+    if (box is! RenderBox || !box.attached || !box.hasSize) return false;
+    final top = box.localToGlobal(Offset.zero).dy;
+    final view = MediaQuery.sizeOf(context).height;
+    // Clear of the bar (which floats in over the header) and of the
+    // navigation bar at the bottom.
+    final bar = MediaQuery.paddingOf(context).top + kToolbarHeight;
+    return top >= bar && top + box.size.height <= view - kBottomNavigationBarHeight;
   }
 
   void _press() {
