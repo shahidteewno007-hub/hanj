@@ -19,6 +19,7 @@ import 'package:gal/gal.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../core/theme/app_theme.dart';
+import 'tier_list_gauntlet.dart';
 import 'tier_list_model.dart';
 import 'tier_list_widgets.dart';
 
@@ -37,6 +38,9 @@ class _TierListExportScreenState extends State<TierListExportScreen> {
   bool _busy = false;
   bool _started = false;
 
+  /// Round nine: a gauntlet prints its own picture.
+  bool get _gauntlet => TierListSwitches.gauntlet && widget.list.isGauntlet;
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -53,7 +57,8 @@ class _TierListExportScreenState extends State<TierListExportScreen> {
       for (final t in widget.list.tiers)
         for (final id in t.characterIds)
           if (widget.list.characters[id]?.imageUrl case final String u) u,
-      for (final c in TierListPoster.coversOf(widget.list)) c,
+      if (!_gauntlet)
+        for (final c in TierListPoster.coversOf(widget.list)) c,
     };
     await Future.wait([
       precacheImage(const AssetImage(TierListPoster.wing), context, onError: (_, _) {}),
@@ -124,7 +129,9 @@ class _TierListExportScreenState extends State<TierListExportScreen> {
   Future<void> _share() => _run((png) async {
         await Share.shareXFiles(
           [XFile.fromData(png, mimeType: 'image/png', name: _fileName)],
-          text: 'My “${widget.list.title}” tier list, made on Hanj',
+          text: _gauntlet
+              ? '“${widget.list.title}” A gauntlet, made on Hanj'
+              : 'My “${widget.list.title}” tier list, made on Hanj',
           fileNameOverrides: [_fileName],
         );
         return null;
@@ -160,7 +167,8 @@ class _TierListExportScreenState extends State<TierListExportScreen> {
                       Expanded(
                         child: Semantics(
                           header: true,
-                          child: Text('Share your tier list', style: AppTheme.hankoSerif(fontSize: 20)),
+                          child: Text(_gauntlet ? 'Share your gauntlet' : 'Share your tier list',
+                              style: AppTheme.hankoSerif(fontSize: 20)),
                         ),
                       ),
                     ],
@@ -176,7 +184,8 @@ class _TierListExportScreenState extends State<TierListExportScreen> {
                     constraints: BoxConstraints(maxWidth: wide ? 480 : double.infinity),
                     child: Semantics(
                       image: true,
-                      label: 'Preview of the image: ${TierListPoster.describe(widget.list)}',
+                      label: 'Preview of the image: '
+                          '${_gauntlet ? TierGauntletPoster.describe(widget.list) : TierListPoster.describe(widget.list)}',
                       child: ExcludeSemantics(
                         child: DecoratedBox(
                           decoration: const BoxDecoration(
@@ -187,7 +196,9 @@ class _TierListExportScreenState extends State<TierListExportScreen> {
                             child: RepaintBoundary(
                               key: _boundary,
                               child: MediaQuery.withNoTextScaling(
-                                child: TierListPoster(list: widget.list, showNames: _names),
+                                child: _gauntlet
+                                    ? TierGauntletPoster(list: widget.list)
+                                    : TierListPoster(list: widget.list, showNames: _names),
                               ),
                             ),
                           ),
@@ -210,6 +221,11 @@ class _TierListExportScreenState extends State<TierListExportScreen> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
+                        // A gauntlet always prints its names, beside the
+                        // faces; its sheet keeps the buttons' spacing.
+                        if (_gauntlet)
+                          const SizedBox(height: 8)
+                        else
                         MergeSemantics(
                           child: SwitchListTile(
                             value: _names,

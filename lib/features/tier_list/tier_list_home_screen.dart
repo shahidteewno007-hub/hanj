@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/app_theme.dart';
 import 'tier_list_editor_screen.dart';
+import 'tier_list_gauntlet.dart';
 import 'tier_list_model.dart';
 import 'tier_list_store.dart';
 import 'tier_list_templates.dart';
@@ -40,7 +41,9 @@ class _TierListHomeScreenState extends State<TierListHomeScreen> {
 
   Future<void> _open(TierList list, {bool fresh = false}) async {
     await Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => TierListEditorScreen(list: list, openPickerFirst: fresh),
+      builder: (_) => TierListSwitches.gauntlet && list.isGauntlet
+          ? TierGauntletScreen(list: list)
+          : TierListEditorScreen(list: list, openPickerFirst: fresh),
     ));
     if (mounted) await _load();
   }
@@ -77,6 +80,7 @@ class _TierListHomeScreenState extends State<TierListHomeScreen> {
           characters: copy.characters,
           createdAt: now,
           updatedAt: now,
+          verdict: copy.verdict,
         );
         final ok = await TierListStore.instance.save(dup);
         if (!mounted) return;
@@ -138,6 +142,17 @@ class _TierListHomeScreenState extends State<TierListHomeScreen> {
                         onOpen: () => _open(lists[i]),
                         onMenu: (a) => _listMenu(lists[i], a),
                       ),
+                    ),
+                  ),
+                ],
+                // Round nine: the Gauntlet, a format of its own, above the
+                // template shelves.
+                if (TierListSwitches.gauntlet) ...[
+                  SliverToBoxAdapter(child: _sectionHead('Gauntlet', null)),
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: AppTheme.hankoGutter),
+                      child: TierGauntletCard(onTap: () => _start(kGauntletTemplate)),
                     ),
                   ),
                 ],
@@ -392,13 +407,21 @@ class _SavedListCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final d = list.updatedAt;
     final template = tierTemplateById(list.templateId);
+    // Round nine: a gauntlet says its answer, and shows its faces.
+    final gauntlet = TierListSwitches.gauntlet && list.isGauntlet;
     final facts = [
-      list.rankedCount == 1 ? '1 ranked' : '${list.rankedCount} ranked',
-      if (list.unranked.isNotEmpty) '${list.unranked.length} waiting',
+      if (gauntlet)
+        list.verdictLine ?? (list.gauntletReady ? 'Answer open' : 'Not finished')
+      else ...[
+        list.rankedCount == 1 ? '1 ranked' : '${list.rankedCount} ranked',
+        if (list.unranked.isNotEmpty) '${list.unranked.length} waiting',
+      ],
       'edited ${d.day} ${_months[d.month - 1]}',
     ].join('  ·  ');
     // The first rows that have anyone in them, up to three.
-    final rows = [for (final t in list.tiers) if (t.characterIds.isNotEmpty) t].take(3).toList();
+    final rows = gauntlet
+        ? const <Tier>[]
+        : [for (final t in list.tiers) if (t.characterIds.isNotEmpty) t].take(3).toList();
     return Container(
       decoration: BoxDecoration(
         color: AppTheme.hankoSumi2,
@@ -427,6 +450,10 @@ class _SavedListCard extends StatelessWidget {
                       template == null ? facts : '${template.name}  ·  $facts',
                       style: AppTheme.hankoSans(fontSize: 12, color: AppTheme.hankoStone),
                     ),
+                    if (gauntlet && !list.isEmpty) ...[
+                      const SizedBox(height: 10),
+                      TierGauntletStrip(list: list),
+                    ],
                     if (rows.isNotEmpty) ...[
                       const SizedBox(height: 10),
                       for (final t in rows)

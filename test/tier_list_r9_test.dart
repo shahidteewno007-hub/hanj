@@ -8,13 +8,19 @@
 // does, as an exception. No portrait has a picture here (no network in
 // tests), so every face is drawn as its initials.
 
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hanj/core/theme/app_theme.dart';
 import 'package:hanj/features/tier_list/tier_list_anilist.dart';
 import 'package:hanj/features/tier_list/tier_list_editor_screen.dart';
+import 'package:hanj/features/tier_list/tier_list_export_screen.dart';
+import 'package:hanj/features/tier_list/tier_list_gauntlet.dart';
+import 'package:hanj/features/tier_list/tier_list_home_screen.dart';
 import 'package:hanj/features/tier_list/tier_list_model.dart';
 import 'package:hanj/features/tier_list/tier_list_picker_screen.dart';
+import 'package:hanj/features/tier_list/tier_list_store.dart';
 import 'package:hanj/features/tier_list/tier_list_templates.dart';
 import 'package:hanj/features/tier_list/tier_list_widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -73,8 +79,132 @@ Future<void> _finish(WidgetTester tester) async {
   _drain(tester);
 }
 
+/// A full gauntlet: a challenger and five opponents, one with a long name
+/// and every anime title long. [verdict]: null (open), 'falls' (Phase 3) or
+/// 'clear'.
+TierList _gauntlet({String? verdict}) {
+  final g = kGauntletTemplate.create(id: 'g-${verdict ?? 'open'}', now: DateTime(2026, 11, 10));
+  const names = ['Naruto Uzumaki', 'Yuuji Itadori', 'Luffy Monkey', 'Satoru Gojou, the Strongest Sorcerer of Today', 'Gokuu Son', 'Saitama'];
+  for (var i = 0; i < g.tiers.length; i++) {
+    g.setSlot(
+      g.tiers[i].id,
+      TierCharacter(
+        id: 100 + i,
+        name: names[i],
+        mediaId: i,
+        mediaTitle: 'A long anime title: The Final Season, part $i',
+        mediaColor: 0xFF5D8FE4,
+      ),
+    );
+  }
+  g.title = gauntletTitleFor(g.challenger);
+  if (verdict == 'falls') g.setVerdict(g.phases[2].id);
+  if (verdict == 'clear') g.setVerdict(TierList.verdictClear);
+  return g;
+}
+
 void main() {
-  setUp(() => SharedPreferences.setMockInitialValues({}));
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+    TierListStore.instance.forgetLoaded();
+  });
+
+  if (TierListSwitches.gauntlet) {
+    for (final scale in [1.0, 1.3, 2.0]) {
+      testWidgets('the gauntlet board, empty and with each answer, ${scale}x text', (tester) async {
+        _phone(tester, scale);
+        await _show(tester, TierGauntletScreen(list: kGauntletTemplate.create(id: 'g-new', now: DateTime(2026, 11, 10))));
+        expect(_drain(tester), isEmpty, reason: 'a new gauntlet');
+        expect(find.text('Pick the challenger'), findsOneWidget);
+        for (final v in [null, 'falls', 'clear']) {
+          await _show(tester, TierGauntletScreen(key: ValueKey(v), list: _gauntlet(verdict: v)));
+          expect(_drain(tester), isEmpty, reason: 'a full gauntlet, answer $v');
+        }
+        await _finish(tester);
+      });
+    }
+
+    for (final scale in [1.0, 1.3]) {
+      testWidgets('the gauntlet picture, with each answer, ${scale}x text', (tester) async {
+        _phone(tester, scale);
+        for (final v in [null, 'falls', 'clear']) {
+          await _show(tester, TierListExportScreen(key: ValueKey(v), list: _gauntlet(verdict: v)));
+          expect(find.text('Share your gauntlet'), findsOneWidget);
+          expect(find.text('Names under faces'), findsNothing, reason: 'a gauntlet always prints its names');
+          expect(_drain(tester), isEmpty, reason: 'the picture, answer $v');
+        }
+        await _finish(tester);
+      });
+
+      testWidgets('the start screen with the Gauntlet card and a saved gauntlet, ${scale}x text', (tester) async {
+        _phone(tester, scale);
+        final saved = _gauntlet(verdict: 'falls');
+        SharedPreferences.setMockInitialValues({
+          'hanj.tierLists.index': [saved.id],
+          'hanj.tierList.${saved.id}': jsonEncode(saved.toJson()),
+        });
+        await _show(tester, const TierListHomeScreen());
+        expect(_drain(tester), isEmpty);
+        expect(find.text('How far does Naruto Uzumaki go?'), findsOneWidget);
+        expect(find.textContaining('Falls at Phase 3'), findsOneWidget);
+        await tester.drag(find.byType(CustomScrollView), const Offset(0, -600));
+        await tester.pump(const Duration(milliseconds: 400));
+        expect(find.text('How far does your pick go?', skipOffstage: false), findsOneWidget);
+        expect(_drain(tester), isEmpty, reason: 'the Gauntlet card');
+        await _finish(tester);
+      });
+    }
+
+    testWidgets('a gauntlet: pick the challenger, then mark where they fall, open it again, clear them all',
+        (tester) async {
+      _phone(tester, 1.0);
+      // Another saved list gives the picker faces to pick from, no search.
+      final other = _sample('strongest-mc');
+      SharedPreferences.setMockInitialValues({
+        'hanj.tierLists.index': [other.id],
+        'hanj.tierList.${other.id}': jsonEncode(other.toJson()),
+      });
+      final g = _gauntlet();
+      g.clearTier(g.challengerTier!.id);
+      g.title = gauntletTitleFor(null);
+      await _show(tester, TierGauntletScreen(list: g));
+
+      await tester.tap(find.bySemanticsLabel('Challenger: pick one'));
+      await _settle(tester);
+      expect(find.bySemanticsLabel('Pick for Challenger'), findsOneWidget);
+      final gojo = find.bySemanticsLabel(RegExp(r'^Gojo Satoru, .*not picked$'), skipOffstage: false).first;
+      await tester.ensureVisible(gojo);
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.tap(gojo);
+      await _settle(tester);
+      expect(g.challenger?.name, 'Gojo Satoru');
+      expect(g.title, 'How far does Gojo Satoru go?', reason: 'the gauntlet names itself after its challenger');
+
+      final third = g.phases[2];
+      final box = find.bySemanticsLabel(RegExp(r'^Phase 3: open'));
+      await tester.ensureVisible(box);
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.tap(box);
+      await _settle(tester);
+      expect(g.verdict, third.id);
+      expect(g.markOf(2), GauntletMark.beats);
+      expect(g.markOf(4), GauntletMark.notReached);
+      expect(find.text('Falls at Phase 3'), findsOneWidget);
+
+      await tester.tap(find.bySemanticsLabel(RegExp(r'^Phase 3: Gojo Satoru falls here')));
+      await _settle(tester);
+      expect(g.verdict, isNull, reason: 'a second tap leaves it open');
+
+      final finish = find.bySemanticsLabel(RegExp(r'^Clears all five: open'));
+      await tester.ensureVisible(finish);
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.tap(finish);
+      await _settle(tester);
+      expect(g.clearsAll, isTrue);
+      expect(_drain(tester), isEmpty);
+      await _finish(tester);
+    });
+  }
 
   // The board at 2.0x too. Pickers stop at 1.3x, as round seven's test does: the test font is
   // about twice Jost's width, so at 2.0x their Anime | Characters tabs overrun 360 dp in the test

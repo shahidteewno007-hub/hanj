@@ -347,6 +347,16 @@ class TierList {
     _touch();
   }
 
+  /// Sets the gauntlet's answer ([verdict]); an edit like any other. A
+  /// verdict naming a tier that is gone or empty is refused.
+  bool setVerdict(String? v) {
+    if (v != null && v != verdictClear && (tierById(v)?.characterIds.isEmpty ?? true)) return false;
+    if (verdict == v) return false;
+    verdict = v;
+    _touch();
+    return true;
+  }
+
   /// A tier's name for people: its label, or "Tier 3" while it has none.
   String displayName(Tier t) {
     final l = t.label.trim();

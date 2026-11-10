@@ -625,6 +625,7 @@ class _TierCharacterPickerScreenState extends State<TierCharacterPickerScreen> {
   List<Widget> _quickPicks() {
     final waiting = [for (final c in widget.waiting) if (!_onList(c.id)) c];
     final others = [for (final c in widget.fromOtherLists) if (!_onList(c.id)) c];
+    // Faces first, one tap each; the anime rows open a cast, a tap more.
     return [
       if (waiting.isNotEmpty) ...[
         const SizedBox(height: 20),
@@ -632,17 +633,17 @@ class _TierCharacterPickerScreenState extends State<TierCharacterPickerScreen> {
         const SizedBox(height: 8),
         _strip(waiting),
       ],
-      if (widget.listAnime.isNotEmpty) ...[
-        const SizedBox(height: 20),
-        const TierEyebrow('Anime on this list'),
-        const SizedBox(height: 2),
-        for (final a in widget.listAnime) _AnimeRow(anime: a, onTap: () => _openCast(a)),
-      ],
       if (others.isNotEmpty) ...[
         const SizedBox(height: 20),
         const TierEyebrow('From your other lists'),
         const SizedBox(height: 8),
         _strip(others),
+      ],
+      if (widget.listAnime.isNotEmpty) ...[
+        const SizedBox(height: 20),
+        const TierEyebrow('Anime on this list'),
+        const SizedBox(height: 2),
+        for (final a in widget.listAnime) _AnimeRow(anime: a, onTap: () => _openCast(a)),
       ],
     ];
   }

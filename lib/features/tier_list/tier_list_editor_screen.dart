@@ -1659,6 +1659,15 @@ class _NameChip extends StatelessWidget {
   }
 }
 
+/// The list's rename dialog (title, and the question it answers), for
+/// round nine's Gauntlet board. Returns the new title and question, or null.
+Future<(String, String)?> showTierListRenameDialog(BuildContext context, TierList list) {
+  return showDialog<(String, String)>(
+    context: context,
+    builder: (_) => TierTextSelection(child: _RenameListDialog(title: list.title, prompt: list.prompt)),
+  );
+}
+
 class _RenameListDialog extends StatefulWidget {
   const _RenameListDialog({required this.title, required this.prompt});
   final String title;

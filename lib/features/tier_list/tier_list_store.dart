@@ -43,6 +43,11 @@ class TierListStore {
   /// at once when none is running.
   Future<void> get idle => _pending == 0 ? Future<void>.value() : _queue;
 
+  /// Tests only: forget what was loaded, so the next [loadAll] reads the
+  /// (mock) preferences again.
+  @visibleForTesting
+  void forgetLoaded() => _lists = null;
+
   /// A new list id: time plus a little randomness, base 36.
   static String freshId() =>
       '${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}'

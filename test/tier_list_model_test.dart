@@ -355,6 +355,17 @@ void main() {
       _expectConsistent(l);
     });
 
+    test('setVerdict refuses a tier that is gone or empty', () {
+      final l = _list()..setSlot('t1', _c(1));
+      expect(l.setVerdict('t2'), isFalse, reason: 't2 is empty');
+      expect(l.setVerdict('nope'), isFalse);
+      expect(l.setVerdict('t1'), isTrue);
+      expect(l.setVerdict('t1'), isFalse, reason: 'no change');
+      expect(l.setVerdict(TierList.verdictClear), isTrue);
+      expect(l.setVerdict(null), isTrue);
+      expect(l.verdict, isNull);
+    });
+
     test('removing the verdict’s tier drops the verdict', () {
       final l = _list()..setSlot('t1', _c(1));
       l.verdict = 't1';
