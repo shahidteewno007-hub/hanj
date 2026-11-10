@@ -1481,7 +1481,10 @@ class _Badges extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(builder: (context, constraints) {
       final wide = constraints.maxWidth >= 920;
-      final groups = [for (final (heading, entries) in _family) _group(heading, entries)];
+      // Two columns of 420 when they fit; otherwise one, as wide as the page.
+      final groups = [
+        for (final (heading, entries) in _family) _group(heading, entries, wide ? 420 : null),
+      ];
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1508,7 +1511,7 @@ class _Badges extends StatelessWidget {
           _label('Not yet: the outline dashed, the emblem in edge'),
           for (final s in const <double>[24, 48])
             _row('${s.round()} dp', [
-              for (final id in const ['finished', 'sealed', 'genres', 'long_haul', 'top9'])
+              for (final id in const ['sealed', 'genres', 'long_haul', 'top9'])
                 HankoBadge(
                   id: id,
                   size: s,
@@ -1546,9 +1549,9 @@ class _Badges extends StatelessWidget {
     });
   }
 
-  Widget _group(String heading, List<(String, String, int, String)> entries) {
+  Widget _group(String heading, List<(String, String, int, String)> entries, double? width) {
     return SizedBox(
-      width: 420,
+      width: width,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
