@@ -4,6 +4,8 @@ import 'package:cached_network_image/cached_network_image.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../services/firestore_service.dart';
+import '../../widgets/hanko_board.dart';
+import '../../widgets/hanko_seal.dart';
 import '../anime_detail/anime_detail_screen.dart';
 import '../../models/anime_model.dart';
 
@@ -24,6 +26,15 @@ class MyListScreen extends StatefulWidget {
 }
 
 class _MyListScreenState extends State<MyListScreen> {
+  /// Vibes for My List (Print Room, r9; Shahid, 2026-11-10: "I loved new
+  /// vibes change, if we can bring that change to other tabs/features
+  /// wherever needed"): printed status tabs, the selected status as a board
+  /// holding its newest covers in a pose that says what the status means,
+  /// rows as prints with your rating as your seal (not a gold star), statuses
+  /// in words (no status colours), labelled square buttons. False gives back
+  /// 07faabe's list as it was.
+  static const bool _printRoom = true;
+
   final _firestoreService = FirestoreService();
   final _searchController = TextEditingController();
   String _searchQuery = '';
@@ -102,6 +113,329 @@ class _MyListScreenState extends State<MyListScreen> {
     return filtered;
   }
 
+  // Print Room (r9): the sort sheet on sumi 2 with Hanko's sheet corners; the
+  // order in use is ticked in washi (coral is only ever your verdicts).
+  void _showPrintedSortSheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppTheme.hankoSumi2,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(
+            top: Radius.circular(AppTheme.hankoSheetRadius)),
+      ),
+      builder: (_) => Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Sort by',
+                style: AppTheme.hankoSerif(
+                    fontSize: AppTheme.hankoFeaturedSize)),
+            const SizedBox(height: 12),
+            for (final option in [
+              ('recent', 'Recently Added'),
+              ('title', 'Title A–Z'),
+              ('rating', 'My Rating'),
+            ])
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                selected: _sortBy == option.$1,
+                title: Text(option.$2,
+                    style: AppTheme.hankoSans(
+                        fontSize: 15,
+                        weight: _sortBy == option.$1
+                            ? FontWeight.w500
+                            : FontWeight.w400)),
+                trailing: _sortBy == option.$1
+                    ? const Icon(Icons.check_rounded,
+                        color: AppTheme.hankoWashi)
+                    : null,
+                onTap: () {
+                  setState(() => _sortBy = option.$1);
+                  Navigator.pop(context);
+                },
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Print Room (r9): the shuffle button's pick, as the old header's: any
+  // title on the list, opened on Detail.
+  void _openRandom(List<QueryDocumentSnapshot> allDocs) {
+    if (allDocs.isEmpty) return;
+    final random =
+        allDocs[DateTime.now().millisecondsSinceEpoch % allDocs.length];
+    final data = random.data() as Map<String, dynamic>;
+    final anime = Anime(
+      id: data['animeId']?.toString() ?? '',
+      title: data['title'] as String? ?? '',
+      imageUrl: data['imageUrl'] as String?,
+      averageScore: (data['averageScore'] as num?)?.toDouble(),
+      episodes: data['episodes'] as int?,
+      genres: (data['genres'] as List<dynamic>?)?.cast<String>() ?? [],
+      status: data['status'] as String?,
+    );
+    Navigator.push(context, MaterialPageRoute(
+      builder: (_) => AnimeDetailScreen(anime: anime),
+    ));
+  }
+
+  // ── Print Room (r9): the list on a Vibes board, its rows as prints ──
+  Widget _printed(
+    BuildContext context,
+    AsyncSnapshot<QuerySnapshot> snapshot,
+    List<QueryDocumentSnapshot> allDocs,
+    List<QueryDocumentSnapshot> filtered,
+    bool loaded,
+    int totalEps,
+  ) {
+    // The selected status's shows, newest first, for its board.
+    final mine = [
+      for (final d in allDocs)
+        if (_selectedStatus == 'ALL' ||
+            (d.data() as Map)['status'] == _selectedStatus)
+          d.data() as Map<String, dynamic>,
+    ]..sort((a, b) {
+        final tA = a['addedAt'] as Timestamp?;
+        final tB = b['addedAt'] as Timestamp?;
+        if (tA == null || tB == null) return 0;
+        return tB.compareTo(tA);
+      });
+    const corners = BorderRadius.all(Radius.circular(AppTheme.hankoRadius));
+    OutlineInputBorder edge(Color c) => OutlineInputBorder(
+          borderRadius: corners,
+          borderSide: BorderSide(color: c),
+        );
+    return CustomScrollView(
+      slivers: [
+        // ── Header ────────────────────────────────────
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(
+                20, MediaQuery.of(context).padding.top + 4, 20, 0),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (widget.showBackButton)
+                        IconButton(
+                          icon: const Icon(Icons.arrow_back_rounded,
+                              color: AppTheme.textPrimary, size: 20),
+                          tooltip: 'Back',
+                          onPressed: () => Navigator.pop(context),
+                        ),
+                      Text('My List',
+                          style: AppTheme.serif(
+                              fontSize: 28, weight: FontWeight.w700)),
+                      const SizedBox(height: 4),
+                      // Hidden, not removed, until the list has loaded, so
+                      // the header doesn't jump when it does.
+                      Visibility(
+                        visible: loaded,
+                        maintainSize: true,
+                        maintainAnimation: true,
+                        maintainState: true,
+                        child: Text(
+                          '${allDocs.length} TITLES · ${_formatWatchTime(totalEps)}',
+                          style: HankoBoard.labelStyle(
+                              color: AppTheme.hankoStone),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                _SquareButton(
+                  icon: Icons.swap_vert_rounded,
+                  label: 'Sort',
+                  onTap: _showPrintedSortSheet,
+                ),
+                const SizedBox(width: 8),
+                _SquareButton(
+                  icon: Icons.shuffle_rounded,
+                  label: 'Open one at random',
+                  onTap: () => _openRandom(allDocs),
+                ),
+              ],
+            ),
+          ),
+        ),
+
+        // ── Search ────────────────────────────────────
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+            child: TextField(
+              controller: _searchController,
+              onChanged: (v) => setState(() => _searchQuery = v),
+              style: AppTheme.hankoSans(),
+              decoration: InputDecoration(
+                hintText: 'Search your list...',
+                hintStyle: AppTheme.hankoSans(color: AppTheme.hankoAsh),
+                fillColor: AppTheme.hankoSumi3,
+                prefixIcon: const Icon(Icons.search_rounded,
+                    color: AppTheme.hankoStone, size: 18),
+                suffixIcon: _searchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear_rounded,
+                            color: AppTheme.hankoStone, size: 16),
+                        tooltip: 'Clear',
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() => _searchQuery = '');
+                        },
+                      )
+                    : null,
+                border: edge(AppTheme.hankoSumi3),
+                enabledBorder: edge(AppTheme.hankoSumi3),
+                focusedBorder: edge(AppTheme.hankoWashi),
+              ),
+            ),
+          ),
+        ),
+
+        // ── Status tabs ───────────────────────────────
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+            child: HankoTabStrip(
+              labels: [for (final s in _statuses) _statusLabels[s] ?? s],
+              selected: _statuses.indexOf(_selectedStatus),
+              onSelect: (i) => setState(() => _selectedStatus = _statuses[i]),
+            ),
+          ),
+        ),
+
+        // ── The selected status, as a board ───────────
+        if (loaded && _searchQuery.isEmpty && mine.isNotEmpty)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+              child: _StatusBoard(
+                key: ValueKey(_selectedStatus),
+                status: _selectedStatus,
+                count: mine.length,
+                covers: [
+                  for (final m in mine.take(3)) m['imageUrl'] as String? ?? '',
+                ],
+              ),
+            ),
+          ),
+
+        // ── List ──────────────────────────────────────
+        if (snapshot.connectionState == ConnectionState.waiting)
+          // Rows as blank paper while the list loads, as everywhere in Hanko.
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
+            sliver: SliverList(
+              delegate: SliverChildListDelegate([
+                for (var i = 0; i < 5; i++)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 16),
+                    child: Row(
+                      children: [
+                        const SizedBox(
+                          width: 64,
+                          height: 64 * hankoCoverRatio,
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                                color: AppTheme.hankoSumi3,
+                                borderRadius: corners),
+                          ),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Container(
+                            height: 14,
+                            margin: const EdgeInsets.only(right: 80),
+                            color: AppTheme.hankoSumi3,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ]),
+            ),
+          )
+        // A failed read arrives with no data, so allDocs is empty; this
+        // keeps it from reading as an empty list.
+        else if (snapshot.hasError)
+          SliverFillRemaining(
+            hasScrollBody: false,
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(32),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text('Your list can\'t load right now',
+                        textAlign: TextAlign.center,
+                        style: AppTheme.hankoSerif(
+                            fontSize: AppTheme.hankoFeaturedSize)),
+                    const SizedBox(height: 8),
+                    Text('Try again shortly.',
+                        style: AppTheme.hankoSans(
+                            color: AppTheme.hankoStone)),
+                  ],
+                ),
+              ),
+            ),
+          )
+        else if (filtered.isEmpty)
+          SliverFillRemaining(
+            hasScrollBody: false,
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(32),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const HankoEmptyHand(),
+                    const SizedBox(height: 20),
+                    Text('Nothing here',
+                        style: AppTheme.hankoSerif(
+                            fontSize: AppTheme.hankoFeaturedSize)),
+                    const SizedBox(height: 8),
+                    Text(
+                      _searchQuery.isNotEmpty
+                          ? 'No results for "$_searchQuery"'
+                          : 'Add some anime to get started',
+                      textAlign: TextAlign.center,
+                      style: AppTheme.hankoSans(color: AppTheme.hankoStone),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          )
+        else
+          SliverPadding(
+            padding: const EdgeInsets.only(top: 12),
+            sliver: SliverList(
+              delegate: SliverChildBuilderDelegate(
+                (context, i) {
+                  final data = filtered[i].data() as Map<String, dynamic>;
+                  return _ListRow(
+                    key: ValueKey(data['animeId']),
+                    data: data,
+                    firestoreService: _firestoreService,
+                  );
+                },
+                childCount: filtered.length,
+              ),
+            ),
+          ),
+
+        const SliverToBoxAdapter(child: SizedBox(height: 40)),
+      ],
+    );
+  }
+
   void _showSortSheet() {
     showModalBottomSheet(
       context: context,
@@ -175,6 +509,11 @@ class _MyListScreenState extends State<MyListScreen> {
             } else {
               totalEps += (data['currentEpisode'] as int?) ?? 0;
             }
+          }
+
+          if (_printRoom) {
+            return _printed(
+                context, snapshot, allDocs, filtered, loaded, totalEps);
           }
 
           return CustomScrollView(
@@ -506,8 +845,162 @@ class _ListRow extends StatelessWidget {
     }
   }
 
+  void _open(BuildContext context) {
+    final anime = Anime(
+      id: data['animeId']?.toString() ?? '',
+      title: data['title'] as String? ?? 'Unknown',
+      imageUrl: data['imageUrl'] as String?,
+      episodes: data['episodes'] as int?,
+      genres: (data['genres'] as List<dynamic>?)?.cast<String>() ?? [],
+      averageScore: (data['averageScore'] as num?)?.toDouble(),
+    );
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => AnimeDetailScreen(anime: anime)),
+    );
+  }
+
+  // Print Room (r9): a print and your seal. The cover is a printed card, the
+  // status is said in words (no status colours: coral is only your verdict),
+  // and your rating is your seal, as on Detail and Profile, not a gold star.
+  // Swipe to remove is as before.
+  Widget _printed(BuildContext context) {
+    final title = data['title'] as String? ?? 'Unknown';
+    final imageUrl = data['imageUrl'] as String?;
+    final status = data['status'] as String? ?? '';
+    final current = (data['currentEpisode'] as int?) ?? 0;
+    final total = data['episodes'] as int?;
+    final userRating = (data['userRating'] as num?)?.toDouble();
+    final genres = (data['genres'] as List<dynamic>?)?.cast<String>() ?? [];
+    final animeId = int.tryParse(data['animeId']?.toString() ?? '0') ?? 0;
+    final words = switch (status) {
+      'WATCHING' => total != null ? 'Watching · $current of $total' : 'Watching',
+      'COMPLETED' => 'Completed',
+      'PLAN_TO_WATCH' => 'Plan to watch',
+      'DROPPED' => 'Dropped',
+      _ => status,
+    };
+    final meta = [
+      if (genres.isNotEmpty) genres.first.toUpperCase(),
+      if (total != null) '$total EP',
+    ].join(' · ');
+    return Dismissible(
+      key: ValueKey(animeId),
+      direction: DismissDirection.endToStart,
+      background: Container(
+        color: AppTheme.error,
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 24),
+        child: const Icon(Icons.delete_rounded, color: Colors.white, size: 24),
+      ),
+      confirmDismiss: (_) async {
+        return await showDialog<bool>(
+          context: context,
+          builder: (_) => AlertDialog(
+            backgroundColor: AppTheme.hankoSumi2,
+            shape: const RoundedRectangleBorder(
+              borderRadius: BorderRadius.all(
+                  Radius.circular(AppTheme.hankoSheetRadius)),
+            ),
+            title: Text('Remove from list',
+                style: AppTheme.hankoSerif(
+                    fontSize: AppTheme.hankoFeaturedSize)),
+            content: Text('Remove "$title" from your list?',
+                style: AppTheme.hankoSans(color: AppTheme.hankoStoneHi)),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: Text('Cancel',
+                    style: AppTheme.hankoSans(weight: FontWeight.w500)),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: Text('Remove',
+                    style: AppTheme.hankoSans(
+                        weight: FontWeight.w500, color: AppTheme.error)),
+              ),
+            ],
+          ),
+        );
+      },
+      onDismissed: (_) => firestoreService.removeAnimeFromList(animeId),
+      child: Semantics(
+        container: true,
+        button: true,
+        label: [
+          title,
+          words,
+          if (userRating != null)
+            'your rating ${HankoSeal.formatScore(userRating)}',
+        ].join(', '),
+        child: Material(
+          type: MaterialType.transparency,
+          child: InkWell(
+            onTap: () => _open(context),
+            splashFactory: NoSplash.splashFactory,
+            highlightColor: AppTheme.hankoPressWash,
+            hoverColor: AppTheme.hankoPressWash,
+            child: ExcludeSemantics(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 64,
+                      height: 64 * hankoCoverRatio,
+                      child: HankoCard(url: imageUrl),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            title,
+                            style: AppTheme.hankoSans(
+                              fontSize: AppTheme.hankoListTitleSize,
+                              weight: FontWeight.w500,
+                              height: 1.3,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          if (meta.isNotEmpty) ...[
+                            const SizedBox(height: 4),
+                            Text(meta,
+                                style: HankoBoard.labelStyle(
+                                    color: AppTheme.hankoStone)),
+                          ],
+                          const SizedBox(height: 6),
+                          Text(
+                            words,
+                            style: AppTheme.hankoSans(
+                              fontSize: AppTheme.hankoMetaSize,
+                              color: AppTheme.hankoStone,
+                              tabular: true,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (userRating != null)
+                      Padding(
+                        padding: const EdgeInsets.only(left: 12),
+                        child: HankoSeal.score(userRating, size: 32),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (_MyListScreenState._printRoom) return _printed(context);
     final title = data['title'] as String? ?? 'Unknown';
     final imageUrl = data['imageUrl'] as String?;
     final status = data['status'] as String? ?? '';
@@ -712,6 +1205,166 @@ class _ListRow extends StatelessWidget {
                 const Icon(Icons.chevron_right_rounded,
                     color: AppTheme.textMuted, size: 18),
               ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// Print Room (r9)
+// ─────────────────────────────────────────────────────────────
+
+/// A square icon button (Print Room, r9): drawn 40 dp on sumi 3 with Hanko's
+/// 2 px corners, touched at 48, and named for a screen reader.
+class _SquareButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  const _SquareButton({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+        container: true,
+        button: true,
+        label: label,
+        child: SizedBox(
+          width: AppTheme.hankoTouch,
+          height: AppTheme.hankoTouch,
+          child: Center(
+            child: Material(
+              type: MaterialType.transparency,
+              child: InkWell(
+                onTap: onTap,
+                splashFactory: NoSplash.splashFactory,
+                highlightColor: AppTheme.hankoPressWash,
+                hoverColor: AppTheme.hankoPressWash,
+                borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+                child: ExcludeSemantics(
+                  child: Ink(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: AppTheme.hankoSumi3,
+                      borderRadius:
+                          BorderRadius.circular(AppTheme.hankoRadius),
+                    ),
+                    child:
+                        Icon(icon, color: AppTheme.hankoWashi, size: 18),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+}
+
+/// The selected status as a Vibes board (Print Room, r9): its name, a line on
+/// what it is, its count as a printed label, and its newest covers in a hand
+/// posed for what the status means, tinted by them:
+///  - Everything: Vibes' fan;
+///  - Watching: held like cards in play (a splay);
+///  - Completed: upright, shoulder to shoulder, shelved;
+///  - Plan to watch: volumes waiting their turn in the dark;
+///  - Dropped: falling away under veils.
+/// The hand deals in the first time a status shows in a session. One node for
+/// a screen reader; the rows below name the shows.
+class _StatusBoard extends StatefulWidget {
+  final String status;
+  final int count;
+  final List<String> covers;
+
+  const _StatusBoard({
+    super.key,
+    required this.status,
+    required this.count,
+    required this.covers,
+  });
+
+  @override
+  State<_StatusBoard> createState() => _StatusBoardState();
+}
+
+class _StatusBoardState extends State<_StatusBoard> {
+  static final Set<String> _dealt = {};
+  late final bool _dealIn = _dealt.add(widget.status);
+
+  static (String, String, List<HankoPose>) _words(String status) =>
+      switch (status) {
+        'WATCHING' => ('Watching', 'In your hands now', HankoPose.splay),
+        'COMPLETED' => ('Completed', 'Seen through to the end', HankoPose.level),
+        'PLAN_TO_WATCH' => ('Plan to watch', 'Waiting their turn', HankoPose.recede),
+        'DROPPED' => ('Dropped', 'Set down for now', HankoPose.fallAway),
+        _ => ('Everything', 'All you’ve kept, newest first', HankoPose.fan),
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    final still = MediaQuery.disableAnimationsOf(context);
+    final (name, tagline, poses) = _words(widget.status);
+    final n = widget.count;
+    // A status with fewer than three shows holds only those.
+    final held = [
+      for (final p in poses)
+        if (p.cover < widget.covers.length) p,
+    ];
+    return Semantics(
+      container: true,
+      label: '$name. $tagline. $n ${n == 1 ? 'title' : 'titles'}',
+      child: ExcludeSemantics(
+        child: HankoCoverTint(
+          urls: widget.covers,
+          builder: (context, tint) => HankoBoard(
+            tint: tint,
+            face: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          name,
+                          style: AppTheme.hankoSerif(
+                              fontSize: AppTheme.hankoFeaturedSize,
+                              height: 1.2),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          tagline,
+                          style: AppTheme.hankoSans(
+                            fontSize: AppTheme.hankoMetaSize,
+                            color: AppTheme.hankoStoneHi,
+                            height: 1.35,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          '$n ${n == 1 ? 'TITLE' : 'TITLES'}',
+                          style: HankoBoard.labelStyle(),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  HankoHand(
+                    poses: held,
+                    urls: widget.covers,
+                    coverWidth: 40,
+                    lifted: false,
+                    dealIn: _dealIn && !still,
+                  ),
+                ],
+              ),
             ),
           ),
         ),

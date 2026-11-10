@@ -9,6 +9,7 @@ import 'package:http/http.dart' as http;
 import '../../core/theme/app_theme.dart';
 import '../../services/anilist_service.dart';
 import '../../widgets/anilist_saved_note.dart';
+import '../../widgets/hanko_board.dart';
 import '../../services/offline_cache_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'hanj_filter_sheet.dart';
@@ -41,6 +42,16 @@ class _DiscoveryScreenState extends State<DiscoveryScreen>
   late TabController _tabController;
 
   static const _tabs = ['VIBES', 'TOP RATED', 'POPULAR', 'TRENDING', 'SEASONAL'];
+
+  /// Vibes for the rest of Discover (Print Room, r9; Shahid, 2026-11-10: "I
+  /// loved new vibes change, if we can bring that change to other
+  /// tabs/features wherever needed"): printed tabs, the washi one selected;
+  /// Top rated, Popular and Trending open on a board holding their first
+  /// three, then printed posters; the filter as printed chips; Seasonal as a
+  /// board of the season's covers over printed rows, its countdown ticking in
+  /// its own leaf. False gives back 07faabe's tabs, grids, filter and hub as
+  /// they were (VIBES is unchanged either way).
+  static const bool _printRoom = true;
 
   @override
   void initState() {
@@ -154,8 +165,23 @@ class _ArukuTabBarState extends State<_ArukuTabBar> {
     widget.controller.addListener(() => setState(() {}));
   }
 
+  // Print Room (r9): printed tabs, the selected one washi (CLAUDE.md: never
+  // coral, which is only ever your verdicts), each a button a screen reader
+  // and the keyboard land on. At 360 dp SEASONAL starts past the edge; the
+  // strip brings whichever tab is selected into view, a swipe included.
+  Widget _printed(BuildContext context) {
+    final still = MediaQuery.disableAnimationsOf(context);
+    return HankoTabStrip(
+      labels: widget.tabs,
+      selected: widget.controller.index,
+      onSelect: (i) => widget.controller
+          .animateTo(i, duration: still ? Duration.zero : null),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (_DiscoveryScreenState._printRoom) return _printed(context);
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Row(
@@ -358,9 +384,89 @@ class _FilteredAnimeTabState extends State<_FilteredAnimeTab>
     );
   }
 
+  // The filters now on, each with the step that takes it back off.
+  List<(String, VoidCallback)> _onFilters() => [
+        if (_selectedGenre != null)
+          (_selectedGenre!, () {
+            setState(() => _selectedGenre = null);
+            _load();
+          }),
+        if (_selectedFormat != null)
+          (HanjFilterSheet.formatLabel(_selectedFormat!), () {
+            setState(() => _selectedFormat = null);
+            _load();
+          }),
+        if (_selectedYear != null)
+          ('$_selectedYear', () {
+            setState(() => _selectedYear = null);
+            _load();
+          }),
+      ];
+
+  // ── Print Room (r9): the ranking as a Vibes board, then printed posters ──
+  Widget _printed(BuildContext context) {
+    final on = _onFilters();
+    return Column(
+      children: [
+        if (widget.enableFilters) ...[
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Row(
+              children: [
+                Expanded(
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        for (final (label, clear) in on) ...[
+                          HankoChip(
+                            label: label,
+                            semanticLabel: 'Remove $label',
+                            trailing: Icons.close_rounded,
+                            onTap: clear,
+                          ),
+                          const SizedBox(width: 6),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                HankoChip(
+                  label: 'Filter',
+                  semanticLabel:
+                      on.isEmpty ? 'Filter' : 'Filter, ${on.length} on',
+                  icon: Icons.tune_rounded,
+                  on: on.isNotEmpty,
+                  onTap: _showFilterSheet,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 4),
+        ],
+        Expanded(
+          child: _isLoading
+              ? const _RankLoading()
+              : _animeList.isEmpty
+                  ? _EmptyState(
+                      failMessage: _unfilteredFailed
+                          ? 'Fresh data can\'t load right now. Try again shortly.'
+                          : AnilistService.messageFor(_failStatus))
+                  : _RankBoardList(
+                      sort: widget.sort,
+                      anime: _animeList,
+                      filters: [for (final (label, _) in on) label],
+                    ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     super.build(context);
+    if (_DiscoveryScreenState._printRoom) return _printed(context);
 
     return Column(
       children: [
@@ -488,6 +594,450 @@ class _FilteredAnimeTabState extends State<_FilteredAnimeTab>
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Print Room (r9): a ranking on a board
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// A ranking (Top rated, Popular, Trending) drawn the way Vibes draws a mood:
+/// a board holding its first three, posed for what the ranking is, then the
+/// rest as printed posters, numbered on from four. The first time a ranking
+/// shows in a session, the board and the first row deal in.
+class _RankBoardList extends StatefulWidget {
+  final String sort;
+  final List<Anime> anime;
+  // The filters now on, in words, for the board's label.
+  final List<String> filters;
+
+  const _RankBoardList({
+    required this.sort,
+    required this.anime,
+    required this.filters,
+  });
+
+  static const double gutter = 20;
+  static const double gap = 12;
+
+  /// How many posters fit across [width] (three at least, and about 132 dp
+  /// each on wide windows), and how wide each is.
+  static (int, double) columnsFor(double width) {
+    final inner = width - 2 * gutter;
+    final columns = math.max(3, ((inner + gap) / (132 + gap)).floor());
+    return (columns, (inner - gap * (columns - 1)) / columns);
+  }
+
+  @override
+  State<_RankBoardList> createState() => _RankBoardListState();
+}
+
+class _RankBoardListState extends State<_RankBoardList> {
+  static final Set<String> _dealt = {};
+  late final bool _dealIn = _dealt.add(widget.sort);
+
+  void _open(Anime anime) => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => AnimeDetailScreen(anime: anime)),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    final scaler = MediaQuery.textScalerOf(context);
+    final anime = widget.anime;
+    final rest = anime.length > 3 ? anime.sublist(3) : const <Anime>[];
+    return LayoutBuilder(builder: (context, constraints) {
+      final (columns, width) = _RankBoardList.columnsFor(constraints.maxWidth);
+      return CustomScrollView(
+        slivers: [
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(
+                _RankBoardList.gutter, 4, _RankBoardList.gutter, 0),
+            sliver: SliverToBoxAdapter(
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 560),
+                  child: _RankBoard(
+                    sort: widget.sort,
+                    top: anime.take(3).toList(),
+                    filters: widget.filters,
+                    dealIn: _dealIn,
+                    onOpen: _open,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(
+                _RankBoardList.gutter, 20, _RankBoardList.gutter, 40),
+            sliver: SliverGrid(
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: columns,
+                crossAxisSpacing: _RankBoardList.gap,
+                mainAxisSpacing: 16,
+                mainAxisExtent: HankoPoster.heightFor(width, scaler),
+              ),
+              delegate: SliverChildBuilderDelegate(
+                (context, i) {
+                  final a = rest[i];
+                  return HankoDeal(
+                    key: ValueKey(a.id),
+                    // After the board's three.
+                    index: i + 3,
+                    play: _dealIn,
+                    from: const Offset(16, 0),
+                    child: HankoPoster(
+                      url: a.imageUrl,
+                      title: a.titleEnglish ?? a.title,
+                      score: a.averageScore,
+                      rank: i + 4,
+                      onTap: () => _open(a),
+                    ),
+                  );
+                },
+                childCount: rest.length,
+              ),
+            ),
+          ),
+        ],
+      );
+    });
+  }
+}
+
+/// The board a ranking opens on: its first three standing in a pose that
+/// says what the ranking is, as Vibes poses its moods, on a tint taken from
+/// their covers:
+///  - Top rated: a podium, number one raised in the middle, and larger;
+///  - Popular: shoulder to shoulder, all three level;
+///  - Trending: a rising stair, three low on the left, one high on the right.
+/// Unlike a Vibes hand they stand upright and apart, so each can be read and
+/// tapped: each print is one button, and its title on the strip below opens
+/// the same show without a second stop for a screen reader or the keyboard.
+/// Titles and the crowd's scores sit on the strip's flat 5%, where ai keeps
+/// 5.4:1; the name, tagline and label sit on the pool in washi and stone hi.
+class _RankBoard extends StatelessWidget {
+  final String sort;
+  final List<Anime> top;
+  final List<String> filters;
+  final bool dealIn;
+  final ValueChanged<Anime> onOpen;
+
+  const _RankBoard({
+    required this.sort,
+    required this.top,
+    required this.filters,
+    required this.dealIn,
+    required this.onOpen,
+  });
+
+  static const double _gap = 10;
+
+  // The board's name, its tagline, and the order, for its label. The label's
+  // spaces don't break, so it wraps only after a dot.
+  static (String, String, String) _words(String sort) => switch (sort) {
+        'SCORE_DESC' =>
+          ('Top rated', 'The crowd’s highest scores', 'by\u00A0score'),
+        'POPULARITY_DESC' =>
+          ('Popular', 'On the most lists', 'by\u00A0members'),
+        _ => ('Trending', 'Climbing right now', 'trending\u00A0now'),
+      };
+
+  // The pose: which of the three stands in each slot, left to right (0 is
+  // number one), each slot's width as a share, and how high each stands (dp).
+  static (List<int>, List<double>, List<double>) _pose(String sort) =>
+      switch (sort) {
+        'SCORE_DESC' => (const [1, 0, 2], const [0.92, 1.16, 0.92], const [0.0, 14.0, 0.0]),
+        'TRENDING_DESC' => (const [2, 1, 0], const [1.0, 1.0, 1.0], const [0.0, 12.0, 24.0]),
+        _ => (const [0, 1, 2], const [1.0, 1.0, 1.0], const [0.0, 0.0, 0.0]),
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    final (name, tagline, order) = _words(sort);
+    final label = [
+      if (filters.isEmpty) 'all\u00A0anime',
+      for (final f in filters) f.replaceAll(' ', '\u00A0'),
+      order,
+    ].join(' · ').toUpperCase();
+    final (slots, shares, raised) = _pose(sort);
+    final present = [
+      for (var s = 0; s < 3; s++)
+        if (slots[s] < top.length) s,
+    ];
+    return HankoCoverTint(
+      urls: [for (final a in top) a.imageUrl ?? ''],
+      builder: (context, tint) => LayoutBuilder(
+        builder: (context, constraints) {
+          final unit = math.min(
+              124.0,
+              (constraints.maxWidth - 32 - 2 * _gap) /
+                  shares.fold(0.0, (a, b) => a + b));
+          // One row of the three slots, each cell as wide as its print.
+          Widget row(CrossAxisAlignment align,
+                  Widget Function(Anime anime, int s, double width) cell) =>
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: align,
+                children: [
+                  for (final s in present) ...[
+                    if (s != present.first) const SizedBox(width: _gap),
+                    SizedBox(
+                      width: shares[s] * unit,
+                      child: cell(top[slots[s]], s, shares[s] * unit),
+                    ),
+                  ],
+                ],
+              );
+          return HankoBoard(
+            tint: tint,
+            centre: const Alignment(0, 0.25),
+            radius: 0.9,
+            face: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    name,
+                    style: AppTheme.hankoSerif(
+                        fontSize: AppTheme.hankoLedeSize, height: 1.2),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    tagline,
+                    style: AppTheme.hankoSans(
+                      fontSize: AppTheme.hankoMetaSize,
+                      color: AppTheme.hankoStoneHi,
+                      height: 1.35,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(label, style: HankoBoard.labelStyle()),
+                  const SizedBox(height: 16),
+                  row(
+                    CrossAxisAlignment.end,
+                    (anime, s, width) => Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        HankoDeal(
+                          // Number three steps up first, number one last.
+                          index: 2 - slots[s],
+                          play: dealIn,
+                          from: const Offset(0, 12),
+                          child: _Standing(
+                            anime: anime,
+                            rank: slots[s] + 1,
+                            width: width,
+                            onTap: () => onOpen(anime),
+                          ),
+                        ),
+                        SizedBox(height: raised[s]),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            strip: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 14),
+              child: row(
+                CrossAxisAlignment.start,
+                (anime, s, width) =>
+                    _StripTitle(anime: anime, onTap: () => onOpen(anime)),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// One of a ranking's first three, standing on its board: the cover as a
+/// printed card with its plate number, one button ("1, Frieren, AniList
+/// 9.1"). A press presses it in; a pointer or keyboard focus drops its shadow.
+class _Standing extends StatefulWidget {
+  final Anime anime;
+  final int rank;
+  final double width;
+  final VoidCallback onTap;
+
+  const _Standing({
+    required this.anime,
+    required this.rank,
+    required this.width,
+    required this.onTap,
+  });
+
+  @override
+  State<_Standing> createState() => _StandingState();
+}
+
+class _StandingState extends State<_Standing> {
+  bool _pressed = false;
+  bool _hovered = false;
+  bool _focused = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final a = widget.anime;
+    final score = a.averageScore;
+    final still = MediaQuery.disableAnimationsOf(context);
+    return Semantics(
+      container: true,
+      button: true,
+      label: [
+        '${widget.rank}',
+        a.titleEnglish ?? a.title,
+        if (score != null) 'AniList ${(score / 10).toStringAsFixed(1)}',
+      ].join(', '),
+      child: Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          onTap: widget.onTap,
+          onHighlightChanged: (v) => setState(() => _pressed = v),
+          onHover: (v) => setState(() => _hovered = v),
+          onFocusChange: (v) => setState(() => _focused = v),
+          splashFactory: NoSplash.splashFactory,
+          highlightColor: AppTheme.hankoPressWash,
+          hoverColor: AppTheme.hankoPressWash,
+          borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+          child: ExcludeSemantics(
+            child: AnimatedScale(
+              scale: _pressed && !still ? 0.97 : 1,
+              duration: const Duration(milliseconds: 120),
+              child: SizedBox(
+                width: widget.width,
+                height: widget.width * hankoCoverRatio,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    HankoCard(
+                      url: a.imageUrl,
+                      lifted: _hovered || _focused,
+                      focused: _focused,
+                    ),
+                    Positioned(
+                      left: 0,
+                      top: 0,
+                      child: HankoPlateNumber(rank: widget.rank),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A standing print's title and the crowd's score, on the board's strip. It
+/// opens the same show as the print above it, which is the button, so it's
+/// no second stop for a screen reader or the keyboard.
+class _StripTitle extends StatelessWidget {
+  final Anime anime;
+  final VoidCallback onTap;
+
+  const _StripTitle({required this.anime, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final score = anime.averageScore;
+    return ExcludeSemantics(
+      child: Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          onTap: onTap,
+          canRequestFocus: false,
+          splashFactory: NoSplash.splashFactory,
+          highlightColor: AppTheme.hankoPressWash,
+          hoverColor: AppTheme.hankoPressWash,
+          borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                anime.titleEnglish ?? anime.title,
+                style: AppTheme.hankoSans(
+                  fontSize: AppTheme.hankoLabelSize,
+                  weight: FontWeight.w500,
+                  height: 1.25,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              if (score != null) ...[
+                const SizedBox(height: 4),
+                Text(
+                  (score / 10).toStringAsFixed(1),
+                  style: AppTheme.hankoSans(
+                    fontSize: AppTheme.hankoLabelSize,
+                    weight: FontWeight.w500,
+                    color: AppTheme.hankoAi,
+                    height: 1.25,
+                    tabular: true,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// While a ranking loads: its board and two rows of posters as blank paper,
+/// sumi 2 and sumi 3, as everywhere in Hanko. No spinner, nothing moving.
+class _RankLoading extends StatelessWidget {
+  const _RankLoading();
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(builder: (context, constraints) {
+      final (columns, width) = _RankBoardList.columnsFor(constraints.maxWidth);
+      const corners = BorderRadius.all(Radius.circular(AppTheme.hankoRadius));
+      return ListView(
+        physics: const NeverScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(
+            _RankBoardList.gutter, 4, _RankBoardList.gutter, 0),
+        children: [
+          Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 560),
+              child: const SizedBox(
+                width: double.infinity,
+                height: 340,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                      color: AppTheme.hankoSumi2, borderRadius: corners),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+          Wrap(
+            spacing: _RankBoardList.gap,
+            runSpacing: 16,
+            children: [
+              for (var i = 0; i < columns * 2; i++)
+                SizedBox(
+                  width: width,
+                  height: width * hankoCoverRatio,
+                  child: const DecoratedBox(
+                    decoration: BoxDecoration(
+                        color: AppTheme.hankoSumi3, borderRadius: corners),
+                  ),
+                ),
+            ],
+          ),
+        ],
+      );
+    });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Seasonal Tab — wraps the full SeasonalHub in a scrollable tab
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -546,7 +1096,11 @@ class _SeasonalHubState extends State<_SeasonalHub>
     _countdownPulse = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 2),
-    )..repeat(reverse: true);
+    );
+    // The printed board has no pulsing border, so its ticker never starts.
+    if (!_DiscoveryScreenState._printRoom) {
+      _countdownPulse.repeat(reverse: true);
+    }
     _computeCountdown();
     _countdownTimer = Timer.periodic(
       const Duration(seconds: 1),
@@ -604,6 +1158,9 @@ class _SeasonalHubState extends State<_SeasonalHub>
   }
 
   void _computeCountdown() {
+    // The printed board's countdown ticks in its own leaf (_SeasonCountdown),
+    // so the hub no longer rebuilds every second (PERF.md's idle-jank lesson).
+    if (_DiscoveryScreenState._printRoom) return;
     final diff = _nextSeasonStart().difference(DateTime.now());
     if (mounted) setState(() => _timeToNextSeason = diff);
   }
@@ -799,8 +1356,133 @@ class _SeasonalHubState extends State<_SeasonalHub>
         .trim();
   }
 
+  // ── Print Room (r9): the season as a Vibes board, then printed rows ──
+  // The season's colour comes from its own covers, not from a hue per season
+  // (FALL was coral, which is only ever yours).
+  Widget _printed(BuildContext context) {
+    final next = _showNext;
+    final season = next ? _nextSeasonStr() : _currentSeasonStr();
+    final year = next ? _nextSeasonYear() : DateTime.now().year;
+    final activeList = next ? _nextSeason : _currentSeason;
+    const corners = BorderRadius.all(Radius.circular(AppTheme.hankoRadius));
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const AnilistSavedNote(),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: Row(
+            children: [
+              HankoTab(
+                label: 'Now airing',
+                selected: !next,
+                onTap: () => setState(() => _showNext = false),
+              ),
+              const SizedBox(width: 8),
+              HankoTab(
+                label: 'Coming soon',
+                selected: next,
+                onTap: () => setState(() => _showNext = true),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 8),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: _loading
+              ? const SizedBox(
+                  height: 250,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                        color: AppTheme.hankoSumi2, borderRadius: corners),
+                  ),
+                )
+              : _SeasonBoard(
+                  key: ValueKey('$season $year'),
+                  season: season,
+                  year: year,
+                  covers: [for (final a in activeList.take(5)) a.cover],
+                  startsAt: next ? _nextSeasonStart() : null,
+                ),
+        ),
+        if (_loading)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
+            child: Column(
+              children: [
+                for (var i = 0; i < 5; i++)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 16),
+                    child: Row(
+                      children: [
+                        const SizedBox(width: 26),
+                        const SizedBox(
+                          width: 40,
+                          height: 40 * hankoCoverRatio,
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                                color: AppTheme.hankoSumi3,
+                                borderRadius: corners),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Container(
+                            height: 14,
+                            margin: const EdgeInsets.only(right: 60),
+                            color: AppTheme.hankoSumi3,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          )
+        else if (activeList.isEmpty)
+          Padding(
+            padding: const EdgeInsets.all(40),
+            child: Text(
+              'No seasonal data available',
+              textAlign: TextAlign.center,
+              style: AppTheme.hankoSans(
+                  fontSize: AppTheme.hankoMetaSize, color: AppTheme.hankoStone),
+            ),
+          )
+        else ...[
+          const SizedBox(height: 24),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Text(
+              'COMMUNITY HYPE',
+              style: HankoBoard.labelStyle(color: AppTheme.hankoStone),
+            ),
+          ),
+          const SizedBox(height: 4),
+          ListView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            itemCount: math.min(activeList.length, 10),
+            // Keyed by media id, as before: the list swaps wholesale between
+            // this season and next.
+            itemBuilder: (ctx, i) => _HypeMeterRow(
+              key: ValueKey(activeList[i].id),
+              anime: activeList[i],
+              rank: i + 1,
+              accentColor: _seasonColor(season),
+            ),
+          ),
+          const SizedBox(height: 28),
+        ],
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (_DiscoveryScreenState._printRoom) return _printed(context);
     final curSeason = _currentSeasonStr();
     final nxtSeason = _nextSeasonStr();
     final accentCur = _seasonColor(curSeason);
@@ -910,6 +1592,164 @@ class _SeasonalHubState extends State<_SeasonalHub>
 
           const SizedBox(height: 28),
         ],
+      ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Print Room (r9): the season on a board
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// The season as Vibes draws its featured board: its name, what feeds it, and
+/// its five most-watched covers in the featured spread, on a tint taken from
+/// them. Coming soon adds the countdown. The board deals its hand in the
+/// first time a season shows in a session. One node for a screen reader,
+/// which names the season (the rows below name the shows).
+class _SeasonBoard extends StatefulWidget {
+  final String season;
+  final int year;
+  final List<String> covers;
+  // When the season starts, for one that hasn't yet.
+  final DateTime? startsAt;
+
+  const _SeasonBoard({
+    super.key,
+    required this.season,
+    required this.year,
+    required this.covers,
+    required this.startsAt,
+  });
+
+  @override
+  State<_SeasonBoard> createState() => _SeasonBoardState();
+}
+
+class _SeasonBoardState extends State<_SeasonBoard> {
+  static final Set<String> _dealt = {};
+  late final bool _dealIn = _dealt.add('${widget.season} ${widget.year}');
+
+  @override
+  Widget build(BuildContext context) {
+    final still = MediaQuery.disableAnimationsOf(context);
+    final s = widget.season;
+    final name = '${s[0]}${s.substring(1).toLowerCase()} ${widget.year}';
+    final startsAt = widget.startsAt;
+    final tagline = startsAt == null
+        ? 'Airing now, the most watched first'
+        : 'On the way, the most awaited first';
+    final days = startsAt?.difference(DateTime.now()).inDays;
+    return Semantics(
+      container: true,
+      label: [
+        name,
+        tagline,
+        if (days != null) 'Starts in ${days < 1 ? 'under a day' : '$days days'}',
+      ].join('. '),
+      child: ExcludeSemantics(
+        child: HankoCoverTint(
+          urls: widget.covers,
+          builder: (context, tint) => HankoBoard(
+            tint: tint,
+            centre: const Alignment(0, 0.45),
+            radius: 1.1,
+            face: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    name,
+                    style: AppTheme.hankoSerif(
+                        fontSize: AppTheme.hankoLedeSize, height: 1.2),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    tagline,
+                    style: AppTheme.hankoSans(
+                      fontSize: AppTheme.hankoMetaSize,
+                      color: AppTheme.hankoStoneHi,
+                      height: 1.35,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    '$s\u00A0${widget.year} · POPULAR',
+                    style: HankoBoard.labelStyle(),
+                  ),
+                  if (startsAt != null) ...[
+                    const SizedBox(height: 10),
+                    _SeasonCountdown(startsAt: startsAt),
+                  ],
+                  const SizedBox(height: 14),
+                  Center(
+                    child: HankoHand(
+                      poses: HankoPose.featured,
+                      urls: widget.covers,
+                      coverWidth: 58,
+                      lifted: false,
+                      dealIn: _dealIn && !still,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The countdown to the next season, in Jost's tabular figures so the
+/// seconds don't shift. It ticks in this leaf alone (PERF.md: a per-second
+/// setState on a large screen caused idle jank).
+class _SeasonCountdown extends StatefulWidget {
+  final DateTime startsAt;
+
+  const _SeasonCountdown({required this.startsAt});
+
+  @override
+  State<_SeasonCountdown> createState() => _SeasonCountdownState();
+}
+
+class _SeasonCountdownState extends State<_SeasonCountdown> {
+  late final Timer _tick;
+
+  @override
+  void initState() {
+    super.initState();
+    _tick = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _tick.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    var left = widget.startsAt.difference(DateTime.now());
+    if (left.isNegative) left = Duration.zero;
+    String two(int n) => n.toString().padLeft(2, '0');
+    return Wrap(
+      spacing: 10,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        Text('STARTS IN', style: HankoBoard.labelStyle()),
+        Text(
+          '${left.inDays}D ${two(left.inHours % 24)}H '
+          '${two(left.inMinutes % 60)}M ${two(left.inSeconds % 60)}S',
+          style: AppTheme.hankoSans(
+            fontSize: 15,
+            weight: FontWeight.w600,
+            height: 1.3,
+            tabular: true,
+          ),
+        ),
       ],
     );
   }
@@ -1311,8 +2151,169 @@ class _HypeMeterRowState extends State<_HypeMeterRow>
   @override
   void dispose() { _barCtrl.dispose(); super.dispose(); }
 
+  // Print Room (r9): a printed row: the rank, the cover as a printed card,
+  // the title, a thin hype rule in ai deep (no glow), the crowd's numbers in
+  // ai and no star. Long-press still opens the synopsis.
+  Widget _printed(BuildContext context) {
+    final a = widget.anime;
+    final still = MediaQuery.disableAnimationsOf(context);
+    final top3 = widget.rank <= 3;
+    final score = a.score > 0 ? (a.score / 10).toStringAsFixed(1) : null;
+    // The rank, the cover and the gap: where the synopsis lines up.
+    const inset = 26.0 + 40 + 12;
+    return Semantics(
+      container: true,
+      button: true,
+      label: [
+        '${widget.rank}',
+        a.title,
+        '${a.hype}% hype',
+        if (score != null) 'AniList $score',
+      ].join(', '),
+      child: Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          onTap: () => Navigator.push(context, MaterialPageRoute(
+            builder: (_) => AnimeDetailScreen(anime: widget.anime.toAnime()),
+          )),
+          onLongPress: () => setState(() => _expanded = !_expanded),
+          splashFactory: NoSplash.splashFactory,
+          highlightColor: AppTheme.hankoPressWash,
+          hoverColor: AppTheme.hankoPressWash,
+          borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+          child: ExcludeSemantics(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(
+                        width: 26,
+                        child: Text(
+                          '${widget.rank}',
+                          style: AppTheme.hankoSans(
+                            fontSize: top3 ? 15 : 13,
+                            weight: FontWeight.w600,
+                            color: top3
+                                ? AppTheme.hankoWashi
+                                : AppTheme.hankoStone,
+                            height: 1.3,
+                            tabular: true,
+                          ),
+                        ),
+                      ),
+                      SizedBox(
+                        width: 40,
+                        height: 40 * hankoCoverRatio,
+                        child: HankoCard(url: a.cover),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              a.title,
+                              style: AppTheme.hankoSans(
+                                weight: FontWeight.w500,
+                                height: 1.3,
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 6),
+                            AnimatedBuilder(
+                              animation: _barAnim,
+                              builder: (ctx, _) => _HypeRule(
+                                value: a.hype / 100 * (still ? 1 : _barAnim.value),
+                              ),
+                            ),
+                            const SizedBox(height: 5),
+                            Text.rich(
+                              TextSpan(
+                                children: [
+                                  TextSpan(
+                                    text: '${a.hype}% hype',
+                                    style: AppTheme.hankoSans(
+                                      fontSize: AppTheme.hankoDataSmallSize,
+                                      weight: FontWeight.w500,
+                                      color: AppTheme.hankoAi,
+                                      tabular: true,
+                                    ),
+                                  ),
+                                  if (a.genres.isNotEmpty)
+                                    TextSpan(
+                                      text: '  ·  ${a.genres.take(2).join(', ')}',
+                                      style: AppTheme.hankoSans(
+                                        fontSize: AppTheme.hankoDataSmallSize,
+                                        color: AppTheme.hankoStone,
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (score != null)
+                        Padding(
+                          padding: const EdgeInsets.only(left: 10),
+                          child: Text(
+                            score,
+                            style: AppTheme.hankoSans(
+                              fontSize: AppTheme.hankoMetaSize,
+                              weight: FontWeight.w500,
+                              color: AppTheme.hankoAi,
+                              height: 1.3,
+                              tabular: true,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                  if (_expanded && a.description.isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    Padding(
+                      padding: const EdgeInsets.only(left: inset),
+                      child: Text(
+                        a.description,
+                        style: AppTheme.hankoSans(
+                          fontSize: AppTheme.hankoMetaSize,
+                          color: AppTheme.hankoStone,
+                          height: 1.45,
+                        ),
+                        maxLines: 4,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    if (a.nextAiringAt != null) ...[
+                      const SizedBox(height: 8),
+                      Padding(
+                        padding: const EdgeInsets.only(left: inset),
+                        child: Text(
+                          'Episode ${a.nextEpisode} ${_fmtRelative(a.nextAiringAt!)}'
+                              .toUpperCase(),
+                          style:
+                              HankoBoard.labelStyle(color: AppTheme.hankoStoneHi),
+                        ),
+                      ),
+                    ],
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (_DiscoveryScreenState._printRoom) return _printed(context);
     final a = widget.anime;
     final isTop3 = widget.rank <= 3;
 
@@ -1488,6 +2489,33 @@ class _HypeMeterRowState extends State<_HypeMeterRow>
     if (diff.inHours > 0) return 'in ${diff.inHours}h';
     return 'soon';
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Hype Rule — Print Room (r9): a 2 dp rule in ai deep on the hairline, the
+// crowd's measure (3.7:1 on sumi as a mark), with no gradient and no glow.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _HypeRule extends StatelessWidget {
+  final double value;
+
+  const _HypeRule({required this.value});
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+        height: 2,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            const ColoredBox(color: AppTheme.hankoHairline),
+            FractionallySizedBox(
+              alignment: Alignment.centerLeft,
+              widthFactor: value.clamp(0.0, 1.0),
+              child: const ColoredBox(color: AppTheme.hankoAiDeep),
+            ),
+          ],
+        ),
+      );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1801,8 +2829,41 @@ class _EmptyState extends StatelessWidget {
   final String? failMessage;
   const _EmptyState({this.failMessage});
 
+  // Print Room (r9): an empty hand where the shows would be, and the same
+  // words.
+  Widget _printed() => Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const HankoEmptyHand(),
+              const SizedBox(height: 20),
+              Text(
+                failMessage == null ? 'No results found' : 'Something went wrong',
+                textAlign: TextAlign.center,
+                style: AppTheme.hankoSerif(
+                    fontSize: AppTheme.hankoFeaturedSize, height: 1.25),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                failMessage ?? 'Try adjusting your filters',
+                textAlign: TextAlign.center,
+                style: AppTheme.hankoSans(
+                  fontSize: AppTheme.hankoMetaSize,
+                  color: AppTheme.hankoStone,
+                  height: 1.4,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+
   @override
-  Widget build(BuildContext context) => Center(
+  Widget build(BuildContext context) => _DiscoveryScreenState._printRoom
+      ? _printed()
+      : Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [

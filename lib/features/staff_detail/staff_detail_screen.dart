@@ -1,8 +1,11 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../services/anilist_service.dart';
+import '../../widgets/hanko_board.dart';
 import '../../widgets/hover_anime_card.dart';
 import '../../models/anime_model.dart';
 import '../anime_detail/anime_detail_screen.dart';
@@ -22,6 +25,15 @@ class StaffDetailScreen extends StatefulWidget {
 }
 
 class _StaffDetailScreenState extends State<StaffDetailScreen> {
+  /// Vibes for the Staff page (Print Room, r9; Shahid, 2026-11-10: "I loved
+  /// new vibes change, if we can bring that change to other tabs/features
+  /// wherever needed"): the roles as printed posters, each captioned with
+  /// the role or the character (no coral chips, no glows, no stars), under
+  /// Shippori section heads in place of the coral bars; the facts on sumi 2
+  /// with no coral; the portrait header as before. It's opened from Detail,
+  /// which is Print Room already. False gives back 07faabe's page as it was.
+  static const bool _printRoom = true;
+
   final _aniListService = AnilistService();
   Map<String, dynamic>? _staffData;
   bool _isLoading = true;
@@ -95,8 +107,225 @@ class _StaffDetailScreenState extends State<StaffDetailScreen> {
     return age.toString();
   }
 
+  // ── Print Room (r9) ───────────────────────────────────────
+  Widget _head(String text) => Text(
+        text,
+        style: AppTheme.hankoSerif(fontSize: AppTheme.hankoSectionSize),
+      );
+
+  // A role grid as printed posters, three across at 360 dp, each captioned
+  // with the character voiced or the role on the show.
+  Widget _printedWorks(List works, {required bool voice}) {
+    final scaler = MediaQuery.textScalerOf(context);
+    return LayoutBuilder(builder: (context, constraints) {
+      const gap = 12.0;
+      final columns =
+          math.max(3, ((constraints.maxWidth + gap) / (132 + gap)).floor());
+      final width = (constraints.maxWidth - gap * (columns - 1)) / columns;
+      return GridView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        padding: EdgeInsets.zero,
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: columns,
+          crossAxisSpacing: gap,
+          mainAxisSpacing: 16,
+          mainAxisExtent:
+              HankoPoster.heightFor(width, scaler, captioned: true),
+        ),
+        itemCount: works.length,
+        itemBuilder: (context, index) {
+          final work = works[index];
+          final anime = work['node'];
+          final score = anime['averageScore'];
+          final String caption = voice
+              ? (work['characterName'] as String? ?? 'Unknown Character')
+              : (work['staffRole'] as String? ?? 'Staff');
+          return HankoPoster(
+            url: anime['coverImage']?['large'] as String?,
+            title: (anime['title']?['english'] ??
+                anime['title']?['romaji'] ??
+                'Unknown') as String,
+            score: score is num ? score.toDouble() : null,
+            caption: caption,
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => AnimeDetailScreen(
+                  anime: Anime(
+                    id: anime['id'].toString(),
+                    title: anime['title']['romaji'] ?? 'Unknown',
+                    titleEnglish: anime['title']['english'],
+                    imageUrl: anime['coverImage']['large'],
+                    averageScore: score is num ? score.toDouble() : null,
+                    episodes: null,
+                    status: null,
+                    genres: [],
+                    description: null,
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      );
+    });
+  }
+
+  Widget _printed(BuildContext context) {
+    final data = _staffData;
+    if (_isLoading || data == null) {
+      return Scaffold(
+        backgroundColor: AppTheme.hankoSumi,
+        appBar: AppBar(
+          backgroundColor: AppTheme.hankoSumi,
+          surfaceTintColor: Colors.transparent,
+        ),
+        body: Center(
+          child: _isLoading
+              ? const CircularProgressIndicator(
+                  color: AppTheme.hankoWashi, strokeWidth: 1.5)
+              : Text('Failed to load staff data',
+                  style: AppTheme.hankoSerif(
+                      fontSize: AppTheme.hankoFeaturedSize)),
+        ),
+      );
+    }
+    final image = data['image']?['large'] as String?;
+    final native = data['name']?['native'] as String?;
+    final dob = data['dateOfBirth'];
+    final home = data['homeTown'];
+    final bio = data['description']?.toString() ?? '';
+    final voiceWorks = data['characterMedia']?['edges'] as List? ?? const [];
+    final staffWorks = data['staffMedia']?['edges'] as List? ?? const [];
+    String? born;
+    if (dob?['year'] != null) {
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug',
+          'Sep', 'Oct', 'Nov', 'Dec'];
+      born = [
+        if (dob['day'] != null) '${dob['day']}',
+        if (dob['month'] != null) months[(dob['month'] as int) - 1],
+        '${dob['year']}',
+      ].join(' ');
+    }
+    return Scaffold(
+      backgroundColor: AppTheme.hankoSumi,
+      body: CustomScrollView(
+        slivers: [
+          SliverAppBar(
+            expandedHeight: 300,
+            pinned: true,
+            backgroundColor: AppTheme.hankoSumi,
+            surfaceTintColor: Colors.transparent,
+            flexibleSpace: FlexibleSpaceBar(
+              background: Stack(
+                fit: StackFit.expand,
+                children: [
+                  if (image != null)
+                    CachedNetworkImage(
+                      imageUrl: image,
+                      fit: BoxFit.cover,
+                      errorWidget: (_, _, _) =>
+                          const ColoredBox(color: AppTheme.hankoSumi3),
+                    ),
+                  const DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Color(0x00121110),
+                          Color(0xCC121110),
+                          AppTheme.hankoSumi,
+                        ],
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    bottom: 16,
+                    left: 20,
+                    right: 20,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          data['name']?['full'] ?? 'Unknown',
+                          style: AppTheme.hankoSerif(
+                              fontSize: AppTheme.hankoDisplaySize,
+                              height: 1.2),
+                        ),
+                        if (native != null)
+                          Text(
+                            native,
+                            style: AppTheme.hankoNative(
+                                fontSize: 15, color: AppTheme.hankoStoneHi),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (born != null || home != null)
+                    Row(
+                      children: [
+                        if (born != null)
+                          Expanded(
+                            child: _InfoCard(
+                              icon: Icons.cake_rounded,
+                              label: 'Born',
+                              value: born,
+                            ),
+                          ),
+                        if (born != null && home != null)
+                          const SizedBox(width: 8),
+                        if (home != null)
+                          Expanded(
+                            child: _InfoCard(
+                              icon: Icons.location_on_rounded,
+                              label: 'From',
+                              value: home.toString(),
+                            ),
+                          ),
+                      ],
+                    ),
+                  const SizedBox(height: 24),
+                  if (bio.isNotEmpty) ...[
+                    _head('Biography'),
+                    const SizedBox(height: 10),
+                    _SynopsisText(text: _stripHtml(bio)),
+                    const SizedBox(height: 28),
+                  ],
+                  if (voiceWorks.isNotEmpty) ...[
+                    _head('Voice acting roles'),
+                    const SizedBox(height: 14),
+                    _printedWorks(voiceWorks, voice: true),
+                    const SizedBox(height: 28),
+                  ],
+                  if (staffWorks.isNotEmpty) ...[
+                    _head('Staff roles'),
+                    const SizedBox(height: 14),
+                    _printedWorks(staffWorks, voice: false),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (_printRoom) return _printed(context);
     return Scaffold(
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -558,6 +787,36 @@ class _InfoCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (_StaffDetailScreenState._printRoom) {
+      // Print Room (r9): a fact on sumi 2, its label printed, no coral.
+      return Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: AppTheme.hankoSumi2,
+          borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, color: AppTheme.hankoStone, size: 18),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(label.toUpperCase(),
+                      style: HankoBoard.labelStyle(color: AppTheme.hankoStone)),
+                  const SizedBox(height: 2),
+                  Text(value,
+                      style: AppTheme.hankoSans(weight: FontWeight.w500),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -625,7 +884,13 @@ class _SynopsisTextState extends State<_SynopsisText> {
           child: GestureDetector(
             onTap: () => setState(() => _expanded = !_expanded),
             child: Text(_expanded ? 'Show less' : 'Read more',
-                style: AppTheme.sans(fontSize: 13, weight: FontWeight.w600, color: AppTheme.primary)),
+                style: AppTheme.sans(
+                    fontSize: 13,
+                    weight: FontWeight.w600,
+                    // Washi in Print Room (r9): coral is only your verdicts.
+                    color: _StaffDetailScreenState._printRoom
+                        ? AppTheme.hankoWashi
+                        : AppTheme.primary)),
           ),
         ),
       ],
