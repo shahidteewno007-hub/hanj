@@ -53,6 +53,18 @@ class _MyListScreenState extends State<MyListScreen> {
   /// False gives 27e16b1 back.
   static const bool _lightOpen = true;
 
+  /// The list's stream is made once, in initState, and held (r9,
+  /// 2026-11-11). getAnimeList() makes a new snapshots() stream on every
+  /// call, so when build() called it, each setState (a status tap, every
+  /// keystroke in the search field) handed StreamBuilder a new stream: it
+  /// unsubscribed, subscribed again and went back to waiting, which drew the
+  /// five blank rows until Firestore sent every title again. False gives
+  /// 7f3afdc back.
+  static const bool _heldStream = true;
+
+  // _heldStream: the stream build() hands StreamBuilder.
+  Stream<QuerySnapshot>? _animeList;
+
   // _lightOpen: the snapshot last read, its titles in its own order, and
   // each title's data, read once.
   QuerySnapshot? _readFrom;
@@ -90,6 +102,7 @@ class _MyListScreenState extends State<MyListScreen> {
     if (widget.initialStatus != null) {
       _selectedStatus = widget.initialStatus!;
     }
+    if (_heldStream) _animeList = _firestoreService.getAnimeList();
   }
 
   final _statuses = ['ALL', 'WATCHING', 'COMPLETED', 'PLAN_TO_WATCH', 'DROPPED'];
@@ -602,7 +615,7 @@ class _MyListScreenState extends State<MyListScreen> {
     return Scaffold(
       backgroundColor: AppTheme.background,
       body: StreamBuilder<QuerySnapshot>(
-        stream: _firestoreService.getAnimeList(),
+        stream: _heldStream ? _animeList : _firestoreService.getAnimeList(),
         builder: (context, snapshot) {
           if (_printRoom && _lightOpen) return _light(context, snapshot);
           final allDocs = snapshot.data?.docs ?? [];
