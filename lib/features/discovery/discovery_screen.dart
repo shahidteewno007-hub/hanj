@@ -167,24 +167,15 @@ class _ArukuTabBarState extends State<_ArukuTabBar> {
 
   // Print Room (r9): printed tabs, the selected one washi (CLAUDE.md: never
   // coral, which is only ever your verdicts), each a button a screen reader
-  // and the keyboard land on.
+  // and the keyboard land on. At 360 dp SEASONAL starts past the edge; the
+  // strip brings whichever tab is selected into view, a swipe included.
   Widget _printed(BuildContext context) {
     final still = MediaQuery.disableAnimationsOf(context);
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: [
-          for (var i = 0; i < widget.tabs.length; i++) ...[
-            if (i > 0) const SizedBox(width: 8),
-            HankoTab(
-              label: widget.tabs[i],
-              selected: widget.controller.index == i,
-              onTap: () => widget.controller
-                  .animateTo(i, duration: still ? Duration.zero : null),
-            ),
-          ],
-        ],
-      ),
+    return HankoTabStrip(
+      labels: widget.tabs,
+      selected: widget.controller.index,
+      onSelect: (i) => widget.controller
+          .animateTo(i, duration: still ? Duration.zero : null),
     );
   }
 

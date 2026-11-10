@@ -303,20 +303,10 @@ class _MyListScreenState extends State<MyListScreen> {
         SliverToBoxAdapter(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  for (final s in _statuses) ...[
-                    if (s != _statuses.first) const SizedBox(width: 8),
-                    HankoTab(
-                      label: _statusLabels[s] ?? s,
-                      selected: _selectedStatus == s,
-                      onTap: () => setState(() => _selectedStatus = s),
-                    ),
-                  ],
-                ],
-              ),
+            child: HankoTabStrip(
+              labels: [for (final s in _statuses) _statusLabels[s] ?? s],
+              selected: _statuses.indexOf(_selectedStatus),
+              onSelect: (i) => setState(() => _selectedStatus = _statuses[i]),
             ),
           ),
         ),

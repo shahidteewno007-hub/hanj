@@ -123,11 +123,20 @@ class HankoBoard extends StatelessWidget {
 /// already shows, no request, kept in memory). Colours already known paint in
 /// the first frame; the rest arrive as they're read. A cover that can't be
 /// read counts as grey, so a board without colour stays sumi 2.
+///
+/// [guard] false takes the first colour whatever its hue, for a Print Room
+/// field behind one show ([AppTheme.hankoField] has no hue guard).
 class HankoCoverTint extends StatefulWidget {
-  const HankoCoverTint({super.key, required this.urls, required this.builder});
+  const HankoCoverTint({
+    super.key,
+    required this.urls,
+    required this.builder,
+    this.guard = true,
+  });
 
   final List<String> urls;
   final Widget Function(BuildContext context, Color? tint) builder;
+  final bool guard;
 
   @override
   State<HankoCoverTint> createState() => _HankoCoverTintState();
@@ -141,7 +150,7 @@ class _HankoCoverTintState extends State<HankoCoverTint> {
   @override
   void initState() {
     super.initState();
-    _tint = _known(widget.urls);
+    _tint = _known();
     _read();
   }
 
@@ -149,10 +158,14 @@ class _HankoCoverTintState extends State<HankoCoverTint> {
   void didUpdateWidget(HankoCoverTint oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (!_same(oldWidget.urls, widget.urls)) {
-      _tint = _known(widget.urls);
+      _tint = _known();
       _read();
     }
   }
+
+  // Whether a cover's colour can be the tint.
+  bool _usable(Color? c) =>
+      widget.guard ? AppTheme.hankoCoverTint(c) != null : c != null;
 
   static bool _same(List<String> a, List<String> b) {
     if (a.length != b.length) return false;
@@ -164,12 +177,12 @@ class _HankoCoverTintState extends State<HankoCoverTint> {
 
   /// The tint from colours already in memory, as far as that decides it: an
   /// unknown cover ahead of the first usable colour could still be the one.
-  static Color? _known(List<String> urls) {
-    for (final u in urls) {
+  Color? _known() {
+    for (final u in widget.urls) {
       if (u.isEmpty) continue;
       if (!HankoCoverColour.knows(u)) return null;
       final c = HankoCoverColour.peek(u);
-      if (AppTheme.hankoCoverTint(c) != null) return c;
+      if (_usable(c)) return c;
     }
     return null;
   }
@@ -181,7 +194,7 @@ class _HankoCoverTintState extends State<HankoCoverTint> {
       if (u.isEmpty) continue;
       final c = await HankoCoverColour.ofUrl(u);
       if (!mounted || read != _reads) return;
-      if (AppTheme.hankoCoverTint(c) != null) {
+      if (_usable(c)) {
         tint = c;
         break;
       }
@@ -631,6 +644,79 @@ class HankoTab extends StatelessWidget {
       ),
     );
   }
+}
+
+/// A row of [HankoTab]s that scrolls sideways when it doesn't fit (at 360 dp
+/// most rows don't), and brings the [selected] tab into view whenever it
+/// changes, a swipe included, and when it starts past the edge. It scrolls
+/// only its own row, never the page around it.
+class HankoTabStrip extends StatefulWidget {
+  const HankoTabStrip({
+    super.key,
+    required this.labels,
+    required this.selected,
+    required this.onSelect,
+  });
+
+  final List<String> labels;
+  final int selected;
+  final ValueChanged<int> onSelect;
+
+  @override
+  State<HankoTabStrip> createState() => _HankoTabStripState();
+}
+
+class _HankoTabStripState extends State<HankoTabStrip> {
+  late final List<GlobalKey> _keys =
+      List.generate(widget.labels.length, (_) => GlobalKey());
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.selected > 0) _reveal();
+  }
+
+  @override
+  void didUpdateWidget(HankoTabStrip oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.selected != widget.selected) _reveal();
+  }
+
+  void _reveal() => WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || widget.selected < 0 || widget.selected >= _keys.length) {
+          return;
+        }
+        final tab = _keys[widget.selected].currentContext;
+        final box = tab?.findRenderObject();
+        final row = tab == null ? null : Scrollable.maybeOf(tab)?.position;
+        if (box == null || row == null) return;
+        row.ensureVisible(
+          box,
+          alignment: 0.5,
+          duration: MediaQuery.disableAnimationsOf(context)
+              ? Duration.zero
+              : const Duration(milliseconds: 240),
+          curve: Curves.easeOut,
+        );
+      });
+
+  @override
+  Widget build(BuildContext context) => SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            for (var i = 0; i < widget.labels.length; i++) ...[
+              if (i > 0) const SizedBox(width: 8),
+              HankoTab(
+                key: _keys[i],
+                label: widget.labels[i],
+                selected: i == widget.selected,
+                onTap: () => widget.onSelect(i),
+              ),
+            ],
+          ],
+        ),
+      );
 }
 
 /// A printed chip (Vibes' print cues): washi words on sumi 3, 2 px corners,
