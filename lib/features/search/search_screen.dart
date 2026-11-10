@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -7,6 +9,7 @@ import '../../core/smooth_page_route.dart';
 import '../../core/responsive.dart';
 import '../../models/anime_model.dart';
 import '../../services/anilist_service.dart';
+import '../../widgets/hanko_board.dart';
 import '../anime_detail/anime_detail_screen.dart';
 import '../discovery/hanj_filter_sheet.dart';
 
@@ -23,6 +26,15 @@ class SearchScreen extends StatefulWidget {
 
 class _SearchScreenState extends State<SearchScreen>
     with SingleTickerProviderStateMixin {
+  /// Vibes for Search (Print Room, r9; Shahid, 2026-11-10: "I loved new vibes
+  /// change, if we can bring that change to other tabs/features wherever
+  /// needed"): results as Discover's printed posters (no stars, three across
+  /// at 360 dp, heights that follow the text size); washi tabs, filter mark
+  /// and Try again in place of coral; filters as printed chips; an empty hand
+  /// in place of the coral glowing circle; still placeholders in place of
+  /// Shimmer. False gives back 07faabe's Search as it was.
+  static const bool _printRoom = true;
+
   final _service    = AnilistService();
   final _textCtrl   = TextEditingController();
   late final _tabCtrl = TabController(length: 2, vsync: this);
@@ -231,7 +243,358 @@ class _SearchScreenState extends State<SearchScreen>
     );
   }
 
+  // ── Print Room (r9) ───────────────────────────────────────
+  // The search bar on sumi with the one hairline a screen may have, a Hanko
+  // field (2 px corners, washi when focused), labelled buttons, and the
+  // count of filters on as a small washi mark, not a coral dot.
+  Widget _printedHeader() {
+    const corners = BorderRadius.all(Radius.circular(AppTheme.hankoRadius));
+    OutlineInputBorder edge(Color c) => OutlineInputBorder(
+          borderRadius: corners,
+          borderSide: BorderSide(color: c),
+        );
+    return Container(
+      padding: const EdgeInsets.fromLTRB(4, 8, 8, 8),
+      decoration: const BoxDecoration(
+        color: AppTheme.hankoSumi,
+        border: Border(bottom: BorderSide(color: AppTheme.hankoHairline)),
+      ),
+      child: Row(
+        children: [
+          IconButton(
+            icon: const Icon(Icons.arrow_back_rounded,
+                color: AppTheme.hankoWashi, size: 20),
+            tooltip: 'Back',
+            onPressed: () => Navigator.pop(context),
+          ),
+          Expanded(
+            child: TextField(
+              controller: _textCtrl,
+              focusNode: _focusNode,
+              textInputAction: TextInputAction.search,
+              onChanged: _onTextChanged,
+              onSubmitted: (v) {
+                // Enter searches now, so cancel the pending debounce.
+                _lastSearchMs = null;
+                _search(v, isStudio: _tabCtrl.index == 1);
+              },
+              style: AppTheme.hankoSans(),
+              decoration: InputDecoration(
+                hintText: _tabCtrl.index == 0
+                    ? 'Search anime title...'
+                    : 'Search by studio name...',
+                hintStyle: AppTheme.hankoSans(color: AppTheme.hankoAsh),
+                prefixIcon: const Icon(Icons.search_rounded,
+                    color: AppTheme.hankoStone, size: 18),
+                suffixIcon: ValueListenableBuilder<TextEditingValue>(
+                  valueListenable: _textCtrl,
+                  builder: (_, value, _) => value.text.isEmpty
+                      ? const SizedBox.shrink()
+                      : IconButton(
+                          icon: const Icon(Icons.clear_rounded,
+                              color: AppTheme.hankoStone, size: 18),
+                          tooltip: 'Clear',
+                          onPressed: () {
+                            _textCtrl.clear();
+                            setState(() { _results = []; _hasSearched = false; });
+                          },
+                        ),
+                ),
+                filled: true,
+                fillColor: AppTheme.hankoSumi3,
+                border: edge(AppTheme.hankoSumi3),
+                enabledBorder: edge(AppTheme.hankoSumi3),
+                focusedBorder: edge(AppTheme.hankoWashi),
+                contentPadding: const EdgeInsets.symmetric(vertical: 10),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          if (_tabCtrl.index == 0)
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.tune_rounded,
+                      color: AppTheme.hankoWashi, size: 20),
+                  tooltip: _activeFilterCount > 0
+                      ? 'Filters, $_activeFilterCount on'
+                      : 'Filters',
+                  onPressed: _showFilters,
+                ),
+                if (_activeFilterCount > 0)
+                  Positioned(
+                    top: 6,
+                    right: 6,
+                    child: IgnorePointer(
+                      child: ExcludeSemantics(
+                        child: Container(
+                          constraints:
+                              const BoxConstraints(minWidth: 16, minHeight: 16),
+                          padding: const EdgeInsets.symmetric(horizontal: 3),
+                          alignment: Alignment.center,
+                          decoration: const BoxDecoration(
+                            color: AppTheme.hankoWashi,
+                            borderRadius: corners,
+                          ),
+                          child: Text(
+                            '$_activeFilterCount',
+                            style: AppTheme.hankoSans(
+                              fontSize: 10,
+                              weight: FontWeight.w600,
+                              color: AppTheme.hankoSumi,
+                              height: 1.2,
+                              tabular: true,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _printedTabBar() => TabBar(
+        controller: _tabCtrl,
+        indicatorColor: AppTheme.hankoWashi,
+        indicatorSize: TabBarIndicatorSize.label,
+        labelColor: AppTheme.hankoWashi,
+        unselectedLabelColor: AppTheme.hankoStone,
+        dividerColor: AppTheme.hankoHairline,
+        labelStyle: HankoBoard.labelStyle(),
+        tabs: const [
+          Tab(text: 'ANIME'),
+          Tab(text: 'STUDIO'),
+        ],
+      );
+
+  Widget _printedActiveFilters() {
+    final on = <(String, VoidCallback)>[
+      if (_sort != 'POPULARITY_DESC')
+        (_sorts.firstWhere((s) => s.$1 == _sort).$2, () {
+          setState(() => _sort = 'POPULARITY_DESC');
+          if (_hasSearched) _search(_textCtrl.text);
+        }),
+      if (_genre != null)
+        (_genre!, () {
+          setState(() => _genre = null);
+          if (_hasSearched) _search(_textCtrl.text);
+        }),
+      if (_format != null)
+        (_formats.firstWhere((f) => f.$1 == _format,
+            orElse: () => (_format!, _format!)).$2, () {
+          setState(() => _format = null);
+          if (_hasSearched) _search(_textCtrl.text);
+        }),
+      if (_year != null)
+        ('$_year', () {
+          setState(() => _year = null);
+          if (_hasSearched) _search(_textCtrl.text);
+        }),
+    ];
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Row(
+        children: [
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  for (final (label, clear) in on) ...[
+                    HankoChip(
+                      label: label,
+                      semanticLabel: 'Remove $label',
+                      trailing: Icons.close_rounded,
+                      onTap: clear,
+                    ),
+                    const SizedBox(width: 6),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: _clearFilters,
+            style: TextButton.styleFrom(
+                foregroundColor: AppTheme.hankoStone,
+                padding: const EdgeInsets.symmetric(horizontal: 8)),
+            child: Text('Clear all',
+                style: AppTheme.hankoSans(
+                    fontSize: AppTheme.hankoLabelSize,
+                    color: AppTheme.hankoStone)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // How many posters fit across, and how wide each is: three at least, as on
+  // Discover (the 230 px covers stay sharp at that size).
+  static (int, double) _columnsFor(double width) {
+    const gutter = 16.0, gap = 12.0;
+    final inner = width - 2 * gutter;
+    final columns = math.max(3, ((inner + gap) / (132 + gap)).floor());
+    return (columns, (inner - gap * (columns - 1)) / columns);
+  }
+
+  Widget _printedGrid() {
+    final scaler = MediaQuery.textScalerOf(context);
+    return LayoutBuilder(builder: (context, constraints) {
+      final (columns, width) = _columnsFor(constraints.maxWidth);
+      return GridView.builder(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: columns,
+          crossAxisSpacing: 12,
+          mainAxisSpacing: 16,
+          mainAxisExtent: HankoPoster.heightFor(width, scaler),
+        ),
+        itemCount: _results.length,
+        itemBuilder: (_, i) {
+          final a = _results[i];
+          // Keyed by media id: _results is replaced wholesale on every query.
+          return HankoPoster(
+            key: ValueKey(a.id),
+            url: a.imageUrl,
+            title: a.titleEnglish ?? a.title,
+            score: a.averageScore,
+            onTap: () => Navigator.push(
+              context,
+              SmoothPageRoute(page: AnimeDetailScreen(anime: a)),
+            ),
+          );
+        },
+      );
+    });
+  }
+
+  Widget _printedLoading() {
+    return LayoutBuilder(builder: (context, constraints) {
+      final (columns, width) = _columnsFor(constraints.maxWidth);
+      const corners = BorderRadius.all(Radius.circular(AppTheme.hankoRadius));
+      return SingleChildScrollView(
+        physics: const NeverScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+        child: Wrap(
+          spacing: 12,
+          runSpacing: 16,
+          children: [
+            for (var i = 0; i < columns * 3; i++)
+              SizedBox(
+                width: width,
+                height: width * hankoCoverRatio,
+                child: const DecoratedBox(
+                  decoration: BoxDecoration(
+                      color: AppTheme.hankoSumi3, borderRadius: corners),
+                ),
+              ),
+          ],
+        ),
+      );
+    });
+  }
+
+  // The empty and failure pages: an empty hand where the shows would be, a
+  // line in Shippori, the words in stone, and the page's one action.
+  Widget _printedMessage({
+    required String title,
+    String? body,
+    Widget? action,
+  }) {
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const HankoEmptyHand(),
+            const SizedBox(height: 20),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: AppTheme.hankoSerif(
+                  fontSize: AppTheme.hankoLedeSize, height: 1.25),
+            ),
+            if (body != null) ...[
+              const SizedBox(height: 10),
+              Text(
+                body,
+                textAlign: TextAlign.center,
+                style: AppTheme.hankoSans(
+                    fontSize: AppTheme.hankoMetaSize,
+                    color: AppTheme.hankoStone,
+                    height: 1.5),
+              ),
+            ],
+            if (action != null) ...[const SizedBox(height: 18), action],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _printedBody() {
+    if (_loading) return _printedLoading();
+    final isAnime = _tabCtrl.index == 0;
+    if (_error == null && !_hasSearched) {
+      return _printedMessage(
+        title: isAnime ? 'Search for anime' : 'Search by studio',
+        body: isAnime
+            ? 'Find by title, filter by genre,\nformat, year and more'
+            : 'Discover everything a studio\nhas ever animated',
+      );
+    }
+    if (_error != null || (_results.isEmpty && _failStatus != null)) {
+      return _printedMessage(
+        title: 'Something went wrong',
+        body: AnilistService.messageFor(_failStatus),
+        action: FilledButton.icon(
+          onPressed: () => _search(_textCtrl.text, isStudio: _tabCtrl.index == 1),
+          icon: const Icon(Icons.refresh_rounded, size: 18),
+          label: Text('Try again',
+              style: AppTheme.hankoSans(weight: FontWeight.w600,
+                  color: AppTheme.hankoSumi)),
+          style: FilledButton.styleFrom(
+            backgroundColor: AppTheme.hankoWashi,
+            foregroundColor: AppTheme.hankoSumi,
+            minimumSize: const Size(0, AppTheme.hankoTouch),
+            shape: const RoundedRectangleBorder(
+                borderRadius:
+                    BorderRadius.all(Radius.circular(AppTheme.hankoRadius))),
+          ),
+        ),
+      );
+    }
+    if (_results.isEmpty) {
+      return _printedMessage(
+        title: 'No results found',
+        body: _activeFilterCount > 0
+            ? 'Try removing some filters'
+            : 'Try different keywords',
+        action: _activeFilterCount > 0
+            ? TextButton(
+                onPressed: _clearFilters,
+                style: TextButton.styleFrom(
+                    foregroundColor: AppTheme.hankoWashi),
+                child: Text('Clear filters',
+                    style: AppTheme.hankoSans(
+                        fontSize: AppTheme.hankoMetaSize,
+                        weight: FontWeight.w500)),
+              )
+            : null,
+      );
+    }
+    return _printedGrid();
+  }
+
   Widget _buildHeader() {
+    if (_printRoom) return _printedHeader();
     return Container(
       padding: const EdgeInsets.fromLTRB(4, 8, 8, 8),
       decoration: const BoxDecoration(
@@ -326,6 +689,7 @@ class _SearchScreenState extends State<SearchScreen>
   }
 
   Widget _buildTabBar() {
+    if (_printRoom) return _printedTabBar();
     return TabBar(
       controller: _tabCtrl,
       indicatorColor: AppTheme.primary,
@@ -341,6 +705,7 @@ class _SearchScreenState extends State<SearchScreen>
   }
 
   Widget _buildActiveFilters() {
+    if (_printRoom) return _printedActiveFilters();
     return Container(
       height: 36,
       padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -391,6 +756,7 @@ class _SearchScreenState extends State<SearchScreen>
   }
 
   Widget _buildBody() {
+    if (_printRoom) return _printedBody();
     if (_loading) return _buildShimmer();
     if (_error != null) return _buildError();
     if (!_hasSearched) return _buildEmptyState();
