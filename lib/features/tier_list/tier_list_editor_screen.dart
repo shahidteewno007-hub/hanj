@@ -655,7 +655,7 @@ class _TierListEditorScreenState extends State<TierListEditorScreen> {
           ),
           Expanded(
             child: ColoredBox(
-              color: AppTheme.hankoSumi2,
+              color: _rowGround(t, false),
               child: Row(
                 children: [
                   const SizedBox(width: 12),
@@ -825,7 +825,7 @@ class _TierListEditorScreenState extends State<TierListEditorScreen> {
                   pigment: TierPigment.at(t.pigment),
                   width: plateW,
                   // An empty row is a short strip until someone lands in it.
-                  minHeight: fill && n == 0 ? 64 : tokenW * 1.5 + 30,
+                  minHeight: fill && n == 0 ? 64 : tokenW * 1.5 + (TierListSwitches.boardLook ? 42 : 30),
                   placeholder: 'Name',
                 ),
               ),
@@ -834,7 +834,7 @@ class _TierListEditorScreenState extends State<TierListEditorScreen> {
                   duration: MediaQuery.disableAnimationsOf(context)
                       ? Duration.zero
                       : const Duration(milliseconds: 120),
-                  color: hot ? AppTheme.hankoSumi3 : AppTheme.hankoSumi2,
+                  color: _rowGround(t, hot),
                   padding: const EdgeInsets.all(6),
                   child: n == 0
                       ? (fill ? _addSlot(t, tokenW, wide: true, hot: hot) : _emptyRowHint(hot))
@@ -854,6 +854,15 @@ class _TierListEditorScreenState extends State<TierListEditorScreen> {
         );
       },
     );
+  }
+
+  /// A row's ground. Round nine: its tier's pigment at 7% (14% while a
+  /// drag is over it), so each tier reads as one band of its colour, as the
+  /// picture's plates do.
+  Color _rowGround(Tier t, bool hot) {
+    final base = hot ? AppTheme.hankoSumi3 : AppTheme.hankoSumi2;
+    if (!TierListSwitches.boardLook) return base;
+    return Color.alphaBlend(TierPigment.at(t.pigment).color.withValues(alpha: hot ? 0.14 : 0.07), base);
   }
 
   /// Round nine: the dashed slot that ends a row; tap it to pick for this
@@ -888,7 +897,7 @@ class _TierListEditorScreenState extends State<TierListEditorScreen> {
       inside = SizedBox(
         width: tokenW,
         height: tokenW * 1.5,
-        child: const Icon(Icons.add_rounded, size: 20, color: AppTheme.hankoStone),
+        child: Icon(Icons.add_rounded, size: 20, color: hot ? AppTheme.hankoWashi : AppTheme.hankoStone),
       );
     }
     return ExcludeSemantics(
@@ -900,8 +909,10 @@ class _TierListEditorScreenState extends State<TierListEditorScreen> {
           splashFactory: NoSplash.splashFactory,
           highlightColor: AppTheme.hankoPressWash,
           hoverColor: AppTheme.hankoPressWash,
+          // Washi while a drag is over the row: the slot is where it lands
+          // (and edge on the drag's brighter ground would be 2.6:1).
           child: CustomPaint(
-            painter: const _DashedBox(color: AppTheme.hankoEdge),
+            painter: _DashedBox(color: hot ? AppTheme.hankoWashi : AppTheme.hankoEdge),
             child: wide ? Align(alignment: Alignment.centerLeft, child: inside) : inside,
           ),
         ),
@@ -916,7 +927,13 @@ class _TierListEditorScreenState extends State<TierListEditorScreen> {
         padding: const EdgeInsets.symmetric(horizontal: 6),
         child: Text(
           hot ? 'Drop here' : (_list.isEmpty ? '' : 'Empty'),
-          style: AppTheme.hankoSans(fontSize: 13, color: hot ? AppTheme.hankoWashi : AppTheme.hankoAsh),
+          // Stone on a tinted row (round nine): ash would be 4.4:1 on gold.
+          style: AppTheme.hankoSans(
+            fontSize: 13,
+            color: hot
+                ? AppTheme.hankoWashi
+                : (TierListSwitches.boardLook ? AppTheme.hankoStone : AppTheme.hankoAsh),
+          ),
         ),
       ),
     );
@@ -927,7 +944,14 @@ class _TierListEditorScreenState extends State<TierListEditorScreen> {
     if (c == null) return const SizedBox.shrink();
     final inTray = slotId == _trayId;
     final where = _slotName(inTray ? null : slotId);
-    final portrait = CharacterPortrait(character: c, width: width, nameSize: 10.5);
+    // Round nine: two lines of name, as the picture prints them ("Satoru
+    // Gojou", not "Satoru G…").
+    final portrait = CharacterPortrait(
+      character: c,
+      width: width,
+      nameSize: 10.5,
+      nameLines: TierListSwitches.boardLook ? 2 : 1,
+    );
     final ghost = Opacity(opacity: 0.25, child: portrait);
     final feedback = Material(
       color: Colors.transparent,
@@ -1111,7 +1135,11 @@ class _TierListEditorScreenState extends State<TierListEditorScreen> {
                         )
                       else
                         SizedBox(
-                          height: tokenW * 1.5 + 4 + 14 * MediaQuery.textScalerOf(context).scale(1) + 6,
+                          // A face and its name: one line, or two (round nine).
+                          height: tokenW * 1.5 +
+                              4 +
+                              (TierListSwitches.boardLook ? 25 : 14) * MediaQuery.textScalerOf(context).scale(1) +
+                              6,
                           child: ListView.separated(
                             scrollDirection: Axis.horizontal,
                             itemCount: n,
