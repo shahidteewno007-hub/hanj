@@ -698,18 +698,25 @@ class _TonightWatchSheetState extends State<TonightWatchSheet>
       final words = board - 2 * _MoodBoard.pad;
       final extent = _handExtent(_poses.values);
       final coverWidth = min(56.0, (words / extent.width).floorToDouble());
-      double tallest(TextStyle style, String Function(_Option) text) {
-        var most = 0.0;
-        for (final mood in _moods) {
-          final painter = TextPainter(
-            text: TextSpan(text: text(mood), style: style),
-            textDirection: TextDirection.ltr,
-            textScaler: scaler,
-          )..layout(maxWidth: words);
-          most = max(most, painter.height);
-          painter.dispose();
-        }
-        return most;
+      double measure(String text, TextStyle style) {
+        final painter = TextPainter(
+          text: TextSpan(text: text, style: style),
+          textDirection: TextDirection.ltr,
+          textScaler: scaler,
+        )..layout(maxWidth: words);
+        final height = painter.height;
+        painter.dispose();
+        return height;
+      }
+      // The tallest board's words, the mood's name and its line together:
+      // at 1.3x "Mind-bending" takes two lines and "Slice of Life,
+      // popular" two, but no board takes both.
+      var tallest = 0.0;
+      for (final mood in _moods) {
+        tallest = max(
+            tallest,
+            measure(mood.label, _MoodBoard.nameStyle) +
+                measure(_feeds(mood), _MoodBoard.feedsStyle));
       }
 
       return GridView(
@@ -721,8 +728,7 @@ class _TonightWatchSheetState extends State<TonightWatchSheet>
           mainAxisSpacing: _boardGap,
           mainAxisExtent: _MoodBoard.heightFor(
             hand: extent.height * coverWidth,
-            name: tallest(_MoodBoard.nameStyle, (m) => m.label),
-            feeds: tallest(_MoodBoard.feedsStyle, _feeds),
+            words: tallest,
           ),
         ),
         children: [
@@ -1263,14 +1269,16 @@ class _TonightWatchSheetState extends State<TonightWatchSheet>
   // three checks, one of which ("Highly rated by the community") wasn't
   // true of the moods AniList sorts by popularity or trend. [n] is how
   // many the pick was drawn from.
+  // The genre stays whole on its line, as on its board.
   static String? _poolLine(_Option mood, int n) {
     if (n < 2) return null;
     final count = n <= 10 ? _counts[n - 2] : '$n';
+    final genre = mood.genre.replaceAll(' ', '\u00A0');
     return switch (mood.sort) {
-      'SCORE_DESC' => 'One of AniList’s $count best-rated ${mood.genre} titles.',
+      'SCORE_DESC' => 'One of AniList’s $count best-rated $genre titles.',
       'POPULARITY_DESC' =>
-        'One of AniList’s $count most popular ${mood.genre} titles.',
-      _ => 'One of $count ${mood.genre} titles trending on AniList.',
+        'One of AniList’s $count most popular $genre titles.',
+      _ => 'One of $count $genre titles trending on AniList.',
     };
   }
 
@@ -1472,22 +1480,30 @@ class _MoodBoard extends StatelessWidget {
   static TextStyle get feedsStyle =>
       AppTheme.hankoSans(fontSize: AppTheme.hankoLabelSize, height: 1.3);
 
-  /// The board's height for a hand and its words' heights; 2 dp spare,
-  /// since a measured line and a laid-out one can differ by a fraction.
-  static double heightFor({
-    required double hand,
-    required double name,
-    required double feeds,
-  }) =>
-      14 + hand + 10 + name + 2 + feeds + 12 + 2;
+  /// The board's height for a hand and its words (the name and its line);
+  /// 2 dp spare, since a measured line and a laid-out one can differ by a
+  /// fraction.
+  static double heightFor({required double hand, required double words}) =>
+      14 + hand + 10 + words + 2 + 12 + 2;
 
   @override
   Widget build(BuildContext context) {
     final still = MediaQuery.disableAnimationsOf(context);
+    // The colour pools behind the prints and darkens toward the words, a
+    // print lit from above rather than a box of colour: six flat mats side
+    // by side read as colour soup (Print Room's named risk). The foot is
+    // darker than the field, so washi keeps 5.69:1 or better on it.
+    final field = AppTheme.hankoField(colour) ?? AppTheme.hankoSumi3;
+    final foot = Color.lerp(field, AppTheme.hankoSumi3, 0.6) ?? field;
     return AnimatedContainer(
       duration: still ? Duration.zero : const Duration(milliseconds: 240),
       decoration: BoxDecoration(
-        color: AppTheme.hankoField(colour) ?? AppTheme.hankoSumi3,
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [field, field, foot],
+          stops: const [0, 0.5, 1],
+        ),
         borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
       ),
       child: Padding(
