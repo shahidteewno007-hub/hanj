@@ -471,12 +471,26 @@ class TierListPoster extends StatelessWidget {
                         ),
                       ),
                     ),
-                    const Spacer(),
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 2),
-                      child: Text(
-                        '${d.day} ${_months[d.month - 1]} ${d.year}',
-                        style: AppTheme.hankoSans(fontSize: 10, color: AppTheme.hankoStone, tabular: true),
+                    // The date at the right edge, whole. An Expanded aligned
+                    // right puts it exactly where a Spacer did; scaleDown
+                    // shrinks it a little, rather than overflowing, when the
+                    // row has no room (a two-digit day, "10 Nov 2026",
+                    // overflowed it by 0.8 dp in the test font).
+                    Expanded(
+                      child: Align(
+                        alignment: Alignment.bottomRight,
+                        child: Padding(
+                          padding: const EdgeInsets.only(bottom: 2),
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              '${d.day} ${_months[d.month - 1]} ${d.year}',
+                              maxLines: 1,
+                              softWrap: false,
+                              style: AppTheme.hankoSans(fontSize: 10, color: AppTheme.hankoStone, tabular: true),
+                            ),
+                          ),
+                        ),
                       ),
                     ),
                   ],
