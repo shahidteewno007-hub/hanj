@@ -16,6 +16,9 @@ import '../../core/theme/app_theme.dart';
 import '../../widgets/hanko_cover_colour.dart';
 import '../../widgets/hanko_print.dart';
 import '../../widgets/hanko_seal.dart';
+import '../../models/achievements.dart' show Achievements;
+import '../../services/achievements_service.dart';
+import '../achievements/achievements_screen.dart' show AchievementSlip;
 import 'taste_profile.dart';
 
 // ─────────────────────────────────────────────────────────────
@@ -207,9 +210,23 @@ class _RankingCardsScreenState extends State<RankingCardsScreen>
   Future<void> _storePicks(List<String>? picks, List<String>? before) async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
+    // Achievements (stage 4): top9At beside top9, in the same write and
+    // cleared with it, dates "Chose your Top 9"; the record hears of it at
+    // once, and the slip waits for the editor's page to finish closing.
+    if (Achievements.replaceCards) {
+      AchievementSlip.expect(context,
+          feedback: const Duration(milliseconds: 300));
+      AchievementsService.instance.noteTop9(picks).catchError((Object _) {});
+    }
     try {
       await FirebaseFirestore.instance.collection('users').doc(uid).set(
-        {'top9': picks ?? FieldValue.delete()},
+        {
+          'top9': picks ?? FieldValue.delete(),
+          if (Achievements.replaceCards)
+            'top9At': picks == null
+                ? FieldValue.delete()
+                : FieldValue.serverTimestamp(),
+        },
         SetOptions(merge: true),
       );
     } catch (_) {

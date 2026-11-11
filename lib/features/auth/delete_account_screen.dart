@@ -5,6 +5,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme/app_theme.dart';
 import '../../services/auth_service.dart';
+import '../../services/achievements_service.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Account Deletion Screen
@@ -155,6 +156,10 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
 
     // Delete the main user doc last
     await userRef.delete();
+
+    // Achievements' record went with the user doc; this forgets the phone's
+    // copy of it too. It never throws.
+    await AchievementsService.instance.clearLocal(uid);
   }
 
   void _showSnackbar(String msg) {
