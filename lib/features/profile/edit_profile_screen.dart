@@ -117,15 +117,31 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     final uid = _auth.currentUser?.uid;
     if (uid == null) return;
 
-    final snapshot = await _firestore
-        .collection('users').doc(uid).collection('animeList')
-        .orderBy('addedAt', descending: true)
-        .limit(50)
-        .get();
+    // The whole list, newest first. It was the newest 50 only, so a show
+    // added earlier (Fullmetal Alchemist on a 172-title list) could never be
+    // found, and orderBy('addedAt') also dropped entries without addedAt.
+    // Sorted here instead; entries without a date go last.
+    final QuerySnapshot<Map<String, dynamic>> snapshot;
+    try {
+      snapshot = await _firestore
+          .collection('users').doc(uid).collection('animeList')
+          .get();
+    } catch (_) {
+      // Offline or refused: no sheet. Uncaught, it was a fatal Crashlytics report.
+      return;
+    }
 
     if (!mounted) return;
 
-    final animeList = snapshot.docs.map((d) {
+    final docs = snapshot.docs.toList()
+      ..sort((a, b) {
+        final ta = a.data()['addedAt'], tb = b.data()['addedAt'];
+        if (ta is! Timestamp) return tb is Timestamp ? 1 : 0;
+        if (tb is! Timestamp) return -1;
+        return tb.compareTo(ta);
+      });
+
+    final animeList = docs.map((d) {
       final data = d.data();
       return {
         'id':       data['animeId']?.toString() ?? '',
