@@ -4,6 +4,12 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../models/anime_model.dart';
+import '../features/anime_detail/anime_detail_screen.dart';
+import '../features/social/social_screen.dart';
+import '../features/stats/stats_screen.dart';
+import 'anilist_service.dart';
+import 'offline_cache_service.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Background handler — top-level, only runs on mobile (not used on web)
@@ -98,33 +104,76 @@ class NotificationService {
 
   // ── Navigation on tap ─────────────────────────────────────────────────────
 
-  void _handlePayload(RemoteMessage message) {
-    final nav = NotificationNavigator.navigatorKey.currentState;
-    if (nav == null) return;
+  // A tapped push lands on a screen that exists (AUDIT.md S2-1). MaterialApp
+  // registers only /cards, /cadre and /tierlist, so the other four names
+  // this used to push (/anime-detail, /social, /wrapped, /home) threw.
+  // Screens are pushed the way the rest of the app pushes them, and
+  // anything without a screen of its own goes Home.
+  Future<void> _handlePayload(RemoteMessage message) async {
+    try {
+      // Only for someone AuthWrapper would let in: signed in, and verified
+      // unless they came through Google. A cold start waits for Auth here.
+      final user = await FirebaseAuth.instance.authStateChanges().first;
+      if (user == null) return;
+      final isGoogleUser =
+          user.providerData.any((p) => p.providerId == 'google.com');
+      if (!isGoogleUser && !user.emailVerified) return;
 
-    final type    = message.data['type'] as String?;
-    final animeId = message.data['animeId'] as String?;
+      final type    = message.data['type'] as String?;
+      final animeId = message.data['animeId'] as String?;
 
-    switch (type) {
-      case 'new_season':
-      case 'episode_reminder':
-        if (animeId != null) {
-          nav.pushNamed('/anime-detail', arguments: animeId);
-        }
-        break;
-      case 'social':
-        nav.pushNamed('/social');
-        break;
-      case 'weekly_recap':
-        nav.pushNamed('/wrapped');
-        break;
-      case 'card_unlock':
-        nav.pushNamed('/cards');
-        break;
-      case 'streak':
-        nav.pushNamed('/home');
-        break;
+      Route<void>? route;
+      switch (type) {
+        case 'episode_reminder':
+          // Detail by id, as Home's airing rows open it: the cached copy,
+          // else one fetch through AniList's queue. If neither, Home.
+          if (animeId != null && animeId.isNotEmpty) {
+            Anime? anime = await OfflineCacheService.instance
+                .getCachedAnimeDetail(animeId);
+            anime ??= await AnilistService().getAnimeById(animeId);
+            if (anime != null) {
+              final found = anime;
+              route = MaterialPageRoute(
+                  builder: (_) => AnimeDetailScreen(anime: found));
+            }
+          }
+          break;
+        case 'social':
+          // Friends, as Profile opens it.
+          route = MaterialPageRoute(builder: (_) => const SocialScreen());
+          break;
+        case 'weekly_recap':
+          // Wrapped is one of the screens lost in the incident (AUDIT.md
+          // §5-C); Stats is the nearest, as Profile opens it.
+          route = MaterialPageRoute(builder: (_) => const StatsScreen());
+          break;
+        case 'card_unlock':
+          // Registered: Achievements, or closes at once while they're
+          // locked until Hanj+ (main.dart).
+          final nav = await _navigator();
+          nav?.pushNamed('/cards');
+          return;
+        // new_season (no show of its own), streak and anything unknown
+        // go Home.
+      }
+
+      final nav = await _navigator();
+      if (nav == null) return;
+      if (route != null) {
+        nav.push(route);
+      } else {
+        nav.popUntil((r) => r.isFirst);
+      }
+    } catch (e) {
+      debugPrint('[FCM] Tap navigation failed: $e');
     }
+  }
+
+  // The app's navigator, after a frame, so a push tapped from a cold start
+  // finds MaterialApp mounted (main.dart's handlers wait the same way).
+  Future<NavigatorState?> _navigator() async {
+    await WidgetsBinding.instance.endOfFrame;
+    return NotificationNavigator.navigatorKey.currentState;
   }
 
   // ── Preferences (Firestore) ───────────────────────────────────────────────
