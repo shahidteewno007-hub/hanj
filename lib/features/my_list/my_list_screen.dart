@@ -8,6 +8,7 @@ import '../../widgets/hanko_board.dart';
 import '../../widgets/hanko_seal.dart';
 import '../anime_detail/anime_detail_screen.dart';
 import '../../models/anime_model.dart';
+import 'my_list_landing.dart';
 
 class MyListScreen extends StatefulWidget {
   final String? initialStatus;
@@ -35,6 +36,60 @@ class _MyListScreenState extends State<MyListScreen> {
   /// 07faabe's list as it was.
   static const bool _printRoom = true;
 
+  /// A lighter open for the Vibes list (r9, 2026-11-11; Shahid: "fix My
+  /// List"), drawn exactly as before:
+  ///  - each snapshot's titles are read once. A document's data() copies the
+  ///    whole document each time it's called, and every build called it
+  ///    about 3,800 times on a 172-title list (twice per comparison of the
+  ///    sort, then for each status count and the board);
+  ///  - the counts per status, which only the old list shows, aren't worked
+  ///    out;
+  ///  - the search field, the status tabs and the two square buttons are
+  ///    kept from one build to the next while what they show is unchanged,
+  ///    so the list landing (or any rebuild of it) doesn't rebuild them: they
+  ///    were about a third of the widgets built the frame it landed in;
+  ///  - the frame the list lands in builds only the rows on screen, and the
+  ///    rows just below them follow a frame later (MyListLanding).
+  /// False gives 27e16b1 back.
+  static const bool _lightOpen = true;
+
+  /// The list's stream is made once, in initState, and held (r9,
+  /// 2026-11-11). getAnimeList() makes a new snapshots() stream on every
+  /// call, so when build() called it, each setState (a status tap, every
+  /// keystroke in the search field) handed StreamBuilder a new stream: it
+  /// unsubscribed, subscribed again and went back to waiting, which drew the
+  /// five blank rows until Firestore sent every title again. False gives
+  /// 7f3afdc back.
+  static const bool _heldStream = true;
+
+  // _heldStream: the stream build() hands StreamBuilder.
+  Stream<QuerySnapshot>? _animeList;
+
+  // _lightOpen: the snapshot last read, its titles in its own order, and
+  // each title's data, read once.
+  QuerySnapshot? _readFrom;
+  List<QueryDocumentSnapshot> _readDocs = const [];
+  Map<QueryDocumentSnapshot, Map<String, dynamic>> _read = Map.identity();
+
+  // _lightOpen: widgets kept from the last build, by slot, with what they
+  // were made from.
+  final Map<String, (Object?, Widget)> _kept = {};
+
+  /// [fresh], or with _lightOpen the widget kept in [slot] if it was made
+  /// from the same [from]. Flutter doesn't rebuild a widget it's handed
+  /// again, so a kept one costs nothing. Only for widgets that depend on
+  /// nothing but [from] and the state's own fields.
+  Widget _keep(String slot, Object? from, Widget fresh) {
+    if (!_lightOpen) return fresh;
+    final kept = _kept[slot];
+    if (kept != null && kept.$1 == from) return kept.$2;
+    _kept[slot] = (from, fresh);
+    return fresh;
+  }
+
+  // The titles the shuffle button picks from: the list as last built.
+  List<QueryDocumentSnapshot> _shuffleFrom = const [];
+
   final _firestoreService = FirestoreService();
   final _searchController = TextEditingController();
   String _searchQuery = '';
@@ -47,6 +102,7 @@ class _MyListScreenState extends State<MyListScreen> {
     if (widget.initialStatus != null) {
       _selectedStatus = widget.initialStatus!;
     }
+    if (_heldStream) _animeList = _firestoreService.getAnimeList();
   }
 
   final _statuses = ['ALL', 'WATCHING', 'COMPLETED', 'PLAN_TO_WATCH', 'DROPPED'];
@@ -111,6 +167,72 @@ class _MyListScreenState extends State<MyListScreen> {
     });
 
     return filtered;
+  }
+
+  static Map<String, dynamic> _dataOf(QueryDocumentSnapshot d) =>
+      d.data() as Map<String, dynamic>;
+
+  // _lightOpen: the Vibes list as build() makes it, from titles read once.
+  // It filters and sorts as _filterAndSort does, on the same lists in the
+  // same order, so the order (ties included) is the same: with every status
+  // shown and no search, the sort orders allDocs itself, as before.
+  Widget _light(BuildContext context, AsyncSnapshot<QuerySnapshot> snapshot) {
+    final query = snapshot.data;
+    if (!identical(query, _readFrom)) {
+      _readFrom = query;
+      _readDocs = query?.docs ?? const [];
+      _read = Map.identity();
+      for (final d in _readDocs) {
+        _read[d] = _dataOf(d);
+      }
+    }
+    final read = _read;
+    Map<String, dynamic> dataOf(QueryDocumentSnapshot d) => read[d]!;
+
+    final allDocs = List.of(_readDocs);
+    var filtered = allDocs;
+    if (_selectedStatus != 'ALL') {
+      filtered = filtered
+          .where((d) => dataOf(d)['status'] == _selectedStatus)
+          .toList();
+    }
+    if (_searchQuery.isNotEmpty) {
+      filtered = filtered.where((d) {
+        final title = (dataOf(d)['title'] as String? ?? '').toLowerCase();
+        return title.contains(_searchQuery.toLowerCase());
+      }).toList();
+    }
+    filtered.sort((a, b) {
+      final da = dataOf(a);
+      final db = dataOf(b);
+      switch (_sortBy) {
+        case 'title':
+          return (da['title'] as String? ?? '')
+              .compareTo(db['title'] as String? ?? '');
+        case 'rating':
+          final rA = (da['userRating'] as num?)?.toDouble() ?? 0.0;
+          final rB = (db['userRating'] as num?)?.toDouble() ?? 0.0;
+          return rB.compareTo(rA);
+        default:
+          final tA = da['addedAt'] as Timestamp?;
+          final tB = db['addedAt'] as Timestamp?;
+          if (tA == null || tB == null) return 0;
+          return tB.compareTo(tA);
+      }
+    });
+
+    int totalEps = 0;
+    for (final d in allDocs) {
+      final data = dataOf(d);
+      if (data['status'] == 'COMPLETED') {
+        totalEps += (data['episodes'] as int?) ?? 0;
+      } else {
+        totalEps += (data['currentEpisode'] as int?) ?? 0;
+      }
+    }
+
+    return _printed(context, snapshot, allDocs, filtered, snapshot.hasData,
+        totalEps, dataOf);
   }
 
   // Print Room (r9): the sort sheet on sumi 2 with Hanko's sheet corners; the
@@ -183,6 +305,13 @@ class _MyListScreenState extends State<MyListScreen> {
     ));
   }
 
+  // The Vibes list's scroll view: with _lightOpen, one that builds only the
+  // rows on screen the frame the list lands in.
+  Widget _scroll({required bool landed, required List<Widget> slivers}) =>
+      _lightOpen
+          ? MyListLanding(landed: landed, slivers: slivers)
+          : CustomScrollView(slivers: slivers);
+
   // ── Print Room (r9): the list on a Vibes board, its rows as prints ──
   Widget _printed(
     BuildContext context,
@@ -191,13 +320,15 @@ class _MyListScreenState extends State<MyListScreen> {
     List<QueryDocumentSnapshot> filtered,
     bool loaded,
     int totalEps,
+    Map<String, dynamic> Function(QueryDocumentSnapshot) dataOf,
   ) {
+    _shuffleFrom = allDocs;
     // The selected status's shows, newest first, for its board.
     final mine = [
       for (final d in allDocs)
         if (_selectedStatus == 'ALL' ||
-            (d.data() as Map)['status'] == _selectedStatus)
-          d.data() as Map<String, dynamic>,
+            dataOf(d)['status'] == _selectedStatus)
+          dataOf(d),
     ]..sort((a, b) {
         final tA = a['addedAt'] as Timestamp?;
         final tB = b['addedAt'] as Timestamp?;
@@ -209,7 +340,8 @@ class _MyListScreenState extends State<MyListScreen> {
           borderRadius: corners,
           borderSide: BorderSide(color: c),
         );
-    return CustomScrollView(
+    return _scroll(
+      landed: loaded,
       slivers: [
         // ── Header ────────────────────────────────────
         SliverToBoxAdapter(
@@ -250,24 +382,24 @@ class _MyListScreenState extends State<MyListScreen> {
                     ],
                   ),
                 ),
-                _SquareButton(
+                _keep('sort', null, _SquareButton(
                   icon: Icons.swap_vert_rounded,
                   label: 'Sort',
                   onTap: _showPrintedSortSheet,
-                ),
+                )),
                 const SizedBox(width: 8),
-                _SquareButton(
+                _keep('shuffle', null, _SquareButton(
                   icon: Icons.shuffle_rounded,
                   label: 'Open one at random',
-                  onTap: () => _openRandom(allDocs),
-                ),
+                  onTap: () => _openRandom(_shuffleFrom),
+                )),
               ],
             ),
           ),
         ),
 
         // ── Search ────────────────────────────────────
-        SliverToBoxAdapter(
+        _keep('search', _searchQuery, SliverToBoxAdapter(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
             child: TextField(
@@ -297,10 +429,10 @@ class _MyListScreenState extends State<MyListScreen> {
               ),
             ),
           ),
-        ),
+        )),
 
         // ── Status tabs ───────────────────────────────
-        SliverToBoxAdapter(
+        _keep('tabs', _selectedStatus, SliverToBoxAdapter(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
             child: HankoTabStrip(
@@ -309,7 +441,7 @@ class _MyListScreenState extends State<MyListScreen> {
               onSelect: (i) => setState(() => _selectedStatus = _statuses[i]),
             ),
           ),
-        ),
+        )),
 
         // ── The selected status, as a board ───────────
         if (loaded && _searchQuery.isEmpty && mine.isNotEmpty)
@@ -419,7 +551,7 @@ class _MyListScreenState extends State<MyListScreen> {
             sliver: SliverList(
               delegate: SliverChildBuilderDelegate(
                 (context, i) {
-                  final data = filtered[i].data() as Map<String, dynamic>;
+                  final data = dataOf(filtered[i]);
                   return _ListRow(
                     key: ValueKey(data['animeId']),
                     data: data,
@@ -483,8 +615,9 @@ class _MyListScreenState extends State<MyListScreen> {
     return Scaffold(
       backgroundColor: AppTheme.background,
       body: StreamBuilder<QuerySnapshot>(
-        stream: _firestoreService.getAnimeList(),
+        stream: _heldStream ? _animeList : _firestoreService.getAnimeList(),
         builder: (context, snapshot) {
+          if (_printRoom && _lightOpen) return _light(context, snapshot);
           final allDocs = snapshot.data?.docs ?? [];
           final filtered = _filterAndSort(allDocs);
           // No snapshot yet, or the read failed (an error arrives with no
@@ -512,8 +645,8 @@ class _MyListScreenState extends State<MyListScreen> {
           }
 
           if (_printRoom) {
-            return _printed(
-                context, snapshot, allDocs, filtered, loaded, totalEps);
+            return _printed(context, snapshot, allDocs, filtered, loaded,
+                totalEps, _dataOf);
           }
 
           return CustomScrollView(
