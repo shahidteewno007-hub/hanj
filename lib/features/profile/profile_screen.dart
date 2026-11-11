@@ -39,7 +39,6 @@ import '../auth/delete_account_screen.dart';
 import '../achievements/achievements_screen.dart';
 import '../../models/achievements.dart';
 import '../../services/achievements_service.dart';
-import 'dart:async' show Timer;
 import '../../widgets/hanko_badge.dart';
 
 class ProfileScreen extends StatefulWidget {
