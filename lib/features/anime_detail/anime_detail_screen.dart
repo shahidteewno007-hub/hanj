@@ -84,6 +84,15 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
   // (CLAUDE.md): false brings them back.
   static const bool _plusOneDip = true;
 
+  // Detail opens lighter (Print Room P8; question P6-7). Reading your list
+  // entry rebuilds only the header (the Episodes tab too, while it shows),
+  // and AniList's full entry only the bar, the header and the tab's content,
+  // as the staff answer already does (question 115). Each used to rebuild
+  // the whole screen, the app bar, tab bar and Seasons strip among it,
+  // which show none of it. Nothing on screen differs. False brings back the
+  // whole-screen rebuilds as they were.
+  static const bool _lightLoads = true;
+
   final _firestoreService = FirestoreService();
   final _aniListService   = AnilistService();
   final _confettiKey      = GlobalKey<ConfettiOverlayState>();
@@ -129,6 +138,12 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
   // rebuilt 583 widgets in one frame on the phone when the answer arrived,
   // the app bar's and the tab bar's among them, which show none of it.
   final ValueNotifier<int> _staffVersion = ValueNotifier<int>(0);
+
+  // Bumped by _entryChanged when your list entry is read (P8). The header
+  // listens to both; the tab content to this one only on the Episodes tab.
+  final ValueNotifier<int> _entryVersion = ValueNotifier<int>(0);
+  late final Listenable _headerVersion =
+      Listenable.merge([_staffVersion, _entryVersion]);
 
   // Opened from the keyboard, Detail gives Back the keyboard focus (question
   // 153), so Enter works at once. The screen as a whole used to hold
@@ -215,7 +230,11 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
     try {
       final full = await _aniListService.getAnimeById(widget.anime.id);
       if (full != null && mounted) {
-        setState(() => _anime = full);
+        if (_lightLoads) {
+          _staffChanged(() => _anime = full);
+        } else {
+          setState(() => _anime = full);
+        }
         OfflineCacheService.instance.cacheAnimeDetail(full);
         // Nothing to re-run (D16): airing and You May Like used to be
         // fetched again here, the airing query with the same id both times.
@@ -230,6 +249,7 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
     _timeUntilAiring.dispose();
     _scroll.dispose();
     _staffVersion.dispose();
+    _entryVersion.dispose();
     _seasons.dispose();
     super.dispose();
   }
@@ -269,7 +289,7 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
       final ep     = (entry?['currentEpisode'] as num?)?.toInt();
       final ratedAt = (entry?['ratedAt'] as Timestamp?)?.toDate();
       if (mounted) {
-        setState(() {
+        _entryChanged(() {
           _currentStatus = status; _userRating = rating; _currentEpisode = ep;
           _ratedAt = ratedAt; _entryLoaded = true;
         });
@@ -278,8 +298,20 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
       // Offline, a title that isn't on the list has no cached animeList doc,
       // so get() throws `unavailable`. Uncaught, that went to Crashlytics as
       // fatal on every such open. The screen just shows it as not on the list.
-      if (mounted) setState(() => _entryLoaded = true);
+      if (mounted) _entryChanged(() => _entryLoaded = true);
     }
+  }
+
+  /// Applies the list entry's first read and rebuilds only what shows it
+  /// (P8): the header, and the tab content on the Episodes tab. With the
+  /// classic header, or _lightLoads off, the whole screen, as before.
+  void _entryChanged(VoidCallback change) {
+    if (_classicDetail || !_lightLoads) {
+      setState(change);
+      return;
+    }
+    change();
+    _entryVersion.value++;
   }
 
   // Unused since Stage 1c: getAnimeStaff carries nextAiringEpisode. Kept as a
@@ -993,7 +1025,7 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
             // it showed.
             SliverToBoxAdapter(
               child: ListenableBuilder(
-                listenable: _staffVersion,
+                listenable: _selectedTab == 1 ? _headerVersion : _staffVersion,
                 builder: (_, _) => GestureDetector(
                   onHorizontalDragEnd: (details) {
                     if (details.primaryVelocity == null) return;
@@ -1031,7 +1063,7 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
                             minHeight: screenHeight * 0.4),
                         child: _TabContent(
                           selectedIndex: _selectedTab,
-                          anime: anime,
+                          anime: _anime,
                           staffData: _staffData,
                           isLoadingStaff: _isLoadingStaff,
                           cleanDescription: _cleanDescription,
@@ -1292,10 +1324,12 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
   }
 
   List<Widget> _hankoHeader(BuildContext context, Anime anime) {
-    final title = anime.titleEnglish ?? anime.title;
+    // Read where they're shown, from _anime (P8): AniList's full entry
+    // rebuilds only the bar and the header, and can change the title.
+    String title() => _anime.titleEnglish ?? _anime.title;
     // The URL the previous screen showed: decoded already, so the print is
     // there in the first frame.
-    final cover = widget.anime.imageUrl ?? anime.imageUrl;
+    String? shownCover() => widget.anime.imageUrl ?? _anime.imageUrl;
     return [
       SliverAppBar(
         pinned: true,
@@ -1320,7 +1354,7 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
             icon: const Icon(Icons.ios_share_sharp),
             color: AppTheme.hankoWashi,
             onPressed: () => showShareCard(context,
-                anime: anime, status: _currentStatus, userRating: _userRating),
+                anime: _anime, status: _currentStatus, userRating: _userRating),
           ),
           const SizedBox(width: 4),
         ],
@@ -1334,24 +1368,26 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
                   scroll: _scroll,
                   colour: _fieldColour,
                   geometry: HankoDetailHeader.geometryFor(MediaQuery.sizeOf(context).width),
-                  title: title,
+                  title: title(),
                 )
               : _HankoBar(
                   scroll: _scroll,
                   tint: AppTheme.hankoCoverTint(_coverColor),
                   geometry: HankoDetailHeader.geometryFor(MediaQuery.sizeOf(context).width),
-                  title: title,
+                  title: title(),
                 ),
         ),
       ),
       SliverToBoxAdapter(
         child: ListenableBuilder(
-          listenable: _staffVersion,
+          listenable: _headerVersion,
           builder: (_, _) {
+            final anime = _anime;
+            final cover = shownCover();
             final studio = _studioName;
             final director = _director;
             return HankoDetailHeader(
-              title: title,
+              title: title(),
               nativeTitle: _nativeTitle,
               coverUrl: cover,
               // The print it was opened from lands here (P6).
