@@ -69,8 +69,15 @@ class _MainScreenState extends State<MainScreen> {
     // PageWidth caps the tab root alone. The rail is its sibling inside the
     // Row, so the rail stays flush to the window edge and full height while the
     // cap applies only to the content beside it — the Row is never wrapped.
-    final content = OfflineBanner(
-      child: PageWidth(child: _screens[_selectedIndex]),
+    //
+    // The page and the bottom bar are each a traversal group (question 156),
+    // so Tab walks the whole page before it reaches the bar. In one reading
+    // order, a page item lower than the bar's top came after the bar's tabs,
+    // and Tab alternated between them.
+    final content = FocusTraversalGroup(
+      child: OfflineBanner(
+        child: PageWidth(child: _screens[_selectedIndex]),
+      ),
     );
 
     return Scaffold(
@@ -84,7 +91,8 @@ class _MainScreenState extends State<MainScreen> {
               ],
             )
           : content,
-      bottomNavigationBar: useRail ? null : _buildBottomBar(),
+      bottomNavigationBar:
+          useRail ? null : FocusTraversalGroup(child: _buildBottomBar()),
     );
   }
 
