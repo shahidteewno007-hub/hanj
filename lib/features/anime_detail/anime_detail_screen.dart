@@ -500,13 +500,23 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
         _walkSeasons();
         return;
       }
-      // A frame later still (P8): the frame after the answer's builds
-      // Overview, and the walk's first step, known already, reports at once.
-      WidgetsBinding.instance.addPostFrameCallback((_) {
+      // Two frames later still (P8): the frame after the answer's builds
+      // Overview, the next one its cast and You may like (_NextFrame), and
+      // the walk's first step, known already, reports at once.
+      _afterFrames(2, () {
         if (mounted) _walkSeasons();
       });
-      WidgetsBinding.instance.scheduleFrame();
     });
+  }
+
+  /// Runs [then] after [frames] more frames, asking for each (P8).
+  static void _afterFrames(int frames, VoidCallback then) {
+    if (frames <= 0) {
+      then();
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) => _afterFrames(frames - 1, then));
+    WidgetsBinding.instance.scheduleFrame();
   }
 
   /// Walks this show's seasons, step by step, into the Seasons strip; also
