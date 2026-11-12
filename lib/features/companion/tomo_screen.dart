@@ -115,7 +115,7 @@ class _TomoScreenState extends State<TomoScreen> {
       _animateToBottom();
     } on FirebaseFunctionsException catch (e) {
       _appendError(e.code == 'resource-exhausted'
-          ? (e.message ?? "That's all for today — catch you tomorrow!")
+          ? (e.message ?? "That’s all for today — catch you tomorrow!")
           : (e.message ?? 'Loki had a hiccup. Try again.'));
     } catch (_) {
       _appendError('Something went wrong reaching me. Try again in a sec.');
@@ -227,7 +227,7 @@ class _TomoScreenState extends State<TomoScreen> {
       "What should I watch next based on my taste?",
       "Catch me up on anime news this week",
       "Sell me on something from my Plan to Watch",
-      "Who's the best character in what I'm watching?",
+      "Who’s the best character in what I’m watching?",
     ];
     return ListView(
       padding: const EdgeInsets.fromLTRB(24, 40, 24, 24),

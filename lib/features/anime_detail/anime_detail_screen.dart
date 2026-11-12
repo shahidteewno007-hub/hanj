@@ -5664,8 +5664,8 @@ class _NextEpisodeCountdownState extends State<_NextEpisodeCountdown> {
           ..showSnackBar(
             SnackBar(
               content: Text(newVal
-                  ? "Couldn't set the reminder. Try again."
-                  : "Couldn't remove the reminder. Try again."),
+                  ? "Couldn’t set the reminder. Try again."
+                  : "Couldn’t remove the reminder. Try again."),
               backgroundColor: AppTheme.surfaceLight,
               behavior: SnackBarBehavior.floating,
               margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),

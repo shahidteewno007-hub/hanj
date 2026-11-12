@@ -387,7 +387,7 @@ class _SocialScreenState extends State<SocialScreen> {
           : _HankoShareCode(code),
       const SizedBox(height: 12),
       Text(
-        "Friends with this code can see what you're watching and how your lists compare.",
+        "Friends with this code can see what you’re watching and how your lists compare.",
         style: AppTheme.hankoSans(
             fontSize: AppTheme.hankoMetaSize,
             color: AppTheme.hankoStone,
@@ -547,7 +547,7 @@ class _SocialScreenState extends State<SocialScreen> {
                 : _buildCodeDisplay(_myShareCode!),
             const SizedBox(height: 14),
             Text(
-              "Friends with this code can see what you're watching and how your lists compare.",
+              "Friends with this code can see what you’re watching and how your lists compare.",
               style: AppTheme.sans(fontSize: 13, color: AppTheme.textMuted, height: 1.5),
             ),
             const SizedBox(height: 20),

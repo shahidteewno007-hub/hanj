@@ -223,7 +223,7 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
               TextButton(
                 onPressed: _check,
                 child: Text(
-                  _checking ? 'Checking...' : "I've verified, refresh",
+                  _checking ? 'Checking...' : "I’ve verified, refresh",
                   style: AppTheme.sans(
                     fontSize: 13,
                     color: AppTheme.textMuted,
