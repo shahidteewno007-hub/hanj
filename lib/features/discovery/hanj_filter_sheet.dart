@@ -174,9 +174,14 @@ class _HanjFilterSheetState extends State<HanjFilterSheet> {
 
   Widget _printed(BuildContext context) {
     // A choice is a printed tab; its 48 dp touch already holds 6 dp of air
-    // above and below the drawn 36, so the rows need no run spacing.
-    Widget choices(List<Widget> tabs) =>
-        Wrap(spacing: 8, runSpacing: 0, children: tabs);
+    // above and below the drawn 36, so the rows need no run spacing. Each is
+    // as wide as its word: a printed tab centres its label, so in a Wrap's
+    // bounded width it would otherwise fill the line.
+    Widget choices(List<Widget> tabs) => Wrap(
+          spacing: 8,
+          runSpacing: 0,
+          children: [for (final tab in tabs) IntrinsicWidth(child: tab)],
+        );
     Widget head(String text) => Padding(
           padding: const EdgeInsets.only(bottom: 4),
           child: Text(text,
