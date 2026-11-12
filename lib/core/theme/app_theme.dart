@@ -406,6 +406,13 @@ class AppTheme {
   static const double hankoMatPad = 6;
 
   // ── Theme ──────────────────────────────────────────────────
+  // A text field in focus takes a washi border (Print Room P8; the Vibes
+  // report's V-9): coral is only ever your verdicts, and a field in use is
+  // not one. The screens converted in r9 already pass their own Hanko
+  // borders; this reaches every other field. The light theme, which nothing
+  // switches to, is left as it is. False gives back the coral border.
+  static const bool _washiFocus = true;
+
   static ThemeData get darkTheme {
     return ThemeData(
       useMaterial3: true,
@@ -530,7 +537,7 @@ class AppTheme {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: primary, width: 1.5),
+          borderSide: const BorderSide(color: _washiFocus ? hankoWashi : primary, width: 1.5),
         ),
         errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
