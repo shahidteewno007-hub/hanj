@@ -26,6 +26,15 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   static const _bg      = Color(0xFF121110);
   static const _cream   = Color(0xFFF5F0E8);
 
+  /// Onboarding in flat Hanko (the Vibes report's next stage): washi on
+  /// sumi, Shippori headings, the pages' icons on sumi 3 tiles, the import
+  /// choices as sumi 2 panels with a washi keyline when chosen (CLAUDE.md:
+  /// never coral, which is only ever your verdicts), washi and edge page
+  /// marks, and Next as the washi main action. Every page, choice and write
+  /// is the same. False gives back the coloured glow, the dot grid, the
+  /// coloured accents and the coral gradient button as they were.
+  static const bool _printRoom = true;
+
   static const _contentPages = [
     _PageData(
       icon: Icons.play_circle_outline_rounded,
@@ -84,6 +93,11 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   void _nextPage() {
     if (_currentPage < _totalPages - 1) {
       // Just drive the PageView; onPageChanged handles the content fade.
+      if (_printRoom && MediaQuery.disableAnimationsOf(context)) {
+        // Motion off: the next page arrives without the slide.
+        _pageController.jumpToPage(_currentPage + 1);
+        return;
+      }
       _pageController.nextPage(
         duration: const Duration(milliseconds: 400),
         curve: Curves.easeInOutCubic,
@@ -115,6 +129,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
   @override
   Widget build(BuildContext context) {
+    if (_printRoom) return _printed(context);
     final accentColor = _isImportPage
         ? _coral
         : _contentPages[_currentPage].accentColor;
@@ -258,6 +273,76 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                     ),
                   ),
                 ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// The screen in flat Hanko: plain sumi, the pages above and the controls
+  /// below them (no overlay, so nothing scrolls under Next). Skip, the page
+  /// marks and Next sit in one row; Skip still leaves on the last page.
+  Widget _printed(BuildContext context) {
+    final still = MediaQuery.disableAnimationsOf(context);
+    final Animation<double> fade = still ? kAlwaysCompleteAnimation : _fadeAnim;
+    return Scaffold(
+      backgroundColor: AppTheme.hankoSumi,
+      body: Column(
+        children: [
+          Expanded(
+            child: PageView.builder(
+              controller: _pageController,
+              onPageChanged: (i) {
+                setState(() => _currentPage = i);
+                _fadeCtrl.forward(from: 0.4);
+              },
+              itemCount: _totalPages,
+              itemBuilder: (_, i) {
+                if (i == _contentPages.length) {
+                  return _PrintedImportPage(
+                    fadeAnim: fade,
+                    selectedImport: _selectedImport,
+                    onSelect: (val) => setState(() => _selectedImport = val),
+                  );
+                }
+                return _PrintedPage(page: _contentPages[i], fadeAnim: fade);
+              },
+            ),
+          ),
+          SafeArea(
+            top: false,
+            child: Align(
+              alignment: Alignment.topCenter,
+              child: ConstrainedBox(
+                constraints:
+                    const BoxConstraints(maxWidth: _kPrintedMeasure + 40),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                      AppTheme.hankoGutter, 8, AppTheme.hankoGutter, 20),
+                  child: Row(
+                    children: [
+                      // Skip — hidden on last page
+                      if (_currentPage < _totalPages - 1)
+                        _PrintedTextAction(label: 'Skip', onTap: _finish)
+                      else
+                        const SizedBox(width: AppTheme.hankoTouch),
+                      Expanded(
+                        child: Center(
+                          child: _PrintedPageMarks(
+                            count: _totalPages,
+                            current: _currentPage,
+                          ),
+                        ),
+                      ),
+                      _PrintedMainAction(
+                        label: _isImportPage ? 'Get Started' : 'Next',
+                        onTap: _nextPage,
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
           ),
@@ -671,4 +756,507 @@ class _DotPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_DotPainter _) => false;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Flat Hanko (_OnboardingScreenState._printRoom)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// How wide the words may run: a phone uses all of it, a wide window keeps
+/// the column readable.
+const double _kPrintedMeasure = 480;
+
+/// The copy's line breaks were set for the old 50 px titles; in Hanko the
+/// words flow and wrap whole wherever the width (or text size) needs.
+String _flow(String s) => s.replaceAll('\n', ' ');
+
+/// One page's column: the gutter, the measure, and room to scroll when a
+/// large text size makes it taller than the screen.
+class _PrintedColumn extends StatelessWidget {
+  const _PrintedColumn({required this.children});
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) => SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(
+            AppTheme.hankoGutter, 48, AppTheme.hankoGutter, 24),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: _kPrintedMeasure),
+            child: SizedBox(
+              width: double.infinity,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: children,
+              ),
+            ),
+          ),
+        ),
+      );
+}
+
+/// The page's tag, its Mincho heading, the screen's one rule, and the
+/// words under it, shared by every page.
+class _PrintedHeading extends StatelessWidget {
+  const _PrintedHeading({
+    required this.tag,
+    required this.title,
+    required this.body,
+  });
+
+  final String tag;
+  final String title;
+  final String body;
+
+  @override
+  Widget build(BuildContext context) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            tag,
+            style: AppTheme.hankoSans(
+              fontSize: AppTheme.hankoLabelSize,
+              weight: FontWeight.w500,
+              color: AppTheme.hankoStone,
+              letterSpacing: 1.6,
+              height: 1.4,
+              tabular: true,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Semantics(
+            header: true,
+            child: Text(
+              title,
+              style: AppTheme.hankoSerif(
+                fontSize: AppTheme.hankoDisplaySize,
+                height: 1.3,
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+          const SizedBox(
+            width: double.infinity,
+            height: 1,
+            child: ColoredBox(color: AppTheme.hankoHairline),
+          ),
+          const SizedBox(height: 20),
+          Text(
+            body,
+            style: AppTheme.hankoSans(
+              fontSize: AppTheme.hankoSectionSize,
+              color: AppTheme.hankoStone,
+              height: 1.6,
+            ),
+          ),
+        ],
+      );
+}
+
+class _PrintedPage extends StatelessWidget {
+  const _PrintedPage({required this.page, required this.fadeAnim});
+
+  final _PageData page;
+  final Animation<double> fadeAnim;
+
+  @override
+  Widget build(BuildContext context) => FadeTransition(
+        opacity: fadeAnim,
+        child: SafeArea(
+          bottom: false,
+          child: _PrintedColumn(
+            children: [
+              // The page's icon on a sumi 3 tile: washi, no colour
+              ExcludeSemantics(
+                child: Container(
+                  width: 56,
+                  height: 56,
+                  decoration: BoxDecoration(
+                    color: AppTheme.hankoSumi3,
+                    borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+                  ),
+                  child: Icon(page.icon, color: AppTheme.hankoWashi, size: 28),
+                ),
+              ),
+              const SizedBox(height: 32),
+              _PrintedHeading(
+                tag: page.tag,
+                title: _flow(page.title),
+                body: _flow(page.subtitle),
+              ),
+            ],
+          ),
+        ),
+      );
+}
+
+class _PrintedImportPage extends StatelessWidget {
+  const _PrintedImportPage({
+    required this.fadeAnim,
+    required this.selectedImport,
+    required this.onSelect,
+  });
+
+  final Animation<double> fadeAnim;
+  final String? selectedImport;
+  final ValueChanged<String?> onSelect;
+
+  @override
+  Widget build(BuildContext context) => FadeTransition(
+        opacity: fadeAnim,
+        child: SafeArea(
+          bottom: false,
+          child: _PrintedColumn(
+            children: [
+              // The mark, with its flash (hanj_cut.png is the 48 px-and-up cut)
+              Image.asset(
+                'assets/images/hanj_cut.png',
+                width: 56,
+                height: 56,
+                fit: BoxFit.contain,
+                excludeFromSemantics: true,
+              ),
+              const SizedBox(height: 32),
+              const _PrintedHeading(
+                tag: 'IMPORT',
+                title: 'Bring Your List Along',
+                body: 'Already tracking on AniList or MAL? '
+                    'We’ll import your list after you sign in.',
+              ),
+              const SizedBox(height: 28),
+              _PrintedImportOption(
+                label: 'Import from AniList',
+                sublabel: 'anilist.co',
+                selected: selectedImport == 'anilist',
+                onTap: () => onSelect(
+                  selectedImport == 'anilist' ? null : 'anilist',
+                ),
+              ),
+              const SizedBox(height: 12),
+              _PrintedImportOption(
+                label: 'Import from MyAnimeList',
+                sublabel: 'myanimelist.net',
+                selected: selectedImport == 'mal',
+                onTap: () => onSelect(
+                  selectedImport == 'mal' ? null : 'mal',
+                ),
+              ),
+              const SizedBox(height: 20),
+              Text(
+                selectedImport == null
+                    ? 'Or tap Get Started to skip — you can import later in Settings.'
+                    : 'We’ll remind you to complete the import once you’re in.',
+                style: AppTheme.hankoSans(
+                  fontSize: AppTheme.hankoMetaSize,
+                  color: AppTheme.hankoAsh,
+                  height: 1.5,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+}
+
+/// An import choice: a sumi 2 panel, washi keyline and a washi check when
+/// chosen; tapping it again clears it, as before. One button for a screen
+/// reader, with its chosen state, and keyboard focus shown by a washi ring.
+class _PrintedImportOption extends StatefulWidget {
+  const _PrintedImportOption({
+    required this.label,
+    required this.sublabel,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final String sublabel;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  State<_PrintedImportOption> createState() => _PrintedImportOptionState();
+}
+
+class _PrintedImportOptionState extends State<_PrintedImportOption> {
+  bool _focused = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final still = MediaQuery.disableAnimationsOf(context);
+    final selected = widget.selected;
+    final radius = BorderRadius.circular(AppTheme.hankoRadius);
+    return Semantics(
+      container: true,
+      button: true,
+      selected: selected,
+      label: '${widget.label}, ${widget.sublabel}',
+      child: _PrintedFocusRing(
+        on: _focused,
+        child: Material(
+          color: AppTheme.hankoSumi2,
+          borderRadius: radius,
+          child: InkWell(
+            onTap: widget.onTap,
+            onFocusChange: (v) => setState(() => _focused = v),
+            splashFactory: NoSplash.splashFactory,
+            highlightColor: AppTheme.hankoPressWash,
+            hoverColor: AppTheme.hankoPressWash,
+            borderRadius: radius,
+            child: ExcludeSemantics(
+              child: AnimatedContainer(
+                duration:
+                    still ? Duration.zero : const Duration(milliseconds: 200),
+                curve: Curves.easeOut,
+                constraints: const BoxConstraints(minHeight: 64),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: BoxDecoration(
+                  borderRadius: radius,
+                  border: Border.all(
+                    color: selected
+                        ? AppTheme.hankoWashi
+                        : AppTheme.hankoSumi2,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            widget.label,
+                            style: AppTheme.hankoSans(
+                              weight: FontWeight.w500,
+                              height: 1.3,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            widget.sublabel,
+                            style: AppTheme.hankoSans(
+                              fontSize: AppTheme.hankoMetaSize,
+                              color: AppTheme.hankoStone,
+                              height: 1.3,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    // Its room is kept, so choosing never moves the words
+                    Icon(
+                      Icons.check_rounded,
+                      size: 20,
+                      color: selected
+                          ? AppTheme.hankoWashi
+                          : const Color(0x00000000),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Where you are: washi for this page, edge for the others, Hanko's 2 px
+/// corners. Read out as one line ("Page 2 of 5").
+class _PrintedPageMarks extends StatelessWidget {
+  const _PrintedPageMarks({required this.count, required this.current});
+
+  final int count;
+  final int current;
+
+  @override
+  Widget build(BuildContext context) {
+    final still = MediaQuery.disableAnimationsOf(context);
+    return Semantics(
+      label: 'Page ${current + 1} of $count',
+      child: ExcludeSemantics(
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: List.generate(
+            count,
+            (i) => AnimatedContainer(
+              duration:
+                  still ? Duration.zero : const Duration(milliseconds: 300),
+              margin: const EdgeInsets.symmetric(horizontal: 3),
+              width: current == i ? 16 : 6,
+              height: 4,
+              decoration: BoxDecoration(
+                color:
+                    current == i ? AppTheme.hankoWashi : AppTheme.hankoEdge,
+                borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Next / Get Started: the washi main action (sumi words, 2 px corners,
+/// no ripple), touched at 48 or more, with keyboard focus shown by a washi
+/// ring outside it.
+class _PrintedMainAction extends StatefulWidget {
+  const _PrintedMainAction({required this.label, required this.onTap});
+
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  State<_PrintedMainAction> createState() => _PrintedMainActionState();
+}
+
+class _PrintedMainActionState extends State<_PrintedMainAction> {
+  bool _focused = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final radius = BorderRadius.circular(AppTheme.hankoRadius);
+    return Semantics(
+      container: true,
+      button: true,
+      label: widget.label,
+      child: _PrintedFocusRing(
+        on: _focused,
+        child: Material(
+          color: AppTheme.hankoWashi,
+          borderRadius: radius,
+          child: InkWell(
+            onTap: widget.onTap,
+            onFocusChange: (v) => setState(() => _focused = v),
+            splashFactory: NoSplash.splashFactory,
+            highlightColor: AppTheme.hankoSumi.withValues(alpha: 0.08),
+            hoverColor: AppTheme.hankoSumi.withValues(alpha: 0.05),
+            borderRadius: radius,
+            child: ExcludeSemantics(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(
+                  minWidth: AppTheme.hankoTouch,
+                  minHeight: AppTheme.hankoTouch,
+                ),
+                child: Center(
+                  widthFactor: 1,
+                  heightFactor: 1,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 18),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          widget.label,
+                          style: AppTheme.hankoSans(
+                            fontSize: AppTheme.hankoListTitleSize,
+                            weight: FontWeight.w600,
+                            color: AppTheme.hankoSumi,
+                            height: 1,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        const Icon(Icons.arrow_forward_rounded,
+                            color: AppTheme.hankoSumi, size: 18),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Skip: stone words, no fill, touched at 48, the press a washi wash.
+class _PrintedTextAction extends StatefulWidget {
+  const _PrintedTextAction({required this.label, required this.onTap});
+
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  State<_PrintedTextAction> createState() => _PrintedTextActionState();
+}
+
+class _PrintedTextActionState extends State<_PrintedTextAction> {
+  bool _focused = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final radius = BorderRadius.circular(AppTheme.hankoRadius);
+    return Semantics(
+      container: true,
+      button: true,
+      label: widget.label,
+      child: _PrintedFocusRing(
+        on: _focused,
+        child: Material(
+          type: MaterialType.transparency,
+          child: InkWell(
+            onTap: widget.onTap,
+            onFocusChange: (v) => setState(() => _focused = v),
+            splashFactory: NoSplash.splashFactory,
+            highlightColor: AppTheme.hankoPressWash,
+            hoverColor: AppTheme.hankoPressWash,
+            borderRadius: radius,
+            child: ExcludeSemantics(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(
+                  minWidth: AppTheme.hankoTouch,
+                  minHeight: AppTheme.hankoTouch,
+                ),
+                child: Center(
+                  widthFactor: 1,
+                  heightFactor: 1,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: Text(
+                      widget.label,
+                      style: AppTheme.hankoSans(
+                        weight: FontWeight.w500,
+                        color: AppTheme.hankoStone,
+                        height: 1,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Keyboard focus on a printed control, as hanko_board.dart's ring: 2 px
+/// washi just outside it, a pixel clear, its room always kept.
+class _PrintedFocusRing extends StatelessWidget {
+  const _PrintedFocusRing({required this.on, required this.child});
+
+  final bool on;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => DecoratedBox(
+        position: DecorationPosition.foreground,
+        decoration: BoxDecoration(
+          border: Border.all(
+            color: on ? AppTheme.hankoWashi : const Color(0x00000000),
+            width: 2,
+          ),
+          borderRadius: BorderRadius.circular(AppTheme.hankoRadius + 3),
+        ),
+        child: Padding(padding: const EdgeInsets.all(3), child: child),
+      );
 }
