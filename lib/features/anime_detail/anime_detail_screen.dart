@@ -112,11 +112,15 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
   int     _selectedTab     = 0;
   int     _swipeDirection  = 1; // 1 = left-to-right, -1 = right-to-left
   Map<String, dynamic>? _staffData;
-  bool _isLoadingStaff     = false;
+  // The staff answer is always asked for on open, so with _lightLoads these
+  // start true (P8): setting them a frame later rebuilt the bar, the header
+  // and Overview, about 550 widgets, for flags only the Cast and You May
+  // Like tabs read, and Detail always opens on Overview.
+  bool _isLoadingStaff     = _lightLoads;
   List<Anime> _relatedAnime = [];
   List<String> _characterImages = [];
   List<String> _galleryImages = []; // high-res poster + banner for the gallery
-  bool _isLoadingRelated   = false;
+  bool _isLoadingRelated   = _lightLoads;
 
   // Next episode airing data
   DateTime? _nextAiringAt;
@@ -144,6 +148,16 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
   final ValueNotifier<int> _entryVersion = ValueNotifier<int>(0);
   late final Listenable _headerVersion =
       Listenable.merge([_staffVersion, _entryVersion]);
+
+  // With _lightLoads, the tab's content listens to this, bumped a frame after
+  // _staffVersion (P8): the staff answer's frame builds the bar and the
+  // header, and the next one Overview, so the answer costs two lighter frames
+  // instead of one heavy one. Overview sits below the header, and a frame is
+  // about 11 ms. _tabSoon keeps it to one bump per frame.
+  final ValueNotifier<int> _tabVersion = ValueNotifier<int>(0);
+  late final Listenable _tabEntryVersion =
+      Listenable.merge([_tabVersion, _entryVersion]);
+  bool _tabSoon = false;
 
   // Opened from the keyboard, Detail gives Back the keyboard focus (question
   // 153), so Enter works at once. The screen as a whole used to hold
@@ -250,6 +264,7 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
     _scroll.dispose();
     _staffVersion.dispose();
     _entryVersion.dispose();
+    _tabVersion.dispose();
     _seasons.dispose();
     super.dispose();
   }
@@ -382,10 +397,18 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
     }
     change();
     _staffVersion.value++;
+    if (!_lightLoads || _tabSoon) return;
+    _tabSoon = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _tabSoon = false;
+      if (mounted) _tabVersion.value++;
+    });
   }
 
   Future<void> _loadStaffData() async {
-    if (mounted) _staffChanged(() { _isLoadingStaff = true; _isLoadingRelated = true; });
+    if (mounted && !(_isLoadingStaff && _isLoadingRelated)) {
+      _staffChanged(() { _isLoadingStaff = true; _isLoadingRelated = true; });
+    }
     try {
       final data = await _aniListService.getAnimeStaff(_anime.id);
       if (mounted) {
@@ -472,7 +495,17 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
   /// Walks this show's seasons after the current frame (round seven).
   void _walkSeasonsSoon() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _walkSeasons();
+      if (!mounted) return;
+      if (!_lightLoads) {
+        _walkSeasons();
+        return;
+      }
+      // A frame later still (P8): the frame after the answer's builds
+      // Overview, and the walk's first step, known already, reports at once.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _walkSeasons();
+      });
+      WidgetsBinding.instance.scheduleFrame();
     });
   }
 
@@ -1025,7 +1058,11 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
             // it showed.
             SliverToBoxAdapter(
               child: ListenableBuilder(
-                listenable: _selectedTab == 1 ? _headerVersion : _staffVersion,
+                listenable: !_lightLoads
+                    ? _staffVersion
+                    : _selectedTab == 1
+                        ? _tabEntryVersion
+                        : _tabVersion,
                 builder: (_, _) => GestureDetector(
                   onHorizontalDragEnd: (details) {
                     if (details.primaryVelocity == null) return;
