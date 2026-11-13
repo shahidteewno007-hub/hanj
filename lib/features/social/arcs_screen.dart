@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 import '../../core/theme/app_theme.dart';
+import 'arcs_hanko.dart';
 
 // ─────────────────────────────────────────────────────────────
 // Arcs Screen — list of all arcs
@@ -55,6 +56,7 @@ class _ArcsScreenState extends State<ArcsScreen>
     if (_comingSoon) {
       return _printRoom ? _buildHankoComingSoon() : _buildComingSoon();
     }
+    if (_printRoom) return const ArcsIndexScreen();
     return _buildLive();
   }
 
