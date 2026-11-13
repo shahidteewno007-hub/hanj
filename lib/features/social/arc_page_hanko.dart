@@ -94,6 +94,20 @@ class _ArcPageScreenState extends State<ArcPageScreen> {
     if (posted == true && mounted) arcSay(context, 'Posted');
   }
 
+  Future<void> _deleteArc(Arc arc) async {
+    final ok = await arcConfirm(context,
+        title: 'Delete this arc?',
+        line: 'Nothing has been posted in it yet. This can\'t be undone.',
+        action: 'Delete');
+    if (ok != true || !mounted) return;
+    try {
+      await ArcsService.instance.deleteArc(arc.id);
+      if (mounted) Navigator.pop(context);
+    } on ArcsFailure catch (e) {
+      if (mounted) arcSay(context, e.message);
+    }
+  }
+
   Future<void> _like(ArcPost post) async {
     final uid = _uid;
     if (uid == null) return;
@@ -148,7 +162,28 @@ class _ArcPageScreenState extends State<ArcPageScreen> {
         _chooseStop(arc, now);
         return Scaffold(
           backgroundColor: AppTheme.hankoSumi,
-          appBar: arcAppBar(arc.show?.title ?? 'Arc', line: 'Watch-along'),
+          appBar: arcAppBar(arc.show?.title ?? 'Arc', line: 'Watch-along',
+              actions: [
+                // The maker can delete an arc while nothing's been posted
+                // (the rules' condition, so nothing is ever stranded).
+                if (_uid != null && arc.createdBy == _uid && arc.postCount == 0)
+                  PopupMenuButton<int>(
+                    tooltip: 'More',
+                    color: AppTheme.hankoSumi3,
+                    shape: RoundedRectangleBorder(
+                        borderRadius:
+                            BorderRadius.circular(AppTheme.hankoRadius)),
+                    icon: const Icon(Icons.more_horiz_sharp,
+                        color: AppTheme.hankoStone),
+                    onSelected: (_) => _deleteArc(arc),
+                    itemBuilder: (_) => [
+                      PopupMenuItem(
+                          value: 0,
+                          child: Text('Delete this arc',
+                              style: AppTheme.hankoSans())),
+                    ],
+                  ),
+              ]),
           body: StreamBuilder<List<ArcPost>>(
             stream: _posts,
             builder: (context, ps) => _page(arc, now, ps),

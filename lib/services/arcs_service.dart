@@ -510,13 +510,24 @@ class ArcsService {
     }
   }
 
-  /// Posts to an arc, and counts it in the same batch.
+  /// Deletes an arc its maker made, while it has no posts (the rules allow
+  /// nothing else, so no post is ever left behind under a deleted arc).
+  Future<void> deleteArc(String arcId) async {
+    try {
+      await _arc(arcId).delete();
+    } catch (e) {
+      throw _failure(e, 'Couldn\'t delete the arc');
+    }
+  }
+
+  /// Posts to an arc, and counts it in the same batch. [ep] is null for an
+  /// arc from before the redesign, which has no episodes to tag.
   Future<void> addPost({
     required String arcId,
     required String uid,
     required String title,
     required String body,
-    required int ep,
+    required int? ep,
   }) async {
     final ref = _posts(arcId).doc();
     try {
@@ -525,7 +536,7 @@ class ArcsService {
         ..set(ref, {
           'title': title.trim(),
           'body': body.trim(),
-          'ep': ep,
+          'ep': ?ep,
           'authorId': uid,
           'authorName': name,
           'likes': <String>[],
