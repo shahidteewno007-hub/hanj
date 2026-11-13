@@ -29,7 +29,7 @@ class _ArcsScreenState extends State<ArcsScreen>
   // Arcs (community groups) is a full social feature, kept hidden behind a
   // "Coming soon" placeholder during beta. All the live code below is intact
   // and fully wired — flip this to `false` post-beta to enable it.
-  static const bool _comingSoon = true;
+  static const bool _comingSoon = false;
 
   // ── Arcs redesign (2026-11-14) ─────────────────────────────
   // Watch-alongs in Hanko (arcs_service.dart, arcs_hanko.dart). Off gives
