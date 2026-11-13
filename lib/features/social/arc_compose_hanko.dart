@@ -225,7 +225,7 @@ class _PostSheetState extends State<_PostSheet> {
         uid: widget.uid,
         title: _title.text,
         body: _body.text,
-        ep: _ep,
+        ep: widget.arc.scheduled ? _ep : null,
       );
       if (mounted) Navigator.pop(context, true);
       return;
@@ -246,6 +246,13 @@ class _PostSheetState extends State<_PostSheet> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // An arc from before the redesign has no episodes: a plain post,
+            // never sealed (phone check, 2026-11-14).
+            if (!arc.scheduled) ...[
+              Text('Write a post',
+                  style: AppTheme.hankoSerif(fontSize: 20, height: 1.3)),
+              const SizedBox(height: 16),
+            ] else ...[
             Text('Write about episode $_ep',
                 style: AppTheme.hankoSerif(fontSize: 20, height: 1.3)),
             const SizedBox(height: 4),
@@ -274,6 +281,7 @@ class _PostSheetState extends State<_PostSheet> {
               ],
             ),
             const SizedBox(height: 16),
+            ],
             _label('TITLE (OPTIONAL)'),
             TextField(
               controller: _title,

@@ -510,13 +510,14 @@ class ArcsService {
     }
   }
 
-  /// Posts to an arc, and counts it in the same batch.
+  /// Posts to an arc, and counts it in the same batch. [ep] is null for an
+  /// arc from before the redesign, which has no episodes to tag.
   Future<void> addPost({
     required String arcId,
     required String uid,
     required String title,
     required String body,
-    required int ep,
+    required int? ep,
   }) async {
     final ref = _posts(arcId).doc();
     try {
@@ -525,7 +526,7 @@ class ArcsService {
         ..set(ref, {
           'title': title.trim(),
           'body': body.trim(),
-          'ep': ep,
+          'ep': ?ep,
           'authorId': uid,
           'authorName': name,
           'likes': <String>[],
