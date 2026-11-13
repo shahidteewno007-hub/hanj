@@ -418,6 +418,15 @@ class AppTheme {
       useMaterial3: true,
       brightness: Brightness.dark,
       scaffoldBackgroundColor: background,
+      // The cursor and selection handles follow the border (P8, question
+      // P8-3): washi, not the colour scheme's coral. Null gives back coral.
+      textSelectionTheme: _washiFocus
+          ? TextSelectionThemeData(
+              cursorColor: hankoWashi,
+              selectionHandleColor: hankoWashi,
+              selectionColor: hankoWashi.withValues(alpha: 0.3),
+            )
+          : null,
       colorScheme: const ColorScheme.dark(
         primary:     primary,
         secondary:   secondary,
