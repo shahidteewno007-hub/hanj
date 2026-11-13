@@ -634,12 +634,16 @@ class _ArcStartSheetState extends State<ArcStartSheet> {
             spacing: 8,
             runSpacing: 8,
             children: [
+              // HankoChip fills a bounded width (it's made for sideways
+              // strips), so each one takes its own width here.
               for (final p in _paces)
-                HankoChip(
-                  label: '$p',
-                  semanticLabel: '$p episode${p == 1 ? '' : 's'} a week',
-                  on: _pace == p,
-                  onTap: () => setState(() => _pace = p),
+                IntrinsicWidth(
+                  child: HankoChip(
+                    label: '$p',
+                    semanticLabel: '$p episode${p == 1 ? '' : 's'} a week',
+                    on: _pace == p,
+                    onTap: () => setState(() => _pace = p),
+                  ),
                 ),
             ],
           ),
@@ -650,15 +654,13 @@ class _ArcStartSheetState extends State<ArcStartSheet> {
             runSpacing: 8,
             children: [
               for (var i = 0; i < 3; i++)
-                HankoChip(
-                  label: [
-                    'Today',
-                    'Saturday',
-                    'In a week'
-                  ][i],
-                  semanticLabel: 'Starts ${_day.format(_startDay(i))}',
-                  on: _start == i,
-                  onTap: () => setState(() => _start = i),
+                IntrinsicWidth(
+                  child: HankoChip(
+                    label: ['Today', 'Saturday', 'In a week'][i],
+                    semanticLabel: 'Starts ${_day.format(_startDay(i))}',
+                    on: _start == i,
+                    onTap: () => setState(() => _start = i),
+                  ),
                 ),
             ],
           ),
