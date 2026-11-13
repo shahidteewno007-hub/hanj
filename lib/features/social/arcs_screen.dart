@@ -14,6 +14,10 @@ import '../../core/theme/app_theme.dart';
 class ArcsScreen extends StatefulWidget {
   const ArcsScreen({super.key});
 
+  /// Whether Arcs is open to users (the master gate, `_comingSoon`, off).
+  /// Entry points outside this file follow it.
+  static const bool open = !_ArcsScreenState._comingSoon;
+
   @override
   State<ArcsScreen> createState() => _ArcsScreenState();
 }
@@ -25,6 +29,11 @@ class _ArcsScreenState extends State<ArcsScreen>
   // "Coming soon" placeholder during beta. All the live code below is intact
   // and fully wired — flip this to `false` post-beta to enable it.
   static const bool _comingSoon = true;
+
+  // ── Arcs redesign (2026-11-14) ─────────────────────────────
+  // Watch-alongs in Hanko (arcs_service.dart, arcs_hanko.dart). Off gives
+  // back the pre-Hanko placeholder and live screens, pixel for pixel.
+  static const bool _printRoom = true;
 
   late TabController _tabController;
   final _uid = FirebaseAuth.instance.currentUser?.uid;
@@ -43,8 +52,70 @@ class _ArcsScreenState extends State<ArcsScreen>
 
   @override
   Widget build(BuildContext context) {
-    if (_comingSoon) return _buildComingSoon();
+    if (_comingSoon) {
+      return _printRoom ? _buildHankoComingSoon() : _buildComingSoon();
+    }
     return _buildLive();
+  }
+
+  // ── Coming-soon placeholder in Hanko (arcs redesign) ───────
+  // Flat Hanko: sumi, washi words, stone for the rest. No coral (it isn't
+  // the user's verdict). The stop strip is the idea in one picture: one tick
+  // a week, this week's taller and washi.
+  Widget _buildHankoComingSoon() {
+    return Scaffold(
+      backgroundColor: AppTheme.hankoSumi,
+      appBar: AppBar(
+        backgroundColor: AppTheme.hankoSumi,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        title: Text('Arcs', style: AppTheme.hankoSerif(fontSize: 20)),
+      ),
+      body: LayoutBuilder(
+        builder: (context, box) => SingleChildScrollView(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: box.maxHeight),
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(
+                    AppTheme.hankoGutter + 12, 24, AppTheme.hankoGutter + 12, 48),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const ExcludeSemantics(child: _HankoStopsPicture()),
+                    const SizedBox(height: 32),
+                    Text(
+                      'Arcs are coming',
+                      style: AppTheme.hankoSerif(
+                          fontSize: AppTheme.hankoDisplaySize, height: 1.3),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Watch a show together, a few episodes a week. '
+                      'Each week is a stop, and posts past your episode '
+                      'stay sealed until you get there.',
+                      style: AppTheme.hankoSans(
+                          color: AppTheme.hankoStone, height: 1.5),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 28),
+                    Text(
+                      'COMING SOON',
+                      style: AppTheme.hankoSans(
+                          fontSize: AppTheme.hankoLabelSize,
+                          weight: FontWeight.w500,
+                          color: AppTheme.hankoStone,
+                          letterSpacing: 1.5),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   // ── Coming-soon placeholder (beta) ─────────────────────────
@@ -191,6 +262,54 @@ class _ArcsScreenState extends State<ArcsScreen>
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) => const _CreateArcSheet(),
+    );
+  }
+}
+
+/// The placeholder's picture (arcs redesign): five weeks as ticks on a
+/// hairline, the third one this week's, taller and washi. Decorative.
+class _HankoStopsPicture extends StatelessWidget {
+  const _HankoStopsPicture();
+
+  @override
+  Widget build(BuildContext context) {
+    Widget tick(int i) {
+      final now = i == 2;
+      return Container(
+        width: now ? 4 : 3,
+        height: now ? 40 : 24,
+        color: i < 2
+            ? AppTheme.hankoStone
+            : now
+                ? AppTheme.hankoWashi
+                : AppTheme.hankoEdge,
+      );
+    }
+
+    return SizedBox(
+      width: 168,
+      height: 56,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          const Positioned(
+            left: 0,
+            right: 0,
+            child: SizedBox(
+              height: 1,
+              child: ColoredBox(color: AppTheme.hankoHairline),
+            ),
+          ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const SizedBox(width: 4),
+              for (var i = 0; i < 5; i++) tick(i),
+              const SizedBox(width: 4),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }
