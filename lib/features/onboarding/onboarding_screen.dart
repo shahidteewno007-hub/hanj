@@ -1,5 +1,10 @@
+import 'dart:math' as math;
+
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import '../../core/theme/app_theme.dart';
+import '../../services/offline_cache_service.dart';
+import '../../widgets/hanko_board.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -34,6 +39,21 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   /// is the same. False gives back the coloured glow, the dot grid, the
   /// coloured accents and the coral gradient button as they were.
   static const bool _printRoom = true;
+
+  /// A richer welcome (P8-2; Shahid 2026-11-13: "Go with your
+  /// recommendations, phone is connected"): page 1's title at 30, the Clean
+  /// Cut mark at 96 in place of the icon tile, and a hand of this season's
+  /// covers beside it on a pool of their own colour, from the one seasonal
+  /// request Home makes anyway (OfflineCacheService, so Home then finds it
+  /// in memory). No covers, no hand: the page never waits or says so.
+  /// False gives back 49cb3e9's flat page 1. Only with [_printRoom].
+  static const bool _richWelcome = true;
+
+  /// How long page 1 waits for its hand before going without it.
+  static const _welcomeWait = Duration(seconds: 8);
+
+  /// This season's covers for page 1's hand, once they're in memory.
+  List<String>? _welcomeCovers;
 
   static const _contentPages = [
     _PageData(
@@ -81,6 +101,49 @@ class _OnboardingScreenState extends State<OnboardingScreen>
         vsync: this, duration: const Duration(milliseconds: 400));
     _fadeAnim = CurvedAnimation(parent: _fadeCtrl, curve: Curves.easeOut);
     _fadeCtrl.forward();
+    if (_printRoom && _richWelcome) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _loadWelcomeHand();
+      });
+    }
+  }
+
+  /// Page 1's hand: this season's three most popular covers, decoded before
+  /// they show so the hand deals in whole. Any failure, or no answer within
+  /// [_welcomeWait], leaves page 1 as it is; nothing is reported.
+  Future<void> _loadWelcomeHand() async {
+    try {
+      final covers = await _welcomeCoversReady().timeout(_welcomeWait);
+      if (!mounted || covers.isEmpty) return;
+      setState(() => _welcomeCovers = covers);
+    } catch (_) {
+      // Quietly: page 1 keeps its mark and its words.
+    }
+  }
+
+  Future<List<String>> _welcomeCoversReady() async {
+    // The season as Home names it, so both read the same cache entry.
+    final month = DateTime.now().month;
+    final season = month <= 3
+        ? 'WINTER'
+        : month <= 6
+            ? 'SPRING'
+            : month <= 9
+                ? 'SUMMER'
+                : 'FALL';
+    final shows = await OfflineCacheService.instance
+        .getSeasonal(season, DateTime.now().year);
+    final urls = [
+      for (final a in shows)
+        if ((a.imageUrl ?? '').isNotEmpty) a.imageUrl!,
+    ].take(3).toList();
+    if (urls.length < 3 || !mounted) return const [];
+    await Future.wait([
+      for (final u in urls)
+        precacheImage(CachedNetworkImageProvider(u), context,
+            onError: (_, _) {}),
+    ]);
+    return urls;
   }
 
   @override
@@ -305,6 +368,13 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                     fadeAnim: fade,
                     selectedImport: _selectedImport,
                     onSelect: (val) => setState(() => _selectedImport = val),
+                  );
+                }
+                if (_richWelcome && i == 0) {
+                  return _PrintedWelcomePage(
+                    page: _contentPages[i],
+                    fadeAnim: fade,
+                    covers: _welcomeCovers,
                   );
                 }
                 return _PrintedPage(page: _contentPages[i], fadeAnim: fade);
@@ -803,11 +873,16 @@ class _PrintedHeading extends StatelessWidget {
     required this.tag,
     required this.title,
     required this.body,
+    this.display = false,
   });
 
   final String tag;
   final String title;
   final String body;
+
+  /// The welcome's title (_richWelcome): 30, as Profile's name, set tight,
+  /// every word kept whole.
+  final bool display;
 
   @override
   Widget build(BuildContext context) => Column(
@@ -827,13 +902,32 @@ class _PrintedHeading extends StatelessWidget {
           const SizedBox(height: 12),
           Semantics(
             header: true,
-            child: Text(
-              title,
-              style: AppTheme.hankoSerif(
-                fontSize: AppTheme.hankoDisplaySize,
-                height: 1.3,
-              ),
-            ),
+            child: display
+                ? LayoutBuilder(
+                    builder: (context, constraints) {
+                      final style = AppTheme.hankoSerif(
+                        fontSize: _kWelcomeTitleSize,
+                        height: 1.1,
+                      );
+                      return Text(
+                        title,
+                        style: style,
+                        textScaler: _wholeWords(
+                          MediaQuery.textScalerOf(context),
+                          title,
+                          style,
+                          constraints.maxWidth,
+                        ),
+                      );
+                    },
+                  )
+                : Text(
+                    title,
+                    style: AppTheme.hankoSerif(
+                      fontSize: AppTheme.hankoDisplaySize,
+                      height: 1.3,
+                    ),
+                  ),
           ),
           const SizedBox(height: 20),
           const SizedBox(
@@ -888,6 +982,209 @@ class _PrintedPage extends StatelessWidget {
             ],
           ),
         ),
+      );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The richer welcome (_OnboardingScreenState._richWelcome)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// The welcome's title size: Profile's name.
+const double _kWelcomeTitleSize = 30;
+
+/// The Clean Cut mark on the welcome: hanj_cut.png, the cut with its flash
+/// (48 px and up), at its own 96.
+const double _kWelcomeMark = 96;
+
+/// The widest a cover in the welcome's hand is drawn.
+const double _kWelcomeCoverMax = 84;
+
+/// A text scaler that keeps every word of [text] whole within [maxWidth],
+/// the idea of Detail's own (Print Room, P4): when the widest word won't fit
+/// at the reader's size, the text is set just small enough that it does,
+/// never below 80% of that size; otherwise [scaler] comes back as it is.
+/// Measured on a layout with no width, where a word is never broken.
+TextScaler _wholeWords(
+    TextScaler scaler, String text, TextStyle style, double maxWidth) {
+  if (!maxWidth.isFinite || maxWidth <= 0) return scaler;
+  final painter = TextPainter(
+    text: TextSpan(text: text, style: style),
+    textScaler: scaler,
+    textDirection: TextDirection.ltr,
+  )..layout();
+  final widest = painter.minIntrinsicWidth;
+  painter.dispose();
+  if (widest <= maxWidth) return scaler;
+  final size = style.fontSize ?? AppTheme.hankoBodySize;
+  final factor = scaler.scale(size) / size;
+  return TextScaler.linear(
+      math.max(0.8 * factor, factor * maxWidth / widest * 0.995));
+}
+
+/// Page 1 with _richWelcome: the mark and this season's hand above the same
+/// tag, a 30 title, the rule and the words.
+class _PrintedWelcomePage extends StatelessWidget {
+  const _PrintedWelcomePage({
+    required this.page,
+    required this.fadeAnim,
+    required this.covers,
+  });
+
+  final _PageData page;
+  final Animation<double> fadeAnim;
+  final List<String>? covers;
+
+  @override
+  Widget build(BuildContext context) => FadeTransition(
+        opacity: fadeAnim,
+        child: SafeArea(
+          bottom: false,
+          child: _PrintedColumn(
+            children: [
+              _WelcomeStage(covers: covers),
+              const SizedBox(height: 32),
+              _PrintedHeading(
+                tag: page.tag,
+                title: _flow(page.title),
+                body: _flow(page.subtitle),
+                display: true,
+              ),
+            ],
+          ),
+        ),
+      );
+}
+
+/// The welcome's top: the mark at 96 at its foot on the left, and to its
+/// right a hand of this season's covers (Vibes' fan) on a pool of their own
+/// colour. The stage keeps the hand's room from the first frame, so the hand
+/// arriving (or never arriving) moves nothing. The pool is the covers' tint
+/// at 20% over sumi ([HankoCoverTint] with its hue guard, so it never reads
+/// as coral) and fades to sumi before the stage's foot: no words ever sit on
+/// it. Decorative throughout; the title below names the page.
+class _WelcomeStage extends StatelessWidget {
+  const _WelcomeStage({required this.covers});
+
+  final List<String>? covers;
+
+  @override
+  Widget build(BuildContext context) {
+    final still = MediaQuery.disableAnimationsOf(context);
+    final covers = this.covers;
+    return ExcludeSemantics(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final w = constraints.maxWidth;
+          const poses = HankoPose.fan;
+          final extent = HankoHand.extentOf(poses);
+          final coverWidth = math.max(
+            0.0,
+            math.min(_kWelcomeCoverMax, (w - _kWelcomeMark) / extent.width),
+          );
+          final handW = extent.width * coverWidth;
+          final handH = extent.height * coverWidth;
+          final stage = math.max(_kWelcomeMark, handH);
+          // The pool: an ellipse round the stage's middle, reaching sumi at
+          // the screen's edge across and 24 below the stage's foot.
+          final ry = stage / 2 + 24;
+          final rx = w / 2 + AppTheme.hankoGutter;
+          return SizedBox(
+            width: w,
+            height: stage,
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                if (covers != null) ...[
+                  Positioned(
+                    left: w / 2 - ry,
+                    top: stage / 2 - ry,
+                    width: 2 * ry,
+                    height: 2 * ry,
+                    child: _WelcomeArrival(
+                      still: still,
+                      child: Transform.scale(
+                        scaleX: rx / ry,
+                        child: HankoCoverTint(
+                          urls: covers,
+                          builder: (context, tint) => AnimatedContainer(
+                            duration: still
+                                ? Duration.zero
+                                : const Duration(milliseconds: 300),
+                            decoration: BoxDecoration(
+                              gradient: RadialGradient(
+                                radius: 0.5,
+                                colors: [
+                                  _pool(tint, 1),
+                                  _pool(tint, 0.5),
+                                  AppTheme.hankoSumi,
+                                ],
+                                stops: const [0, 0.55, 1],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    left: math.min(_kWelcomeMark + 4, w - handW),
+                    top: (stage - handH) / 2,
+                    child: _WelcomeArrival(
+                      still: still,
+                      child: HankoHand(
+                        poses: poses,
+                        urls: covers,
+                        coverWidth: coverWidth,
+                        lifted: false,
+                        dealIn: !still,
+                      ),
+                    ),
+                  ),
+                ],
+                Positioned(
+                  left: 0,
+                  bottom: 0,
+                  child: Image.asset(
+                    'assets/images/hanj_cut.png',
+                    width: _kWelcomeMark,
+                    height: _kWelcomeMark,
+                    fit: BoxFit.contain,
+                    excludeFromSemantics: true,
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  /// The covers' [tint] at [strength] of Detail's 20%, over sumi, opaque;
+  /// plain sumi until a colour is read (or when none may be used).
+  static Color _pool(Color? tint, double strength) => tint == null
+      ? AppTheme.hankoSumi
+      : Color.alphaBlend(
+          tint.withValues(alpha: AppTheme.hankoTintOpacity * strength),
+          AppTheme.hankoSumi,
+        );
+}
+
+/// The hand and its pool fading in once, over 300 ms, when they arrive; at
+/// once with Remove animations on.
+class _WelcomeArrival extends StatelessWidget {
+  const _WelcomeArrival({required this.still, required this.child});
+
+  final bool still;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => TweenAnimationBuilder<double>(
+        tween: Tween(begin: still ? 1 : 0, end: 1),
+        duration: still ? Duration.zero : const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+        builder: (context, v, child) => Opacity(opacity: v, child: child),
+        child: child,
       );
 }
 
