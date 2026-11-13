@@ -702,12 +702,24 @@ class _FocusRing extends StatelessWidget {
   final bool on;
   final Widget child;
 
+  /// The ring shows for keyboard focus only (Print Room P8, question P8-4): a
+  /// tap also gives the control focus, and the ring then stayed on the tab or
+  /// chip just tapped. In traditional highlight mode (the last input was a
+  /// key or a mouse) it shows as before. False gives back the ring after a
+  /// tap too.
+  static const bool _keyboardOnly = true;
+
   @override
   Widget build(BuildContext context) => DecoratedBox(
         position: DecorationPosition.foreground,
         decoration: BoxDecoration(
           border: Border.all(
-            color: on ? AppTheme.hankoWashi : const Color(0x00000000),
+            color: on &&
+                    (!_keyboardOnly ||
+                        FocusManager.instance.highlightMode ==
+                            FocusHighlightMode.traditional)
+                ? AppTheme.hankoWashi
+                : const Color(0x00000000),
             width: 2,
           ),
           borderRadius: BorderRadius.circular(AppTheme.hankoRadius + 3),
