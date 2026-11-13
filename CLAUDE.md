@@ -211,17 +211,19 @@ hit means no request.
 
 ### Data reach
 
-> **Arcs is gated off and has been since the root commit.**
-> `arcs_screen.dart:27` holds `static const bool _comingSoon = true`, checked as the first
-> statement of `build()` at `:46`. It is a compile-time constant, so **the entire arcs
-> surface — the list, arc detail, posts, replies, `_submitPost` and the like toggle — is
-> unreachable in every build in git history.** Users see a "Arcs are coming" placeholder.
-> The collection list below and `AUDIT.md` §5-D / S3-4 describe that code accurately and
-> read as though it ships; it does not. Flip the flag to `false` to reach any of it.
+> **Arcs is open since the arcs redesign (2026-11-14).** Until then `_comingSoon` in
+> `arcs_screen.dart` kept the whole surface unreachable in every build. An arc is now a
+> **watch-along**: one show, `from`–`to` episodes, `pace` a week from `startsOn`, one stop a
+> week, posts tagged with `ep` and sealed for readers who haven't reached it. The new screens
+> are `arcs_hanko.dart`, `arc_page_hanko.dart` and `arc_compose_hanko.dart`, and their data
+> goes through `lib/services/arcs_service.dart`. The old forum screens stay in
+> `arcs_screen.dart` behind `_printRoom`, and their writes are refused by the current rules.
+> `AUDIT.md` §5-D / S3-4 / R7 / R8 describe that old code. Counters now move only in the same
+> batch as the post or reply they name (`countedPost` / `countedReply`).
 
 - **Firestore** — `users/{uid}` is the hub, with subcollections `animeList`, `alerts`,
-  `activity`, `companion_chat`, `companion_meta`. Top-level: `arcs` (+`posts`, +`replies`)
-  — **gated, see above; no build in git history writes these**,
+  `activity`, `companion_chat`, `companion_meta`. Top-level: `arcs` (+`posts`, +`replies`),
+  `reports` (create-only, written by Arcs, read in the console),
   `episodeDiscussions` (+`votes`), `meta/founders`. `FirestoreService` covers only
   `animeList` + activity; **social, arcs, discussions, cards and founders all call
   `FirebaseFirestore.instance` directly from their screens**, so there is no single place to
@@ -229,12 +231,13 @@ hit means no request.
 - **`firestore.rules` is in this repo** and `firebase.json` declares it
   (`"firestore": { "rules": "firestore.rules" }`). It covers users, `animeList`, cards,
   alerts, activity, `companion_chat`, followers/following, `meta/founders`, reviews,
-  `episodeDiscussions` and arcs. Read it before making a security claim.
-  **But the file is not evidence of what is deployed.** `firebase firestore:rules get` does
-  not exist in firebase-tools 15, and an unauthenticated probe cannot distinguish "rule
-  requires auth" from "no rule at all", since both deny. The deployed ruleset is
-  **undetermined** — the console Rules tab is the cheap way to settle it. See
-  `RECON-0907-REPORT.md` A5.
+  `episodeDiscussions`, arcs and reports. Read it before making a security claim.
+  **Last known deploy: Shahid deployed this file on 2026-11-14** (the arcs redesign branch,
+  `cf0b58e`). Run from PowerShell, in the checkout whose rules should ship:
+  `& .\firestore-tests\node_modules\.bin\firebase.cmd deploy --only firestore:rules --project anime-tracker-275cc`.
+  A later edit to the file isn't live until it is deployed again. `firebase firestore:rules get`
+  doesn't exist in firebase-tools 15, so the console's Rules tab is the way to check what's
+  live (`RECON-0907-REPORT.md` A5).
 - **Cloud Functions** — `functions/index.js` (v2, Node 20, **9 exports**): `newSeasonAlert`,
   `episodeReminders`, `episodeReminderPrecise`, `weeklyRecap`, `friendActivity`,
   `streakAlerts`, `checkCardUnlocks`, `seasonalCardCheck`, `chatWithTomo`. `firebase.json`
