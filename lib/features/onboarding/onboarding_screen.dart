@@ -1,5 +1,10 @@
+import 'dart:math' as math;
+
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import '../../core/theme/app_theme.dart';
+import '../../services/offline_cache_service.dart';
+import '../../widgets/hanko_board.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -25,6 +30,30 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   static const _magenta = Color(0xFFCA2868);
   static const _bg      = Color(0xFF121110);
   static const _cream   = Color(0xFFF5F0E8);
+
+  /// Onboarding in flat Hanko (the Vibes report's next stage): washi on
+  /// sumi, Shippori headings, the pages' icons on sumi 3 tiles, the import
+  /// choices as sumi 2 panels with a washi keyline when chosen (CLAUDE.md:
+  /// never coral, which is only ever your verdicts), washi and edge page
+  /// marks, and Next as the washi main action. Every page, choice and write
+  /// is the same. False gives back the coloured glow, the dot grid, the
+  /// coloured accents and the coral gradient button as they were.
+  static const bool _printRoom = true;
+
+  /// A richer welcome (P8-2; Shahid 2026-11-13: "Go with your
+  /// recommendations, phone is connected"): page 1's title at 30, the Clean
+  /// Cut mark at 96 in place of the icon tile, and a hand of this season's
+  /// covers beside it on a pool of their own colour, from the one seasonal
+  /// request Home makes anyway (OfflineCacheService, so Home then finds it
+  /// in memory). No covers, no hand: the page never waits or says so.
+  /// False gives back 49cb3e9's flat page 1. Only with [_printRoom].
+  static const bool _richWelcome = true;
+
+  /// How long page 1 waits for its hand before going without it.
+  static const _welcomeWait = Duration(seconds: 8);
+
+  /// This season's covers for page 1's hand, once they're in memory.
+  List<String>? _welcomeCovers;
 
   static const _contentPages = [
     _PageData(
@@ -72,6 +101,49 @@ class _OnboardingScreenState extends State<OnboardingScreen>
         vsync: this, duration: const Duration(milliseconds: 400));
     _fadeAnim = CurvedAnimation(parent: _fadeCtrl, curve: Curves.easeOut);
     _fadeCtrl.forward();
+    if (_printRoom && _richWelcome) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _loadWelcomeHand();
+      });
+    }
+  }
+
+  /// Page 1's hand: this season's three most popular covers, decoded before
+  /// they show so the hand deals in whole. Any failure, or no answer within
+  /// [_welcomeWait], leaves page 1 as it is; nothing is reported.
+  Future<void> _loadWelcomeHand() async {
+    try {
+      final covers = await _welcomeCoversReady().timeout(_welcomeWait);
+      if (!mounted || covers.isEmpty) return;
+      setState(() => _welcomeCovers = covers);
+    } catch (_) {
+      // Quietly: page 1 keeps its mark and its words.
+    }
+  }
+
+  Future<List<String>> _welcomeCoversReady() async {
+    // The season as Home names it, so both read the same cache entry.
+    final month = DateTime.now().month;
+    final season = month <= 3
+        ? 'WINTER'
+        : month <= 6
+            ? 'SPRING'
+            : month <= 9
+                ? 'SUMMER'
+                : 'FALL';
+    final shows = await OfflineCacheService.instance
+        .getSeasonal(season, DateTime.now().year);
+    final urls = [
+      for (final a in shows)
+        if ((a.imageUrl ?? '').isNotEmpty) a.imageUrl!,
+    ].take(3).toList();
+    if (urls.length < 3 || !mounted) return const [];
+    await Future.wait([
+      for (final u in urls)
+        precacheImage(CachedNetworkImageProvider(u), context,
+            onError: (_, _) {}),
+    ]);
+    return urls;
   }
 
   @override
@@ -84,6 +156,11 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   void _nextPage() {
     if (_currentPage < _totalPages - 1) {
       // Just drive the PageView; onPageChanged handles the content fade.
+      if (_printRoom && MediaQuery.disableAnimationsOf(context)) {
+        // Motion off: the next page arrives without the slide.
+        _pageController.jumpToPage(_currentPage + 1);
+        return;
+      }
       _pageController.nextPage(
         duration: const Duration(milliseconds: 400),
         curve: Curves.easeInOutCubic,
@@ -115,6 +192,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
 
   @override
   Widget build(BuildContext context) {
+    if (_printRoom) return _printed(context);
     final accentColor = _isImportPage
         ? _coral
         : _contentPages[_currentPage].accentColor;
@@ -258,6 +336,83 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                     ),
                   ),
                 ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// The screen in flat Hanko: plain sumi, the pages above and the controls
+  /// below them (no overlay, so nothing scrolls under Next). Skip, the page
+  /// marks and Next sit in one row; Skip still leaves on the last page.
+  Widget _printed(BuildContext context) {
+    final still = MediaQuery.disableAnimationsOf(context);
+    final Animation<double> fade = still ? kAlwaysCompleteAnimation : _fadeAnim;
+    return Scaffold(
+      backgroundColor: AppTheme.hankoSumi,
+      body: Column(
+        children: [
+          Expanded(
+            child: PageView.builder(
+              controller: _pageController,
+              onPageChanged: (i) {
+                setState(() => _currentPage = i);
+                _fadeCtrl.forward(from: 0.4);
+              },
+              itemCount: _totalPages,
+              itemBuilder: (_, i) {
+                if (i == _contentPages.length) {
+                  return _PrintedImportPage(
+                    fadeAnim: fade,
+                    selectedImport: _selectedImport,
+                    onSelect: (val) => setState(() => _selectedImport = val),
+                  );
+                }
+                if (_richWelcome && i == 0) {
+                  return _PrintedWelcomePage(
+                    page: _contentPages[i],
+                    fadeAnim: fade,
+                    covers: _welcomeCovers,
+                  );
+                }
+                return _PrintedPage(page: _contentPages[i], fadeAnim: fade);
+              },
+            ),
+          ),
+          SafeArea(
+            top: false,
+            child: Align(
+              alignment: Alignment.topCenter,
+              child: ConstrainedBox(
+                constraints:
+                    const BoxConstraints(maxWidth: _kPrintedMeasure + 40),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                      AppTheme.hankoGutter, 8, AppTheme.hankoGutter, 20),
+                  child: Row(
+                    children: [
+                      // Skip — hidden on last page
+                      if (_currentPage < _totalPages - 1)
+                        _PrintedTextAction(label: 'Skip', onTap: _finish)
+                      else
+                        const SizedBox(width: AppTheme.hankoTouch),
+                      Expanded(
+                        child: Center(
+                          child: _PrintedPageMarks(
+                            count: _totalPages,
+                            current: _currentPage,
+                          ),
+                        ),
+                      ),
+                      _PrintedMainAction(
+                        label: _isImportPage ? 'Get Started' : 'Next',
+                        onTap: _nextPage,
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
           ),
@@ -671,4 +826,734 @@ class _DotPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_DotPainter _) => false;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Flat Hanko (_OnboardingScreenState._printRoom)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// How wide the words may run: a phone uses all of it, a wide window keeps
+/// the column readable.
+const double _kPrintedMeasure = 480;
+
+/// The copy's line breaks were set for the old 50 px titles; in Hanko the
+/// words flow and wrap whole wherever the width (or text size) needs.
+String _flow(String s) => s.replaceAll('\n', ' ');
+
+/// One page's column: the gutter, the measure, and room to scroll when a
+/// large text size makes it taller than the screen.
+class _PrintedColumn extends StatelessWidget {
+  const _PrintedColumn({required this.children});
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) => SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(
+            AppTheme.hankoGutter, 48, AppTheme.hankoGutter, 24),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: _kPrintedMeasure),
+            child: SizedBox(
+              width: double.infinity,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: children,
+              ),
+            ),
+          ),
+        ),
+      );
+}
+
+/// The page's tag, its Mincho heading, the screen's one rule, and the
+/// words under it, shared by every page.
+class _PrintedHeading extends StatelessWidget {
+  const _PrintedHeading({
+    required this.tag,
+    required this.title,
+    required this.body,
+    this.display = false,
+  });
+
+  final String tag;
+  final String title;
+  final String body;
+
+  /// The welcome's title (_richWelcome): 30, as Profile's name, set tight,
+  /// every word kept whole.
+  final bool display;
+
+  @override
+  Widget build(BuildContext context) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            tag,
+            style: AppTheme.hankoSans(
+              fontSize: AppTheme.hankoLabelSize,
+              weight: FontWeight.w500,
+              color: AppTheme.hankoStone,
+              letterSpacing: 1.6,
+              height: 1.4,
+              tabular: true,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Semantics(
+            header: true,
+            child: display
+                ? LayoutBuilder(
+                    builder: (context, constraints) {
+                      final style = AppTheme.hankoSerif(
+                        fontSize: _kWelcomeTitleSize,
+                        height: 1.1,
+                      );
+                      return Text(
+                        title,
+                        style: style,
+                        textScaler: _wholeWords(
+                          MediaQuery.textScalerOf(context),
+                          title,
+                          style,
+                          constraints.maxWidth,
+                        ),
+                      );
+                    },
+                  )
+                : Text(
+                    title,
+                    style: AppTheme.hankoSerif(
+                      fontSize: AppTheme.hankoDisplaySize,
+                      height: 1.3,
+                    ),
+                  ),
+          ),
+          const SizedBox(height: 20),
+          const SizedBox(
+            width: double.infinity,
+            height: 1,
+            child: ColoredBox(color: AppTheme.hankoHairline),
+          ),
+          const SizedBox(height: 20),
+          Text(
+            body,
+            style: AppTheme.hankoSans(
+              fontSize: AppTheme.hankoSectionSize,
+              color: AppTheme.hankoStone,
+              height: 1.6,
+            ),
+          ),
+        ],
+      );
+}
+
+class _PrintedPage extends StatelessWidget {
+  const _PrintedPage({required this.page, required this.fadeAnim});
+
+  final _PageData page;
+  final Animation<double> fadeAnim;
+
+  @override
+  Widget build(BuildContext context) => FadeTransition(
+        opacity: fadeAnim,
+        child: SafeArea(
+          bottom: false,
+          child: _PrintedColumn(
+            children: [
+              // The page's icon on a sumi 3 tile: washi, no colour
+              ExcludeSemantics(
+                child: Container(
+                  width: 56,
+                  height: 56,
+                  decoration: BoxDecoration(
+                    color: AppTheme.hankoSumi3,
+                    borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+                  ),
+                  child: Icon(page.icon, color: AppTheme.hankoWashi, size: 28),
+                ),
+              ),
+              const SizedBox(height: 32),
+              _PrintedHeading(
+                tag: page.tag,
+                title: _flow(page.title),
+                body: _flow(page.subtitle),
+              ),
+            ],
+          ),
+        ),
+      );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The richer welcome (_OnboardingScreenState._richWelcome)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// The welcome's title size: Profile's name.
+const double _kWelcomeTitleSize = 30;
+
+/// The Clean Cut mark on the welcome: hanj_cut.png, the cut with its flash
+/// (48 px and up), at its own 96.
+const double _kWelcomeMark = 96;
+
+/// The widest a cover in the welcome's hand is drawn.
+const double _kWelcomeCoverMax = 84;
+
+/// A text scaler that keeps every word of [text] whole within [maxWidth],
+/// the idea of Detail's own (Print Room, P4): when the widest word won't fit
+/// at the reader's size, the text is set just small enough that it does,
+/// never below 80% of that size; otherwise [scaler] comes back as it is.
+/// Measured on a layout with no width, where a word is never broken.
+TextScaler _wholeWords(
+    TextScaler scaler, String text, TextStyle style, double maxWidth) {
+  if (!maxWidth.isFinite || maxWidth <= 0) return scaler;
+  final painter = TextPainter(
+    text: TextSpan(text: text, style: style),
+    textScaler: scaler,
+    textDirection: TextDirection.ltr,
+  )..layout();
+  final widest = painter.minIntrinsicWidth;
+  painter.dispose();
+  if (widest <= maxWidth) return scaler;
+  final size = style.fontSize ?? AppTheme.hankoBodySize;
+  final factor = scaler.scale(size) / size;
+  return TextScaler.linear(
+      math.max(0.8 * factor, factor * maxWidth / widest * 0.995));
+}
+
+/// Page 1 with _richWelcome: the mark and this season's hand above the same
+/// tag, a 30 title, the rule and the words.
+class _PrintedWelcomePage extends StatelessWidget {
+  const _PrintedWelcomePage({
+    required this.page,
+    required this.fadeAnim,
+    required this.covers,
+  });
+
+  final _PageData page;
+  final Animation<double> fadeAnim;
+  final List<String>? covers;
+
+  @override
+  Widget build(BuildContext context) => FadeTransition(
+        opacity: fadeAnim,
+        child: SafeArea(
+          bottom: false,
+          child: _PrintedColumn(
+            children: [
+              _WelcomeStage(covers: covers),
+              const SizedBox(height: 32),
+              _PrintedHeading(
+                tag: page.tag,
+                title: _flow(page.title),
+                body: _flow(page.subtitle),
+                display: true,
+              ),
+            ],
+          ),
+        ),
+      );
+}
+
+/// The welcome's top: the mark at 96 at its foot on the left, and to its
+/// right a hand of this season's covers (Vibes' fan) on a pool of their own
+/// colour. The stage keeps the hand's room from the first frame, so the hand
+/// arriving (or never arriving) moves nothing. The pool is the covers' tint
+/// at 20% over sumi ([HankoCoverTint] with its hue guard, so it never reads
+/// as coral) and fades to sumi before the stage's foot: no words ever sit on
+/// it. Decorative throughout; the title below names the page.
+class _WelcomeStage extends StatelessWidget {
+  const _WelcomeStage({required this.covers});
+
+  final List<String>? covers;
+
+  @override
+  Widget build(BuildContext context) {
+    final still = MediaQuery.disableAnimationsOf(context);
+    final covers = this.covers;
+    return ExcludeSemantics(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final w = constraints.maxWidth;
+          const poses = HankoPose.fan;
+          final extent = HankoHand.extentOf(poses);
+          final coverWidth = math.max(
+            0.0,
+            math.min(_kWelcomeCoverMax, (w - _kWelcomeMark) / extent.width),
+          );
+          final handW = extent.width * coverWidth;
+          final handH = extent.height * coverWidth;
+          final stage = math.max(_kWelcomeMark, handH);
+          // The pool: an ellipse round the stage's middle, reaching sumi at
+          // the screen's edge across and 24 below the stage's foot.
+          final ry = stage / 2 + 24;
+          final rx = w / 2 + AppTheme.hankoGutter;
+          return SizedBox(
+            width: w,
+            height: stage,
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                if (covers != null) ...[
+                  Positioned(
+                    left: w / 2 - ry,
+                    top: stage / 2 - ry,
+                    width: 2 * ry,
+                    height: 2 * ry,
+                    child: _WelcomeArrival(
+                      still: still,
+                      child: Transform.scale(
+                        scaleX: rx / ry,
+                        child: HankoCoverTint(
+                          urls: covers,
+                          builder: (context, tint) => AnimatedContainer(
+                            duration: still
+                                ? Duration.zero
+                                : const Duration(milliseconds: 300),
+                            decoration: BoxDecoration(
+                              gradient: RadialGradient(
+                                radius: 0.5,
+                                colors: [
+                                  _pool(tint, 1),
+                                  _pool(tint, 0.5),
+                                  AppTheme.hankoSumi,
+                                ],
+                                stops: const [0, 0.55, 1],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    left: math.min(_kWelcomeMark + 4, w - handW),
+                    top: (stage - handH) / 2,
+                    child: _WelcomeArrival(
+                      still: still,
+                      child: HankoHand(
+                        poses: poses,
+                        urls: covers,
+                        coverWidth: coverWidth,
+                        lifted: false,
+                        dealIn: !still,
+                      ),
+                    ),
+                  ),
+                ],
+                Positioned(
+                  left: 0,
+                  bottom: 0,
+                  child: Image.asset(
+                    'assets/images/hanj_cut.png',
+                    width: _kWelcomeMark,
+                    height: _kWelcomeMark,
+                    fit: BoxFit.contain,
+                    excludeFromSemantics: true,
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  /// The covers' [tint] at [strength] of Detail's 20%, over sumi, opaque;
+  /// plain sumi until a colour is read (or when none may be used).
+  static Color _pool(Color? tint, double strength) => tint == null
+      ? AppTheme.hankoSumi
+      : Color.alphaBlend(
+          tint.withValues(alpha: AppTheme.hankoTintOpacity * strength),
+          AppTheme.hankoSumi,
+        );
+}
+
+/// The hand and its pool fading in once, over 300 ms, when they arrive; at
+/// once with Remove animations on.
+class _WelcomeArrival extends StatelessWidget {
+  const _WelcomeArrival({required this.still, required this.child});
+
+  final bool still;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => TweenAnimationBuilder<double>(
+        tween: Tween(begin: still ? 1 : 0, end: 1),
+        duration: still ? Duration.zero : const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+        builder: (context, v, child) => Opacity(opacity: v, child: child),
+        child: child,
+      );
+}
+
+class _PrintedImportPage extends StatelessWidget {
+  const _PrintedImportPage({
+    required this.fadeAnim,
+    required this.selectedImport,
+    required this.onSelect,
+  });
+
+  final Animation<double> fadeAnim;
+  final String? selectedImport;
+  final ValueChanged<String?> onSelect;
+
+  @override
+  Widget build(BuildContext context) => FadeTransition(
+        opacity: fadeAnim,
+        child: SafeArea(
+          bottom: false,
+          child: _PrintedColumn(
+            children: [
+              // The mark, with its flash (hanj_cut.png is the 48 px-and-up cut)
+              Image.asset(
+                'assets/images/hanj_cut.png',
+                width: 56,
+                height: 56,
+                fit: BoxFit.contain,
+                excludeFromSemantics: true,
+              ),
+              const SizedBox(height: 32),
+              const _PrintedHeading(
+                tag: 'IMPORT',
+                title: 'Bring Your List Along',
+                body: 'Already tracking on AniList or MAL? '
+                    'We’ll import your list after you sign in.',
+              ),
+              const SizedBox(height: 28),
+              _PrintedImportOption(
+                label: 'Import from AniList',
+                sublabel: 'anilist.co',
+                selected: selectedImport == 'anilist',
+                onTap: () => onSelect(
+                  selectedImport == 'anilist' ? null : 'anilist',
+                ),
+              ),
+              const SizedBox(height: 12),
+              _PrintedImportOption(
+                label: 'Import from MyAnimeList',
+                sublabel: 'myanimelist.net',
+                selected: selectedImport == 'mal',
+                onTap: () => onSelect(
+                  selectedImport == 'mal' ? null : 'mal',
+                ),
+              ),
+              const SizedBox(height: 20),
+              Text(
+                selectedImport == null
+                    ? 'Or tap Get Started to skip — you can import later in Settings.'
+                    : 'We’ll remind you to complete the import once you’re in.',
+                style: AppTheme.hankoSans(
+                  fontSize: AppTheme.hankoMetaSize,
+                  color: AppTheme.hankoAsh,
+                  height: 1.5,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+}
+
+/// An import choice: a sumi 2 panel, washi keyline and a washi check when
+/// chosen; tapping it again clears it, as before. One button for a screen
+/// reader, with its chosen state, and keyboard focus shown by a washi ring.
+class _PrintedImportOption extends StatefulWidget {
+  const _PrintedImportOption({
+    required this.label,
+    required this.sublabel,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final String sublabel;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  State<_PrintedImportOption> createState() => _PrintedImportOptionState();
+}
+
+class _PrintedImportOptionState extends State<_PrintedImportOption> {
+  bool _focused = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final still = MediaQuery.disableAnimationsOf(context);
+    final selected = widget.selected;
+    final radius = BorderRadius.circular(AppTheme.hankoRadius);
+    return Semantics(
+      container: true,
+      button: true,
+      selected: selected,
+      label: '${widget.label}, ${widget.sublabel}',
+      child: _PrintedFocusRing(
+        on: _focused,
+        child: Material(
+          color: AppTheme.hankoSumi2,
+          borderRadius: radius,
+          child: InkWell(
+            onTap: widget.onTap,
+            onFocusChange: (v) => setState(() => _focused = v),
+            splashFactory: NoSplash.splashFactory,
+            highlightColor: AppTheme.hankoPressWash,
+            hoverColor: AppTheme.hankoPressWash,
+            borderRadius: radius,
+            child: ExcludeSemantics(
+              child: AnimatedContainer(
+                duration:
+                    still ? Duration.zero : const Duration(milliseconds: 200),
+                curve: Curves.easeOut,
+                constraints: const BoxConstraints(minHeight: 64),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: BoxDecoration(
+                  borderRadius: radius,
+                  border: Border.all(
+                    color: selected
+                        ? AppTheme.hankoWashi
+                        : AppTheme.hankoSumi2,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            widget.label,
+                            style: AppTheme.hankoSans(
+                              weight: FontWeight.w500,
+                              height: 1.3,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            widget.sublabel,
+                            style: AppTheme.hankoSans(
+                              fontSize: AppTheme.hankoMetaSize,
+                              color: AppTheme.hankoStone,
+                              height: 1.3,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    // Its room is kept, so choosing never moves the words
+                    Icon(
+                      Icons.check_rounded,
+                      size: 20,
+                      color: selected
+                          ? AppTheme.hankoWashi
+                          : const Color(0x00000000),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Where you are: washi for this page, edge for the others, Hanko's 2 px
+/// corners. Read out as one line ("Page 2 of 5").
+class _PrintedPageMarks extends StatelessWidget {
+  const _PrintedPageMarks({required this.count, required this.current});
+
+  final int count;
+  final int current;
+
+  @override
+  Widget build(BuildContext context) {
+    final still = MediaQuery.disableAnimationsOf(context);
+    return Semantics(
+      label: 'Page ${current + 1} of $count',
+      child: ExcludeSemantics(
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: List.generate(
+            count,
+            (i) => AnimatedContainer(
+              duration:
+                  still ? Duration.zero : const Duration(milliseconds: 300),
+              margin: const EdgeInsets.symmetric(horizontal: 3),
+              width: current == i ? 16 : 6,
+              height: 4,
+              decoration: BoxDecoration(
+                color:
+                    current == i ? AppTheme.hankoWashi : AppTheme.hankoEdge,
+                borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Next / Get Started: the washi main action (sumi words, 2 px corners,
+/// no ripple), touched at 48 or more, with keyboard focus shown by a washi
+/// ring outside it.
+class _PrintedMainAction extends StatefulWidget {
+  const _PrintedMainAction({required this.label, required this.onTap});
+
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  State<_PrintedMainAction> createState() => _PrintedMainActionState();
+}
+
+class _PrintedMainActionState extends State<_PrintedMainAction> {
+  bool _focused = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final radius = BorderRadius.circular(AppTheme.hankoRadius);
+    return Semantics(
+      container: true,
+      button: true,
+      label: widget.label,
+      child: _PrintedFocusRing(
+        on: _focused,
+        child: Material(
+          color: AppTheme.hankoWashi,
+          borderRadius: radius,
+          child: InkWell(
+            onTap: widget.onTap,
+            onFocusChange: (v) => setState(() => _focused = v),
+            splashFactory: NoSplash.splashFactory,
+            highlightColor: AppTheme.hankoSumi.withValues(alpha: 0.08),
+            hoverColor: AppTheme.hankoSumi.withValues(alpha: 0.05),
+            borderRadius: radius,
+            child: ExcludeSemantics(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(
+                  minWidth: AppTheme.hankoTouch,
+                  minHeight: AppTheme.hankoTouch,
+                ),
+                child: Center(
+                  widthFactor: 1,
+                  heightFactor: 1,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 18),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          widget.label,
+                          style: AppTheme.hankoSans(
+                            fontSize: AppTheme.hankoListTitleSize,
+                            weight: FontWeight.w600,
+                            color: AppTheme.hankoSumi,
+                            height: 1,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        const Icon(Icons.arrow_forward_rounded,
+                            color: AppTheme.hankoSumi, size: 18),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Skip: stone words, no fill, touched at 48, the press a washi wash.
+class _PrintedTextAction extends StatefulWidget {
+  const _PrintedTextAction({required this.label, required this.onTap});
+
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  State<_PrintedTextAction> createState() => _PrintedTextActionState();
+}
+
+class _PrintedTextActionState extends State<_PrintedTextAction> {
+  bool _focused = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final radius = BorderRadius.circular(AppTheme.hankoRadius);
+    return Semantics(
+      container: true,
+      button: true,
+      label: widget.label,
+      child: _PrintedFocusRing(
+        on: _focused,
+        child: Material(
+          type: MaterialType.transparency,
+          child: InkWell(
+            onTap: widget.onTap,
+            onFocusChange: (v) => setState(() => _focused = v),
+            splashFactory: NoSplash.splashFactory,
+            highlightColor: AppTheme.hankoPressWash,
+            hoverColor: AppTheme.hankoPressWash,
+            borderRadius: radius,
+            child: ExcludeSemantics(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(
+                  minWidth: AppTheme.hankoTouch,
+                  minHeight: AppTheme.hankoTouch,
+                ),
+                child: Center(
+                  widthFactor: 1,
+                  heightFactor: 1,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: Text(
+                      widget.label,
+                      style: AppTheme.hankoSans(
+                        weight: FontWeight.w500,
+                        color: AppTheme.hankoStone,
+                        height: 1,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Keyboard focus on a printed control, as hanko_board.dart's ring: 2 px
+/// washi just outside it, a pixel clear, its room always kept.
+class _PrintedFocusRing extends StatelessWidget {
+  const _PrintedFocusRing({required this.on, required this.child});
+
+  final bool on;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => DecoratedBox(
+        position: DecorationPosition.foreground,
+        decoration: BoxDecoration(
+          border: Border.all(
+            color: on ? AppTheme.hankoWashi : const Color(0x00000000),
+            width: 2,
+          ),
+          borderRadius: BorderRadius.circular(AppTheme.hankoRadius + 3),
+        ),
+        child: Padding(padding: const EdgeInsets.all(3), child: child),
+      );
 }

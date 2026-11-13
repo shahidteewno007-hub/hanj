@@ -23,6 +23,16 @@ class EpisodeDiscussionScreen extends StatefulWidget {
 }
 
 class _EpisodeDiscussionScreenState extends State<EpisodeDiscussionScreen> {
+  /// Flat Hanko for the discussion (the Vibes report's next stage: "Flat
+  /// Hanko, not Vibes, for screens still pre-Hanko"; Shahid, 2026-11-10: "go
+  /// with your recommendations for everything in future"): a Mincho title,
+  /// people as round edge-ringed marks (yours ringed in washi; coral is only
+  /// your seal), votes and replies as stone words that turn washi when
+  /// they're yours, 48 dp targets, a sumi 2 composer under the one hairline,
+  /// a square spoiler box and a washi Post. False gives back a8d40d5's
+  /// screen as it was.
+  static const bool _printRoom = true;
+
   final _commentController = TextEditingController();
   final _composerFocus = FocusNode();
   bool _containsSpoilers = false;
@@ -159,6 +169,21 @@ class _EpisodeDiscussionScreenState extends State<EpisodeDiscussionScreen> {
   }
 
   void _showSnackBar(String message, Color color) {
+    if (_printRoom) {
+      // Hanko says it in words on sumi 3, square-cornered: no alarm colour.
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message, style: AppTheme.hankoSans()),
+          backgroundColor: AppTheme.hankoSumi3,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+            side: const BorderSide(color: AppTheme.hankoEdge),
+          ),
+        ),
+      );
+      return;
+    }
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
@@ -173,7 +198,9 @@ class _EpisodeDiscussionScreenState extends State<EpisodeDiscussionScreen> {
     if (timestamp == null) return 'now';
     final date = timestamp.toDate();
     final diff = DateTime.now().difference(date);
-    if (diff.inDays > 7) return DateFormat('MMM d').format(date);
+    if (diff.inDays > 7) {
+      return DateFormat(_printRoom ? 'd MMM' : 'MMM d').format(date);
+    }
     if (diff.inDays > 0) return '${diff.inDays}d';
     if (diff.inHours > 0) return '${diff.inHours}h';
     if (diff.inMinutes > 0) return '${diff.inMinutes}m';
@@ -187,7 +214,7 @@ class _EpisodeDiscussionScreenState extends State<EpisodeDiscussionScreen> {
     return Scaffold(
       backgroundColor: AppTheme.background,
       resizeToAvoidBottomInset: true,
-      appBar: AppBar(
+      appBar: _printRoom ? _hankoAppBar() : AppBar(
         backgroundColor: AppTheme.background,
         elevation: 0,
         title: Column(
@@ -220,6 +247,13 @@ class _EpisodeDiscussionScreenState extends State<EpisodeDiscussionScreen> {
                   .snapshots(),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
+                  // Hanko: stone, the colour of things you wait on.
+                  if (_printRoom) {
+                    return const Center(
+                      child: CircularProgressIndicator(
+                          color: AppTheme.hankoStone, strokeWidth: 2),
+                    );
+                  }
                   return const Center(
                     child: CircularProgressIndicator(
                         color: AppTheme.primary, strokeWidth: 2),
@@ -230,7 +264,10 @@ class _EpisodeDiscussionScreenState extends State<EpisodeDiscussionScreen> {
                     child: Padding(
                       padding: const EdgeInsets.all(32),
                       child: Text('Error loading discussion',
-                          style: Theme.of(context).textTheme.bodyMedium),
+                          textAlign: _printRoom ? TextAlign.center : null,
+                          style: _printRoom
+                              ? AppTheme.hankoSans(color: AppTheme.hankoStone)
+                              : Theme.of(context).textTheme.bodyMedium),
                     ),
                   );
                 }
@@ -271,7 +308,12 @@ class _EpisodeDiscussionScreenState extends State<EpisodeDiscussionScreen> {
                 if (tops.isEmpty) return _emptyState();
 
                 return ListView.builder(
-                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
+                  // Hanko's 20 dp gutter; replies indent to the text column
+                  // (a 28 dp mark and its 10 dp gap).
+                  padding: _printRoom
+                      ? const EdgeInsets.fromLTRB(
+                          AppTheme.hankoGutter, 4, AppTheme.hankoGutter, 16)
+                      : const EdgeInsets.fromLTRB(12, 8, 12, 16),
                   itemCount: tops.length,
                   itemBuilder: (context, index) {
                     final comment = tops[index];
@@ -291,7 +333,8 @@ class _EpisodeDiscussionScreenState extends State<EpisodeDiscussionScreen> {
                         ),
                         // One level of replies, indented.
                         ...replies.map((r) => Padding(
-                              padding: const EdgeInsets.only(left: 36),
+                              padding: EdgeInsets.only(
+                                  left: _printRoom ? 38 : 36),
                               child: _CommentTile(
                                 key: ValueKey(r.id),
                                 commentId: r.id,
@@ -313,6 +356,9 @@ class _EpisodeDiscussionScreenState extends State<EpisodeDiscussionScreen> {
           ),
 
           // ── Composer ──────────────────────────────────────────
+          if (_printRoom)
+            _hankoComposer()
+          else
           SafeArea(
             top: false,
             child: Container(
@@ -428,7 +474,244 @@ class _EpisodeDiscussionScreenState extends State<EpisodeDiscussionScreen> {
     );
   }
 
+  /// The bar in Hanko: the show's title in Mincho 16, fading rather than
+  /// ending in "⋯", over the episode in stone Jost.
+  PreferredSizeWidget _hankoAppBar() {
+    return AppBar(
+      backgroundColor: AppTheme.hankoSumi,
+      surfaceTintColor: Colors.transparent,
+      elevation: 0,
+      title: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(widget.anime.titleEnglish ?? widget.anime.title,
+              style: AppTheme.hankoSerif(height: 1.3),
+              maxLines: 1,
+              softWrap: false,
+              overflow: TextOverflow.fade),
+          Text(
+            widget.episodeNumber == 0
+                ? 'Discussion'
+                : 'Episode ${widget.episodeNumber} Discussion',
+            style: AppTheme.hankoSans(
+                fontSize: AppTheme.hankoLabelSize,
+                color: AppTheme.hankoStone,
+                height: 1.3),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// The composer in Hanko: sumi 2 under the screen's one hairline, carried
+  /// down under the system bar; Hanko's field (sumi 3, edge outline, washi
+  /// when focused); a square spoiler box in words; and the screen's main
+  /// action, Post, washi with sumi words. Same controller, focus, limits and
+  /// handlers as before.
+  Widget _hankoComposer() {
+    final edge = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+      borderSide: const BorderSide(color: AppTheme.hankoEdge),
+    );
+    final replying = _replyingToId != null;
+    return Container(
+      decoration: const BoxDecoration(
+        color: AppTheme.hankoSumi2,
+        border: Border(top: BorderSide(color: AppTheme.hankoHairline)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(
+              AppTheme.hankoGutter, 10, AppTheme.hankoGutter, 4),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Reply context, with a 48 dp way out of it.
+              if (replying)
+                Row(
+                  children: [
+                    const Icon(Icons.reply_rounded,
+                        size: 16, color: AppTheme.hankoStone),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        'Replying to $_replyingToName',
+                        style: AppTheme.hankoSans(
+                            fontSize: AppTheme.hankoLabelSize,
+                            color: AppTheme.hankoStone),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    Transform.translate(
+                      offset: const Offset(8, 0),
+                      child: _HankoAction(
+                        semanticLabel: 'Cancel reply',
+                        onTap: _cancelReply,
+                        child: const Icon(Icons.close_sharp,
+                            size: 18, color: AppTheme.hankoStone),
+                      ),
+                    ),
+                  ],
+                ),
+              TextField(
+                controller: _commentController,
+                focusNode: _composerFocus,
+                maxLines: 3,
+                minLines: 1,
+                maxLength: 500,
+                textCapitalization: TextCapitalization.sentences,
+                cursorColor: AppTheme.hankoWashi,
+                style: AppTheme.hankoSans(height: 1.35),
+                decoration: InputDecoration(
+                  hintText: replying
+                      ? 'Write a reply…'
+                      : 'Share your thoughts…',
+                  hintStyle: AppTheme.hankoSans(
+                      color: AppTheme.hankoAsh, height: 1.35),
+                  filled: true,
+                  fillColor: AppTheme.hankoSumi3,
+                  counterText: '',
+                  isDense: true,
+                  contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 14),
+                  border: edge,
+                  enabledBorder: edge,
+                  focusedBorder: edge.copyWith(
+                      borderSide:
+                          const BorderSide(color: AppTheme.hankoWashi)),
+                ),
+              ),
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  // The box's edge lines up with the field's.
+                  Transform.translate(
+                    offset: const Offset(-8, 0),
+                    child: _HankoAction(
+                      semanticLabel: 'Contains spoilers',
+                      checked: _containsSpoilers,
+                      onTap: () => setState(
+                          () => _containsSpoilers = !_containsSpoilers),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                              _containsSpoilers
+                                  ? Icons.check_box_sharp
+                                  : Icons.check_box_outline_blank_sharp,
+                              size: 20,
+                              color: _containsSpoilers
+                                  ? AppTheme.hankoWashi
+                                  : AppTheme.hankoStone),
+                          const SizedBox(width: 8),
+                          Text('Spoiler',
+                              style: AppTheme.hankoSans(
+                                fontSize: AppTheme.hankoMetaSize,
+                                weight: FontWeight.w500,
+                                color: _containsSpoilers
+                                    ? AppTheme.hankoWashi
+                                    : AppTheme.hankoStone,
+                              )),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const Spacer(),
+                  _hankoPost(),
+                ],
+              ),
+              const SizedBox(height: 4),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Post, the screen's one main action: a washi tile with sumi words
+  /// (15.34:1), 2 px corners, an 8% sumi wash on press and no ripple, as
+  /// Detail's _HankoMainAction. While a post is on its way it reads
+  /// "Posting…" with a sumi spinner and can't be pressed again.
+  Widget _hankoPost() {
+    return Semantics(
+      container: true,
+      button: true,
+      child: Material(
+        color: AppTheme.hankoWashi,
+        borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+        child: InkWell(
+          onTap: _isSubmitting ? null : _submitComment,
+          borderRadius: BorderRadius.circular(AppTheme.hankoRadius),
+          splashFactory: NoSplash.splashFactory,
+          highlightColor: AppTheme.hankoSumi.withValues(alpha: 0.08),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(
+                minWidth: AppTheme.hankoTouch, minHeight: AppTheme.hankoTouch),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 18),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  if (_isSubmitting)
+                    const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: AppTheme.hankoSumi),
+                    )
+                  else
+                    const Icon(Icons.send_sharp,
+                        size: 18, color: AppTheme.hankoSumi),
+                  const SizedBox(width: 8),
+                  Text(
+                    _isSubmitting ? 'Posting…' : 'Post',
+                    style: AppTheme.hankoSans(
+                      fontSize: AppTheme.hankoListTitleSize,
+                      weight: FontWeight.w600,
+                      color: AppTheme.hankoSumi,
+                      height: 1,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _emptyState() {
+    if (_printRoom) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.forum_outlined,
+                  color: AppTheme.hankoEdge, size: 40),
+              const SizedBox(height: 16),
+              Text('No comments yet',
+                  textAlign: TextAlign.center,
+                  style: AppTheme.hankoSerif(height: 1.3)),
+              const SizedBox(height: 6),
+              Text('Be the first to comment!',
+                  textAlign: TextAlign.center,
+                  style: AppTheme.hankoSans(
+                      fontSize: AppTheme.hankoMetaSize,
+                      color: AppTheme.hankoStone)),
+            ],
+          ),
+        ),
+      );
+    }
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -507,6 +790,18 @@ class _CommentTileState extends State<_CommentTile> {
     final downvotes = widget.data['downvotes'] as int? ?? 0;
     final createdAt = widget.data['createdAt'] as Timestamp?;
     final shouldHide = containsSpoilers && !_showSpoilers;
+
+    if (_EpisodeDiscussionScreenState._printRoom) {
+      return _printed(
+        userName: userName,
+        commentText: commentText,
+        containsSpoilers: containsSpoilers,
+        upvotes: upvotes,
+        downvotes: downvotes,
+        createdAt: createdAt,
+        shouldHide: shouldHide,
+      );
+    }
 
     final avatarRadius = widget.isReply ? 12.0 : 14.0;
 
@@ -633,6 +928,178 @@ class _CommentTileState extends State<_CommentTile> {
     );
   }
 
+  /// The comment in flat Hanko. People are round: a sumi 3 mark ringed in
+  /// the edge colour, as other people's marks are, or in washi when the
+  /// comment is yours (coral stays your rating seal's alone). The name in
+  /// Jost 600 and the time in stone; a spoiler is said in words, not a gold
+  /// sign, and veiled under a square sumi 3 tile you press to reveal. Votes
+  /// and Reply are stone words in 48 dp targets, washi with a filled mark
+  /// for the vote that's yours (no coral, no red).
+  Widget _printed({
+    required String userName,
+    required String commentText,
+    required bool containsSpoilers,
+    required int upvotes,
+    required int downvotes,
+    required Timestamp? createdAt,
+    required bool shouldHide,
+  }) {
+    final mine = widget.currentUserId != null &&
+        widget.data['userId'] == widget.currentUserId;
+    final markSize = widget.isReply ? 24.0 : 28.0;
+    final meta = AppTheme.hankoSans(
+        fontSize: AppTheme.hankoDataSmallSize,
+        weight: FontWeight.w500,
+        color: AppTheme.hankoStone,
+        height: 1.3);
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ExcludeSemantics(
+            child: Container(
+              width: markSize,
+              height: markSize,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: AppTheme.hankoSumi3,
+                shape: BoxShape.circle,
+                border: Border.all(
+                    color: mine ? AppTheme.hankoWashi : AppTheme.hankoEdge),
+              ),
+              child: Text(
+                userName.isNotEmpty ? userName[0].toUpperCase() : 'A',
+                style: AppTheme.hankoSans(
+                  fontSize: widget.isReply
+                      ? AppTheme.hankoDataSmallSize
+                      : AppTheme.hankoMetaSize,
+                  weight: FontWeight.w600,
+                  height: 1,
+                ),
+              ),
+            ),
+          ),
+          SizedBox(width: widget.isReply ? 14 : 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Name · time · spoiler on one line
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(userName,
+                          style: AppTheme.hankoSans(
+                              fontSize: AppTheme.hankoMetaSize,
+                              weight: FontWeight.w600,
+                              height: 1.3),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis),
+                    ),
+                    const SizedBox(width: 6),
+                    Text('· ${widget.formatDate(createdAt)}', style: meta),
+                    if (containsSpoilers) ...[
+                      const SizedBox(width: 6),
+                      Text('· Spoiler', style: meta),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: 4),
+
+                // Body or spoiler veil
+                if (shouldHide)
+                  _HankoAction(
+                    semanticLabel: 'Spoiler hidden. Reveal it',
+                    fill: AppTheme.hankoSumi3,
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    onTap: () => setState(() => _showSpoilers = true),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.visibility_off_outlined,
+                            color: AppTheme.hankoStone, size: 16),
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: Text('Spoiler · tap to reveal',
+                              style: AppTheme.hankoSans(
+                                  fontSize: AppTheme.hankoMetaSize,
+                                  color: AppTheme.hankoStone)),
+                        ),
+                      ],
+                    ),
+                  )
+                else
+                  Text(commentText,
+                      style: AppTheme.hankoSans(height: 1.4)),
+
+                // Up / down / Reply, their marks in line with the text.
+                Transform.translate(
+                  offset: const Offset(-8, 0),
+                  child: Row(
+                    children: [
+                      _hankoVote(up: true, count: upvotes),
+                      _hankoVote(up: false, count: downvotes),
+                      // Replies attach to the top-level comment.
+                      if (!widget.isReply)
+                        _HankoAction(
+                          semanticLabel: 'Reply to $userName',
+                          onTap: () =>
+                              widget.onReply(widget.commentId, userName),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.reply_rounded,
+                                  size: 18, color: AppTheme.hankoStone),
+                              const SizedBox(width: 4),
+                              Text('Reply',
+                                  style: AppTheme.hankoSans(
+                                      fontSize: AppTheme.hankoLabelSize,
+                                      weight: FontWeight.w500,
+                                      color: AppTheme.hankoStone)),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// One vote in Hanko: stone and outlined, or washi and filled when it's
+  /// yours; the count in tabular Jost. A toggle for a screen reader.
+  Widget _hankoVote({required bool up, required int count}) {
+    final active = up ? _myVote > 0 : _myVote < 0;
+    final color = active ? AppTheme.hankoWashi : AppTheme.hankoStone;
+    final IconData icon = up
+        ? (active ? Icons.arrow_circle_up : Icons.arrow_circle_up_outlined)
+        : (active ? Icons.arrow_circle_down : Icons.arrow_circle_down_outlined);
+    return _HankoAction(
+      semanticLabel: '${up ? 'Upvote' : 'Downvote'}, $count',
+      toggled: active,
+      onTap: () => _castVote(up ? 1 : -1),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 18, color: color),
+          const SizedBox(width: 6),
+          Text('$count',
+              style: AppTheme.hankoSans(
+                  fontSize: AppTheme.hankoLabelSize,
+                  weight: FontWeight.w500,
+                  color: color,
+                  tabular: true)),
+        ],
+      ),
+    );
+  }
+
   Future<void> _castVote(int dir) async {
     final previous = _myVote;
     // Optimistic local update for snappy feel
@@ -663,6 +1130,91 @@ class _CommentTileState extends State<_CommentTile> {
           Text('$count',
               style: AppTheme.sans(fontSize: 12, color: color)),
         ],
+      ),
+    );
+  }
+}
+
+/// A small Hanko control (a vote, Reply, the spoiler box, a veiled spoiler,
+/// cancelling a reply): drawn as its [child] on [fill] (none by default),
+/// touched at 48 dp, pressed with an 8% washi wash and no ripple. Its own
+/// semantics node, named by [semanticLabel] (a toggle when [toggled] is
+/// given, a checkbox when [checked] is), with the InkWell's tap and keyboard
+/// focus inside it; keyboard focus draws a washi keyline round the target.
+class _HankoAction extends StatefulWidget {
+  const _HankoAction({
+    required this.semanticLabel,
+    required this.onTap,
+    required this.child,
+    this.toggled,
+    this.checked,
+    this.fill,
+    this.padding = const EdgeInsets.symmetric(horizontal: 8),
+  });
+
+  final String semanticLabel;
+  final VoidCallback onTap;
+  final Widget child;
+  final bool? toggled;
+  final bool? checked;
+  final Color? fill;
+  final EdgeInsetsGeometry padding;
+
+  @override
+  State<_HankoAction> createState() => _HankoActionState();
+}
+
+class _HankoActionState extends State<_HankoAction> {
+  bool _focused = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final radius = BorderRadius.circular(AppTheme.hankoRadius);
+    final fill = widget.fill;
+    return Semantics(
+      container: true,
+      button: widget.checked == null,
+      toggled: widget.toggled,
+      checked: widget.checked,
+      label: widget.semanticLabel,
+      child: Material(
+        type: fill == null ? MaterialType.transparency : MaterialType.canvas,
+        color: fill,
+        borderRadius: fill == null ? null : radius,
+        child: InkWell(
+          onTap: widget.onTap,
+          onFocusChange: (v) => setState(() => _focused = v),
+          splashFactory: NoSplash.splashFactory,
+          highlightColor: AppTheme.hankoPressWash,
+          hoverColor: AppTheme.hankoPressWash,
+          focusColor: Colors.transparent,
+          borderRadius: radius,
+          child: ExcludeSemantics(
+            child: DecoratedBox(
+              position: DecorationPosition.foreground,
+              decoration: BoxDecoration(
+                border: Border.all(
+                  color: _focused ? AppTheme.hankoWashi : Colors.transparent,
+                  width: 2,
+                ),
+                borderRadius: radius,
+              ),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(
+                    minWidth: AppTheme.hankoTouch,
+                    minHeight: AppTheme.hankoTouch),
+                child: Padding(
+                  padding: widget.padding,
+                  child: Center(
+                    widthFactor: 1,
+                    heightFactor: 1,
+                    child: widget.child,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

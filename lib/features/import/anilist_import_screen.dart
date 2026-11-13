@@ -6,6 +6,7 @@ import '../../core/theme/app_theme.dart';
 import '../../models/anime_model.dart';
 import '../../services/anilist_service.dart';
 import '../../services/firestore_service.dart';
+import '../../widgets/hanko_board.dart';
 
 enum ImportSource { mal, anilist, csv }
 
@@ -34,6 +35,15 @@ class _AnilistImportScreenState extends State<AnilistImportScreen> {
   bool _matching = false;
   int _lookedUp = 0;
   List<String> _unmatched = const [];
+
+  /// The screen in flat Hanko (the Vibes report's next stage: a form, so no
+  /// boards): sumi with sumi 2 panels and 2 px corners, the chosen source
+  /// keylined and ticked in washi (CLAUDE.md: never coral, which is only ever
+  /// your verdicts), progress washi on sumi 3, Import as the washi main
+  /// action, and the done state in words, not a green badge. Each source is
+  /// one button for a screen reader and the keyboard. False gives back the
+  /// coral tiles, the coral progress bar and the green badge as they were.
+  static const bool _printRoom = true;
 
   @override
   void dispose() {
@@ -404,6 +414,7 @@ class _AnilistImportScreenState extends State<AnilistImportScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_printRoom) return _printed(context);
     return Scaffold(
       appBar: AppBar(
         title: Column(
@@ -666,6 +677,515 @@ class _AnilistImportScreenState extends State<AnilistImportScreen> {
               ),
             ],
           ],
+        ),
+      ),
+    );
+  }
+
+  // ── Print Room: the screen in flat Hanko ─────────────────────
+  // The source tiles keep 3 dp all round for their keyboard focus ring, so
+  // everything else is inset by the same 3 dp and every edge lines up on
+  // the 20 dp gutter.
+  Widget _printed(BuildContext context) {
+    final still = MediaQuery.disableAnimationsOf(context);
+    Widget inset(Widget child) => Padding(
+          padding: const EdgeInsets.symmetric(
+              horizontal: _PrintedSourceTile.ringRoom),
+          child: child,
+        );
+    const corners = BorderRadius.all(Radius.circular(AppTheme.hankoRadius));
+    OutlineInputBorder edge(Color c, [double width = 1]) => OutlineInputBorder(
+          borderRadius: corners,
+          borderSide: BorderSide(color: c, width: width),
+        );
+    final label = HankoBoard.labelStyle(color: AppTheme.hankoStone);
+    final meta = AppTheme.hankoSans(
+        fontSize: AppTheme.hankoMetaSize, color: AppTheme.hankoStone);
+    final heading = AppTheme.hankoSerif(fontSize: AppTheme.hankoSectionSize);
+
+    return Scaffold(
+      backgroundColor: AppTheme.hankoSumi,
+      appBar: AppBar(
+        backgroundColor: AppTheme.hankoSumi,
+        foregroundColor: AppTheme.hankoWashi,
+        title: Text('Import library',
+            style: AppTheme.hankoSerif(fontSize: AppTheme.hankoFeaturedSize)),
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(
+            AppTheme.hankoGutter - _PrintedSourceTile.ringRoom, 8,
+            AppTheme.hankoGutter - _PrintedSourceTile.ringRoom, 32),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            inset(Text('BRING YOUR LIST', style: label)),
+            const SizedBox(height: 6),
+            inset(Text('Choose a source', style: heading)),
+            const SizedBox(height: 8),
+
+            // Source options
+            _PrintedSourceTile(
+              label: 'MyAnimeList',
+              tag: 'MAL',
+              subtitle: 'Public profile, by username',
+              selected: _selectedSource == ImportSource.mal,
+              onTap: () => setState(() => _selectedSource = ImportSource.mal),
+            ),
+            const SizedBox(height: 2),
+            _PrintedSourceTile(
+              label: 'AniList',
+              tag: 'AL',
+              subtitle: 'Public profile, by username',
+              selected: _selectedSource == ImportSource.anilist,
+              onTap: () => setState(() => _selectedSource = ImportSource.anilist),
+            ),
+            const SizedBox(height: 2),
+            _PrintedSourceTile(
+              label: 'CSV file',
+              tag: 'CSV',
+              subtitle: 'Upload an exported file',
+              selected: _selectedSource == ImportSource.csv,
+              onTap: () => setState(() => _selectedSource = ImportSource.csv),
+            ),
+
+            const SizedBox(height: 20),
+
+            // What we import, on a sumi 2 panel: no rules, no green ticks.
+            inset(Container(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+              decoration: const BoxDecoration(
+                  color: AppTheme.hankoSumi2, borderRadius: corners),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('WHAT WE’LL BRING ACROSS', style: label),
+                  const SizedBox(height: 4),
+                  for (final (what, how) in const [
+                    ('List entries', 'ALL'),
+                    ('Episode progress', 'SYNCED'),
+                    ('Personal scores', 'PRESERVED'),
+                    ('Notes & tags', 'MERGED'),
+                  ])
+                    _PrintedFeatureRow(what, how),
+                ],
+              ),
+            )),
+
+            const SizedBox(height: 24),
+
+            if (!_isDone) ...[
+              inset(Text(_usernameLabel, style: heading)),
+              const SizedBox(height: 10),
+              inset(TextField(
+                controller: _usernameController,
+                enabled: !_isLoading && _selectedSource != ImportSource.csv,
+                style: AppTheme.hankoSans(),
+                cursorColor: AppTheme.hankoWashi,
+                decoration: InputDecoration(
+                  hintText: _hintText,
+                  hintStyle: AppTheme.hankoSans(color: AppTheme.hankoAsh),
+                  filled: true,
+                  fillColor: AppTheme.hankoSumi2,
+                  prefixIcon: const Icon(Icons.person_outline_rounded,
+                      color: AppTheme.hankoStone),
+                  border: edge(AppTheme.hankoEdge),
+                  enabledBorder: edge(AppTheme.hankoEdge),
+                  disabledBorder: edge(AppTheme.hankoHairline),
+                  focusedBorder: edge(AppTheme.hankoWashi, 1.5),
+                ),
+                onSubmitted: (_) => _isLoading ? null : _importList(),
+              )),
+              const SizedBox(height: 6),
+              inset(Text('Profile must be set to public.',
+                  style: AppTheme.hankoSans(
+                      fontSize: AppTheme.hankoLabelSize,
+                      color: AppTheme.hankoStone))),
+
+              // An error says so in words, in the error colour (4.88:1 on
+              // sumi 2), on a plain panel: no tinted box.
+              if (_error != null) ...[
+                const SizedBox(height: 16),
+                inset(Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: const BoxDecoration(
+                      color: AppTheme.hankoSumi2, borderRadius: corners),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Padding(
+                        padding: EdgeInsets.only(top: 1),
+                        child: Icon(Icons.error_outline_rounded,
+                            color: AppTheme.error, size: 16),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(_error!,
+                            style: AppTheme.hankoSans(
+                                fontSize: AppTheme.hankoMetaSize,
+                                color: AppTheme.error)),
+                      ),
+                    ],
+                  ),
+                )),
+              ],
+
+              // Progress: washi on sumi 3. With animations off, a count not
+              // yet known shows an empty track instead of a sweeping one.
+              if (_isLoading) ...[
+                const SizedBox(height: 16),
+                inset(Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: const BoxDecoration(
+                      color: AppTheme.hankoSumi2, borderRadius: corners),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Text(_matching
+                                    ? 'Matching with AniList…'
+                                    : 'Importing…',
+                                style: meta),
+                          ),
+                          const SizedBox(width: 12),
+                          Text(_matching
+                                  ? '$_lookedUp / $_total'
+                                  : '$_imported / $_total',
+                              style: AppTheme.hankoSans(
+                                  fontSize: AppTheme.hankoMetaSize,
+                                  weight: FontWeight.w600,
+                                  tabular: true)),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      ClipRRect(
+                        borderRadius: corners,
+                        child: LinearProgressIndicator(
+                          value: _total > 0
+                              ? (_matching ? _lookedUp : _imported) / _total
+                              : (still ? 0 : null),
+                          backgroundColor: AppTheme.hankoSumi3,
+                          valueColor: const AlwaysStoppedAnimation<Color>(
+                              AppTheme.hankoWashi),
+                          minHeight: 3,
+                        ),
+                      ),
+                      if (_currentAnime.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Text(_currentAnime,
+                            style: AppTheme.hankoSans(
+                                fontSize: AppTheme.hankoLabelSize,
+                                color: AppTheme.hankoAsh),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis),
+                      ],
+                    ],
+                  ),
+                )),
+              ],
+
+              const SizedBox(height: 20),
+              inset(_PrintedMainAction(
+                label: _isLoading ? 'Importing…' : 'Import library',
+                icon: Icons.download_rounded,
+                busy: _isLoading,
+                onTap: _isLoading ? null : _importList,
+              )),
+              const SizedBox(height: 12),
+              inset(Text(
+                'Existing entries are merged, never overwritten.',
+                style: AppTheme.hankoSans(
+                    fontSize: AppTheme.hankoLabelSize,
+                    color: AppTheme.hankoStone),
+                textAlign: TextAlign.center,
+              )),
+            ] else ...[
+              // Done: said in words, washi and stone, not a green badge.
+              inset(Text('DONE', style: label)),
+              const SizedBox(height: 6),
+              inset(Text('Import complete',
+                  style: AppTheme.hankoSerif(
+                      fontSize: AppTheme.hankoDisplaySize))),
+              const SizedBox(height: 8),
+              inset(Text('$_imported anime imported successfully',
+                  style: AppTheme.hankoSans(color: AppTheme.hankoStone))),
+              if (_unmatched.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                inset(Text(
+                    _unmatched.length == 1
+                        ? '1 show couldn’t be matched on AniList, '
+                            'so it wasn’t imported:'
+                        : '${_unmatched.length} shows couldn’t be '
+                            'matched on AniList, so they weren’t '
+                            'imported:',
+                    style: meta)),
+                const SizedBox(height: 6),
+                inset(Text(
+                    _unmatched.length > 10
+                        ? '${_unmatched.take(10).join(' · ')} '
+                            '· and ${_unmatched.length - 10} more'
+                        : _unmatched.join(' · '),
+                    style: AppTheme.hankoSans(
+                        fontSize: AppTheme.hankoLabelSize,
+                        color: AppTheme.hankoAsh))),
+              ],
+              const SizedBox(height: 32),
+              inset(_PrintedMainAction(
+                label: 'Go to My List',
+                onTap: () => Navigator.pop(context),
+              )),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// A source to import from, in flat Hanko: a sumi 2 panel with 2 px corners,
+/// keylined in washi and ticked when [selected], hairline otherwise (never
+/// coral). One button for a screen reader and the keyboard, its focus shown
+/// by a 2 px washi ring just outside the panel, in room it always keeps
+/// ([ringRoom]), as hanko_board's printed tabs show theirs.
+class _PrintedSourceTile extends StatefulWidget {
+  final String label;
+  final String tag;
+  final String subtitle;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _PrintedSourceTile({
+    required this.label,
+    required this.tag,
+    required this.subtitle,
+    required this.selected,
+    required this.onTap,
+  });
+
+  static const double ringRoom = 3;
+
+  @override
+  State<_PrintedSourceTile> createState() => _PrintedSourceTileState();
+}
+
+class _PrintedSourceTileState extends State<_PrintedSourceTile> {
+  bool _focused = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final duration = MediaQuery.disableAnimationsOf(context)
+        ? Duration.zero
+        : const Duration(milliseconds: 200);
+    final selected = widget.selected;
+    final corners = BorderRadius.circular(AppTheme.hankoRadius);
+    return Semantics(
+      container: true,
+      button: true,
+      selected: selected,
+      inMutuallyExclusiveGroup: true,
+      label: '${widget.label}, ${widget.subtitle}',
+      child: DecoratedBox(
+        position: DecorationPosition.foreground,
+        decoration: BoxDecoration(
+          border: Border.all(
+            color: _focused ? AppTheme.hankoWashi : const Color(0x00000000),
+            width: 2,
+          ),
+          borderRadius: BorderRadius.circular(
+              AppTheme.hankoRadius + _PrintedSourceTile.ringRoom),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(_PrintedSourceTile.ringRoom),
+          // The panel is the Material, so the press wash paints over its
+          // fill, and its keyline eases between hairline and washi.
+          child: Material(
+            color: AppTheme.hankoSumi2,
+            animationDuration: duration,
+            shape: RoundedRectangleBorder(
+              borderRadius: corners,
+              side: BorderSide(
+                  color: selected
+                      ? AppTheme.hankoWashi
+                      : AppTheme.hankoHairline),
+            ),
+            child: InkWell(
+              onTap: widget.onTap,
+              onFocusChange: (v) => setState(() => _focused = v),
+              splashFactory: NoSplash.splashFactory,
+              highlightColor: AppTheme.hankoPressWash,
+              hoverColor: AppTheme.hankoPressWash,
+              customBorder: RoundedRectangleBorder(borderRadius: corners),
+              child: ExcludeSemantics(
+                child: ConstrainedBox(
+                  constraints:
+                      const BoxConstraints(minHeight: AppTheme.hankoTouch),
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 40, height: 40,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: AppTheme.hankoSumi3,
+                            borderRadius: corners,
+                          ),
+                          child: Text(widget.tag,
+                              style: AppTheme.hankoSans(
+                                  fontSize: AppTheme.hankoLabelSize,
+                                  weight: FontWeight.w600,
+                                  color: selected
+                                      ? AppTheme.hankoWashi
+                                      : AppTheme.hankoStone,
+                                  letterSpacing: 0.6,
+                                  tabular: true)),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(widget.label,
+                                  style: AppTheme.hankoSans(
+                                      fontSize: AppTheme.hankoListTitleSize,
+                                      weight: FontWeight.w500)),
+                              const SizedBox(height: 2),
+                              Text(widget.subtitle,
+                                  style: AppTheme.hankoSans(
+                                      fontSize: AppTheme.hankoMetaSize,
+                                      color: AppTheme.hankoStone)),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        AnimatedContainer(
+                          duration: duration,
+                          width: 20, height: 20,
+                          decoration: BoxDecoration(
+                            color: selected
+                                ? AppTheme.hankoWashi
+                                : const Color(0x00000000),
+                            borderRadius: corners,
+                            border: Border.all(
+                              color: selected
+                                  ? AppTheme.hankoWashi
+                                  : AppTheme.hankoEdge,
+                              width: 1.5,
+                            ),
+                          ),
+                          child: selected
+                              ? const Icon(Icons.check_rounded,
+                                  color: AppTheme.hankoSumi, size: 14)
+                              : null,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// One line of "What we'll bring across" in flat Hanko: a stone tick, the
+/// thing in washi and how it comes across as a printed label in stone.
+class _PrintedFeatureRow extends StatelessWidget {
+  final String label;
+  final String value;
+  const _PrintedFeatureRow(this.label, this.value);
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          const Icon(Icons.check_rounded, color: AppTheme.hankoStone, size: 16),
+          const SizedBox(width: 10),
+          Expanded(child: Text(label, style: AppTheme.hankoSans())),
+          const SizedBox(width: 8),
+          Text(value, style: HankoBoard.labelStyle(color: AppTheme.hankoStone)),
+        ],
+      ),
+    );
+  }
+}
+
+/// The screen's one main action, as Detail's: a washi tile with sumi words
+/// (15.34:1), 2 px corners, pressed with an 8% wash and no ripple, its own
+/// button node with the InkWell's tap and focus in it. While [busy] it rests
+/// on sumi 3 with stone words (6.4:1) and, with animations on, a stone
+/// spinner in place of its icon.
+class _PrintedMainAction extends StatelessWidget {
+  final String label;
+  final IconData? icon;
+  final bool busy;
+  final VoidCallback? onTap;
+
+  const _PrintedMainAction({
+    required this.label,
+    required this.onTap,
+    this.icon,
+    this.busy = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final still = MediaQuery.disableAnimationsOf(context);
+    final ink = busy ? AppTheme.hankoStone : AppTheme.hankoSumi;
+    final icon = this.icon;
+    final corners = BorderRadius.circular(AppTheme.hankoRadius);
+    return Semantics(
+      container: true,
+      button: true,
+      enabled: onTap != null,
+      child: Material(
+        color: busy ? AppTheme.hankoSumi3 : AppTheme.hankoWashi,
+        borderRadius: corners,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: corners,
+          splashFactory: NoSplash.splashFactory,
+          highlightColor: AppTheme.hankoSumi.withValues(alpha: 0.08),
+          focusColor: AppTheme.hankoSumi.withValues(alpha: 0.12),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(
+                minWidth: double.infinity, minHeight: AppTheme.hankoTouch),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  if (busy && !still) ...[
+                    SizedBox(
+                      width: 16, height: 16,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: ink),
+                    ),
+                    const SizedBox(width: 8),
+                  ] else if (!busy && icon != null) ...[
+                    Icon(icon, size: 20, color: ink),
+                    const SizedBox(width: 6),
+                  ],
+                  Flexible(
+                    child: Text(label,
+                        textAlign: TextAlign.center,
+                        style: AppTheme.hankoSans(
+                            fontSize: AppTheme.hankoBodySize,
+                            weight: FontWeight.w600,
+                            color: ink)),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ),
       ),
     );

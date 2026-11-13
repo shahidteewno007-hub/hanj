@@ -37,7 +37,17 @@ class _SearchScreenState extends State<SearchScreen>
 
   final _service    = AnilistService();
   final _textCtrl   = TextEditingController();
-  late final _tabCtrl = TabController(length: 2, vsync: this);
+  // With Remove animations on, a tapped tab shows at once instead of sliding
+  // in (Vibes' V-7), as Discover's and Pulse's printed tabs already do. Read
+  // from the platform, since the controller is made before MediaQuery is.
+  late final _tabCtrl = TabController(
+    length: 2,
+    vsync: this,
+    animationDuration: WidgetsBinding
+            .instance.platformDispatcher.accessibilityFeatures.disableAnimations
+        ? Duration.zero
+        : null,
+  );
 
   List<Anime> _results  = [];
   bool _loading         = false;
