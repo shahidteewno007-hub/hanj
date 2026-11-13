@@ -93,6 +93,13 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
   // whole-screen rebuilds as they were.
   static const bool _lightLoads = true;
 
+  // With _lightLoads, the staff answer spread over frames (P8): the bar and
+  // header in its frame, Overview a frame later, the Seasons walk after the
+  // strips. Measured on the phone (2026-11-13) this turned one heavy frame
+  // into two or three lighter ones, each still over budget. False keeps the
+  // answer in one frame, with _lightLoads' narrower rebuilds.
+  static const bool _spreadAnswer = true;
+
   final _firestoreService = FirestoreService();
   final _aniListService   = AnilistService();
   final _confettiKey      = GlobalKey<ConfettiOverlayState>();
@@ -397,7 +404,7 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
     }
     change();
     _staffVersion.value++;
-    if (!_lightLoads || _tabSoon) return;
+    if (!_lightLoads || !_spreadAnswer || _tabSoon) return;
     _tabSoon = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _tabSoon = false;
@@ -496,7 +503,7 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
   void _walkSeasonsSoon() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      if (!_lightLoads) {
+      if (!_lightLoads || !_spreadAnswer) {
         _walkSeasons();
         return;
       }
@@ -1070,6 +1077,8 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
               child: ListenableBuilder(
                 listenable: !_lightLoads
                     ? _staffVersion
+                    : !_spreadAnswer
+                        ? (_selectedTab == 1 ? _headerVersion : _staffVersion)
                     : _selectedTab == 1
                         ? _tabEntryVersion
                         : _tabVersion,
