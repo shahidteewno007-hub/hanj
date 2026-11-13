@@ -32,6 +32,9 @@ import '../../services/offline_cache_service.dart';
 import '../../core/trailer_launcher.dart';
 import '../../widgets/share_card.dart';
 import '../episode_discussions/episode_discussion_screen.dart';
+import '../social/arcs_hanko.dart';
+import '../social/arcs_screen.dart';
+import '../../services/arcs_service.dart';
 import '../staff_detail/studio_detail_screen.dart';
 import '../staff_detail/staff_detail_screen.dart';
 import '../home/home_screen.dart' show showHanjListSheet;
@@ -3991,6 +3994,11 @@ class _OverviewTab extends StatelessWidget {
   // block is kept intact below.
   static const bool _showInformation = false;
 
+  // ── Watch along (arcs redesign, 2026-11-14) ────────────────
+  // A row under Discussion into this show's arcs (watch-alongs), shown only
+  // once Arcs is open (ArcsScreen.open). Off gives back Overview as it was.
+  static const bool _watchAlong = true;
+
   /// AniList's official streaming links for the show (`externalLinks` of
   /// type STREAMING, from Stage 1c's request), one per site, the first kept
   /// (question 113): AniList can list a site more than once (two Crunchyroll
@@ -4215,6 +4223,36 @@ class _OverviewTab extends StatelessWidget {
             ]),
           ),
         ),
+
+        // ── Watch along (arcs redesign) ─────────────────────
+        // The same quiet row: this show's arcs, or start one for it.
+        if (ArcsScreen.open && _watchAlong)
+          InkWell(
+            key: const ValueKey('watch along'),
+            onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (_) => ArcsIndexScreen(
+                        show: ArcShow(
+                            id: anime.id,
+                            title: anime.titleEnglish ?? anime.title,
+                            cover: anime.imageUrl,
+                            episodes: anime.episodes)))),
+            splashFactory: NoSplash.splashFactory,
+            highlightColor: AppTheme.hankoPressWash,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: AppTheme.hankoTouch),
+              child: Row(children: [
+                const Icon(Icons.groups_2_outlined, size: 20, color: AppTheme.hankoWashi),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text('Watch along with others',
+                      style: AppTheme.hankoSans(fontSize: 15, weight: FontWeight.w500)),
+                ),
+                const Icon(Icons.chevron_right_sharp, size: 20, color: AppTheme.hankoStone),
+              ]),
+            ),
+          ),
       ],
     );
   }

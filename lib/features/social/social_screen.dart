@@ -140,6 +140,11 @@ class _SocialScreenState extends State<SocialScreen> {
   /// design history; _buildPreHanko() holds it.
   static const bool _preHanko = false;
 
+  /// Arcs redesign (2026-11-14): the Arcs row's line describes watch-alongs,
+  /// and drops "Coming soon" once Arcs is open (ArcsScreen.open). Off gives
+  /// back the earlier line.
+  static const bool _arcsLine = true;
+
   @override
   Widget build(BuildContext context) {
     final user = Provider.of<AuthService>(context).currentUser;
@@ -412,7 +417,11 @@ class _SocialScreenState extends State<SocialScreen> {
       _SocialRow(
         icon: Icons.groups_2_sharp,
         title: 'Arcs',
-        line: 'Coming soon: communities around the shows you love',
+        line: !_arcsLine
+            ? 'Coming soon: communities around the shows you love'
+            : ArcsScreen.open
+                ? 'Watch a show together, a few episodes a week'
+                : 'Coming soon: watch a show together, a week at a time',
         onTap: () => Navigator.push(context,
             MaterialPageRoute(builder: (_) => const ArcsScreen())),
       ),

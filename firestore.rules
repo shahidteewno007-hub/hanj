@@ -259,11 +259,50 @@ service cloud.firestore {
       }
     }
 
-    // ─────────────────── Arcs (community feature) ───────────────────
+    // ─────────────────── Arcs (watch-alongs) ───────────────────
+    // Arcs redesign (2026-11-14; arcs-design.md in the notes folder). An arc
+    // is people watching one show together: `anime`, `from`..`to` episodes,
+    // `pace` a week from `startsOn`. Its posts carry `ep`, the episode they
+    // talk about.
+    //
+    // Counters (AUDIT R7): every counter moves by exactly 1 in the same batch
+    // as the document it counts, and names it (`countedPost`,
+    // `countedReply`), so the rule can check that document really appears
+    // (+1) or disappears (-1) in that batch. Each side checks the other: a
+    // post can't be created or deleted without its arc's count moving, and
+    // the count can't move without the post.
+    //
+    // Text has limits and `createdAt` must be the server's own time (a
+    // future timestamp would pin a post to the top). Writing (posts and
+    // replies) is for members. An arc can be deleted only while it has no
+    // posts, so its posts can never be stranded (AUDIT R8).
     match /arcs/{arcId} {
 
       function uid()     { return request.auth.uid; }
       function changed() { return request.resource.data.diff(resource.data); }
+      function postAt(id) {
+        return /databases/$(database)/documents/arcs/$(arcId)/posts/$(id);
+      }
+      function arcText(d) {
+        return d.name is string && d.name.size() > 0 && d.name.size() <= 60
+          && d.description is string && d.description.size() <= 300;
+      }
+      function arcShape(d) {
+        return d.anime is map
+          && d.anime.keys().hasOnly(['id', 'title', 'cover', 'episodes'])
+          && d.anime.id is string && d.anime.id.size() <= 40
+          && d.anime.title is string && d.anime.title.size() <= 300
+          && (d.anime.get('cover', null) == null
+              || (d.anime.cover is string && d.anime.cover.size() <= 500))
+          && (d.anime.get('episodes', null) == null || d.anime.episodes is int)
+          && d.from is int && d.to is int && d.pace is int
+          && d.from >= 1 && d.to >= d.from && d.to <= 5000
+          && d.pace >= 1 && d.pace <= 12
+          && d.startsOn is timestamp
+          && d.startsOn > request.time - duration.value(2, 'd')
+          && d.startsOn < request.time + duration.value(31, 'd')
+          && d.creatorName is string && d.creatorName.size() <= 100;
+      }
 
       // Join: you add ONLY yourself; memberCount +1; nothing else changes.
       function isJoin() {
@@ -281,38 +320,71 @@ service cloud.firestore {
           && request.resource.data.memberCount == resource.data.memberCount - 1
           && changed().affectedKeys().hasOnly(['members', 'memberCount']);
       }
-      // A member bumping postCount by 1 when they add a post.
-      function isPostCountBump() {
-        return (uid() in resource.data.members)
-          && request.resource.data.postCount == resource.data.postCount + 1
-          && changed().affectedKeys().hasOnly(['postCount']);
+      // postCount moves by 1 with the post it names, in the same batch.
+      function isPostCount() {
+        let id = request.resource.data.countedPost;
+        return changed().affectedKeys().hasOnly(['postCount', 'countedPost'])
+          && id is string
+          && (
+            (request.resource.data.postCount == resource.data.postCount + 1
+              && !exists(postAt(id)) && existsAfter(postAt(id)))
+            ||
+            (request.resource.data.postCount == resource.data.postCount - 1
+              && exists(postAt(id)) && !existsAfter(postAt(id)))
+          );
       }
-      // The creator editing arc metadata (name, description, emoji, tags).
+      // The maker renaming the arc or rewriting what it's about.
       function isCreatorEdit() {
         return resource.data.createdBy == uid()
-          && !changed().affectedKeys().hasAny(['createdBy', 'members', 'memberCount']);
+          && changed().affectedKeys().hasOnly(['name', 'description'])
+          && arcText(request.resource.data);
       }
 
       allow read: if request.auth != null;
 
-      // Create: you are the creator, the only initial member, counters honest.
+      // Create: you are the maker, the only member, counters at their start,
+      // and the arc has a show and a schedule.
       allow create: if request.auth != null
+        && request.resource.data.keys().hasOnly(['v', 'name', 'description',
+             'anime', 'from', 'to', 'pace', 'startsOn', 'createdBy',
+             'creatorName', 'members', 'memberCount', 'postCount', 'createdAt'])
+        && request.resource.data.v == 2
         && request.resource.data.createdBy == uid()
         && request.resource.data.members == [uid()]
         && request.resource.data.memberCount == 1
-        && request.resource.data.postCount == 0;
+        && request.resource.data.postCount == 0
+        && request.resource.data.createdAt == request.time
+        && arcText(request.resource.data)
+        && arcShape(request.resource.data);
 
       allow update: if request.auth != null
-        && (isJoin() || isLeave() || isPostCountBump() || isCreatorEdit());
+        && (isJoin() || isLeave() || isPostCount() || isCreatorEdit());
 
-      allow delete: if request.auth != null && resource.data.createdBy == uid();
+      // Only an arc with no posts (nothing left behind under it).
+      allow delete: if request.auth != null
+        && resource.data.createdBy == uid()
+        && resource.data.postCount == 0;
 
       // ── Posts ──
       match /posts/{postId} {
 
-        function arc()      { return get(/databases/$(database)/documents/arcs/$(arcId)).data; }
+        function arcPath()  { return /databases/$(database)/documents/arcs/$(arcId); }
+        function arc()      { return get(arcPath()).data; }
+        function arcAfter() { return getAfter(arcPath()).data; }
         function isMember() { return request.auth.uid in arc().members; }
         function changedP() { return request.resource.data.diff(resource.data); }
+        function replyAt(id) {
+          return /databases/$(database)/documents/arcs/$(arcId)/posts/$(postId)/replies/$(id);
+        }
+        function postText(d) {
+          return d.title is string && d.title.size() <= 120
+            && d.body is string && d.body.size() > 0 && d.body.size() <= 2000;
+        }
+        // The arc's count moves with this post, in the same batch.
+        function countedWith(step) {
+          return arcAfter().postCount == arc().postCount + step
+            && arcAfter().get('countedPost', '') == postId;
+        }
 
         // Like toggle: add/remove ONLY yourself; likeCount +/- 1.
         function isLikeToggle() {
@@ -327,41 +399,70 @@ service cloud.firestore {
                 && request.resource.data.likeCount == resource.data.likeCount - 1)
             );
         }
-        // A replier bumping replyCount by 1.
-        function isReplyCountBump() {
-          return request.resource.data.replyCount == resource.data.replyCount + 1
-            && changedP().affectedKeys().hasOnly(['replyCount']);
+        // replyCount moves by 1 with the reply it names, in the same batch.
+        function isReplyCount() {
+          let id = request.resource.data.countedReply;
+          return changedP().affectedKeys().hasOnly(['replyCount', 'countedReply'])
+            && id is string
+            && (
+              (request.resource.data.replyCount == resource.data.replyCount + 1
+                && !exists(replyAt(id)) && existsAfter(replyAt(id)))
+              ||
+              (request.resource.data.replyCount == resource.data.replyCount - 1
+                && exists(replyAt(id)) && !existsAfter(replyAt(id)))
+            );
         }
         // Author editing their own post text.
         function isAuthorEdit() {
           return resource.data.authorId == request.auth.uid
-            && changedP().affectedKeys().hasOnly(['title', 'body']);
+            && changedP().affectedKeys().hasOnly(['title', 'body'])
+            && postText(request.resource.data);
         }
 
         allow read: if request.auth != null;
 
-        // Must be a member to post (matches the "Join to post" gate in the UI).
+        // Members only, as yourself, counters at zero, server time, the
+        // episode inside the arc's range, and counted on the arc.
         allow create: if request.auth != null
           && isMember()
+          && request.resource.data.keys().hasOnly(['title', 'body', 'ep',
+               'authorId', 'authorName', 'likes', 'likeCount', 'replyCount',
+               'createdAt'])
           && request.resource.data.authorId == request.auth.uid
+          && request.resource.data.authorName is string
+          && request.resource.data.authorName.size() <= 100
           && request.resource.data.likes == []
           && request.resource.data.likeCount == 0
-          && request.resource.data.replyCount == 0;
+          && request.resource.data.replyCount == 0
+          && request.resource.data.createdAt == request.time
+          && postText(request.resource.data)
+          && (!('ep' in request.resource.data)
+              || (request.resource.data.ep is int
+                  && request.resource.data.ep >= arc().get('from', 1)
+                  && request.resource.data.ep <= arc().get('to', 5000)))
+          && countedWith(1);
 
         allow update: if request.auth != null
-          && (isLikeToggle() || isReplyCountBump() || isAuthorEdit());
+          && (isLikeToggle() || isReplyCount() || isAuthorEdit());
 
         allow delete: if request.auth != null
           && (resource.data.authorId == request.auth.uid
-              || arc().createdBy == request.auth.uid);
+              || arc().createdBy == request.auth.uid)
+          && countedWith(-1);
 
         // ── Replies ──
-        // Any signed-in user can reply (the reply box isn't membership-gated in
-        // the UI). To make replies members-only instead, add
-        //   && (request.auth.uid in arc().members)
-        // to the create rule below.
+        // Members only, like posts (arcs-design.md A-6).
         match /replies/{replyId} {
 
+          function postPath() {
+            return /databases/$(database)/documents/arcs/$(arcId)/posts/$(postId);
+          }
+          // The post's count moves with this reply, in the same batch.
+          function countedRep(step) {
+            return getAfter(postPath()).data.replyCount
+                == get(postPath()).data.replyCount + step
+              && getAfter(postPath()).data.get('countedReply', '') == replyId;
+          }
           function changedRep() { return request.resource.data.diff(resource.data); }
           // Like toggle on a reply: add/remove ONLY yourself; likeCount +/- 1.
           function isReplyLikeToggle() {
@@ -380,22 +481,51 @@ service cloud.firestore {
           allow read: if request.auth != null;
 
           allow create: if request.auth != null
+            && request.auth.uid in arc().members
+            && request.resource.data.keys().hasOnly(['body', 'authorId',
+                 'authorName', 'likes', 'likeCount', 'createdAt'])
             && request.resource.data.authorId == request.auth.uid
+            && request.resource.data.authorName is string
+            && request.resource.data.authorName.size() <= 100
             && request.resource.data.likes == []
-            && request.resource.data.likeCount == 0;
+            && request.resource.data.likeCount == 0
+            && request.resource.data.createdAt == request.time
+            && request.resource.data.body is string
+            && request.resource.data.body.size() > 0
+            && request.resource.data.body.size() <= 1000
+            && countedRep(1);
 
           allow update: if request.auth != null
             && (
               (resource.data.authorId == request.auth.uid
-                && changedRep().affectedKeys().hasOnly(['body']))
+                && changedRep().affectedKeys().hasOnly(['body'])
+                && request.resource.data.body is string
+                && request.resource.data.body.size() > 0
+                && request.resource.data.body.size() <= 1000)
               || isReplyLikeToggle()
             );
 
           allow delete: if request.auth != null
             && (resource.data.authorId == request.auth.uid
-                || arc().createdBy == request.auth.uid);
+                || arc().createdBy == request.auth.uid)
+            && countedRep(-1);
         }
       }
+    }
+
+    // ── Reports (arcs redesign) ──
+    // Create-only: anyone signed in can report a post or reply in an arc, as
+    // themselves. Nobody reads reports in the app; they're read in the
+    // Firebase console.
+    match /reports/{reportId} {
+      allow create: if request.auth != null
+        && request.resource.data.keys().hasOnly(['reporter', 'path', 'reason', 'createdAt'])
+        && request.resource.data.reporter == request.auth.uid
+        && request.resource.data.path is string
+        && request.resource.data.path.size() <= 400
+        && request.resource.data.path.matches('arcs/[^/]+/posts/[^/]+(/replies/[^/]+)?')
+        && request.resource.data.reason in ['spoiler', 'spam', 'abuse']
+        && request.resource.data.createdAt == request.time;
     }
   }
 }
