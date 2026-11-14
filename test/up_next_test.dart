@@ -102,7 +102,7 @@ void main() {
   group('pick', () {
     test('before the airing batch: Continue’s first', () {
       final u = UpNext.pick([frieren, firefly],
-          airedFor: (_) => null, nextAiringFor: (_) => null)!;
+          airedFor: (_) => null, nextAiringFor: (_) => null, now: _now)!;
       expect(u.entry, same(frieren));
       expect(u.caughtUp, isFalse);
     });
@@ -111,7 +111,7 @@ void main() {
       final aired = {'154587': 8, '2': 8};
       final u = UpNext.pick([frieren, firefly],
           airedFor: (e) => aired[e['animeId']],
-          nextAiringFor: (e) => (episode: 9, at: thursday))!;
+          nextAiringFor: (e) => (episode: 9, at: thursday), now: _now)!;
       expect(u.entry, same(firefly));
       expect(_plain(u.sentence()), 'Episode 8 of Firefly Wedding is next');
       expect(_plain(u.meta(_now)!), 'Out now · 7 of 12');
@@ -119,7 +119,7 @@ void main() {
 
     test('a finished show (the batch knows nothing) is watchable', () {
       final u = UpNext.pick([bebop],
-          airedFor: (_) => null, nextAiringFor: (_) => null)!;
+          airedFor: (_) => null, nextAiringFor: (_) => null, now: _now)!;
       expect(_plain(u.sentence()), 'Episode 12 of Cowboy Bebop is next');
       expect(_plain(u.meta(_now)!), '11 of 26 · 15 to go');
     });
@@ -131,15 +131,25 @@ void main() {
       };
       final u = UpNext.pick([frieren, _show('2', 'Firefly Wedding', current: 7)],
           airedFor: (e) => e['animeId'] == '154587' ? 8 : 7,
-          nextAiringFor: (e) => next[e['animeId']])!;
+          nextAiringFor: (e) => next[e['animeId']], now: _now)!;
       expect(u.caughtUp, isTrue);
       expect(_plain(u.sentence()), 'You’re caught up on Firefly Wedding');
       expect(_plain(u.meta(_now)!), 'Episode 8 airs tonight at 21:30');
     });
 
+    test('an episode that aired while Home was open counts as out', () {
+      final u = UpNext.pick([frieren],
+          airedFor: (_) => 8,
+          nextAiringFor: (_) => (episode: 9, at: DateTime(2026, 11, 14, 13)),
+          now: _now)!;
+      expect(u.caughtUp, isFalse);
+      expect(_plain(u.sentence()), 'Episode 9 of Frieren is next');
+      expect(_plain(u.meta(_now)!), 'Out now · 8 of 28');
+    });
+
     test('nothing on Continue: no hero', () {
       expect(
-          UpNext.pick([], airedFor: (_) => null, nextAiringFor: (_) => null),
+          UpNext.pick([], airedFor: (_) => null, nextAiringFor: (_) => null, now: _now),
           isNull);
     });
   });

@@ -59,16 +59,23 @@ class UpNext {
   /// doesn't show as caught up. Before the batch answers, every show counts
   /// as watchable, so it's Continue's first. Caught up on all of them, the
   /// one whose next episode airs soonest. Null with nothing on Continue.
+  /// An episode the batch had as next that has aired by [now] (Home left
+  /// open past its time) counts as aired.
   static UpNext? pick(
     List<Map<String, dynamic>> watching, {
     required int? Function(Map<String, dynamic> entry) airedFor,
     required NextAiring? Function(Map<String, dynamic> entry) nextAiringFor,
+    required DateTime now,
   }) {
     if (watching.isEmpty) return null;
     UpNext? soonest;
     for (final entry in watching) {
-      final aired = airedFor(entry);
-      final next = nextAiringFor(entry);
+      var aired = airedFor(entry);
+      var next = nextAiringFor(entry);
+      if (next != null && !next.at.isAfter(now)) {
+        if (aired == null || next.episode > aired) aired = next.episode;
+        next = null;
+      }
       if (aired == null || aired > currentOf(entry)) {
         return UpNext(
             entry: entry, caughtUp: false, aired: aired, nextAiring: next);
@@ -84,7 +91,7 @@ class UpNext {
         UpNext(
           entry: watching.first,
           caughtUp: true,
-          aired: airedFor(watching.first),
+          aired: currentOf(watching.first),
         );
   }
 

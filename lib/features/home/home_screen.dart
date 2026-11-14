@@ -1770,7 +1770,9 @@ class _HomeScreenState extends State<HomeScreen> {
   /// The show the top of Home is about with Up next on (up-next): the one
   /// you watched most recently that you can watch now (UpNext.pick).
   UpNext? _upNext() => UpNext.pick(_continueWatching,
-      airedFor: _airedFor, nextAiringFor: _nextAiringFor);
+      airedFor: _airedFor,
+      nextAiringFor: _nextAiringFor,
+      now: DateTime.now());
 
   /// The airing batch's next episode for [data]'s show, and when it airs.
   /// Null when the batch knows nothing about it, as for _airedFor.
