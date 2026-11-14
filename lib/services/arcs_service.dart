@@ -314,7 +314,9 @@ class ArcsWipe {
       if (replies > repliesRemoved)
         n(replies - repliesRemoved, 'reply', 'replies'),
       if (likes > likesRemoved) n(likes - likesRemoved, 'like', 'likes'),
-      if (arcs > arcsDone) n(arcs - arcsDone, 'arc', 'arcs'),
+      if (arcs > arcsDone)
+        n(arcs - arcsDone, 'arc you\'re still in or named on',
+            'arcs you\'re still in or named on'),
     ];
     final out = [
       if (left.isNotEmpty) 'Left in Arcs: ${left.join(', ')}.',
