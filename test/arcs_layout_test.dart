@@ -215,6 +215,9 @@ void main() {
       expect(find.text('Start the arc'), findsOneWidget);
       // 1100 episodes at 3 a week.
       expect(find.textContaining('367 stops'), findsOneWidget);
+      // _now is a Saturday: "Saturday" would duplicate "In a week".
+      expect(find.text('Saturday'), findsNothing);
+      expect(find.text('In a week'), findsOneWidget);
       await _finish(tester);
     });
   }

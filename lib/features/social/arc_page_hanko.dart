@@ -840,6 +840,10 @@ class _ArcThreadScreenState extends State<ArcThreadScreen> {
   Future<void> _act(_ArcItemAction action, {String? replyId}) async {
     final uid = _uid;
     if (uid == null) return;
+    // The reply field keeps focus while its keyboard is hidden, and the
+    // menu and dialog hand focus back to it when they close, which brought
+    // the keyboard up again (phone check, 2026-11-14). Let it go first.
+    _focus.unfocus();
     final svc = ArcsService.instance;
     final arcId = widget.arc.id, postId = widget.postId;
     try {
