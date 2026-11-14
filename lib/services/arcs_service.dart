@@ -291,6 +291,41 @@ class ArcsFailure implements Exception {
   String toString() => message;
 }
 
+/// What account deletion's Arcs sweep found and removed ([ArcsService.wipeUser]).
+class ArcsWipe {
+  int posts = 0, postsRemoved = 0;
+  int replies = 0, repliesRemoved = 0;
+  int likes = 0, likesRemoved = 0;
+
+  /// Arcs the user was in or made, and how many were dealt with: deleted
+  /// (theirs, with no one else's posts or members) or left, and kept
+  /// without their name if they made it.
+  int arcs = 0, arcsDone = 0;
+
+  /// Lookups that failed (rules or index not deployed, offline), so what
+  /// they would have found is unknown.
+  final Set<String> unknown = {};
+
+  /// What stayed behind, in words, or null when nothing did.
+  String? leftover() {
+    String n(int c, String one, String many) => '$c ${c == 1 ? one : many}';
+    final left = <String>[
+      if (posts > postsRemoved) n(posts - postsRemoved, 'post', 'posts'),
+      if (replies > repliesRemoved)
+        n(replies - repliesRemoved, 'reply', 'replies'),
+      if (likes > likesRemoved) n(likes - likesRemoved, 'like', 'likes'),
+      if (arcs > arcsDone) n(arcs - arcsDone, 'arc', 'arcs'),
+    ];
+    final out = [
+      if (left.isNotEmpty) 'Left in Arcs: ${left.join(', ')}.',
+      if (unknown.isNotEmpty)
+        'Your Arcs ${unknown.join(', ')} couldn\'t be checked, so some may '
+            'remain.',
+    ];
+    return out.isEmpty ? null : out.join(' ');
+  }
+}
+
 class ArcsService {
   ArcsService._();
   static final ArcsService instance = ArcsService._();
@@ -650,6 +685,149 @@ class ArcsService {
     } catch (e) {
       throw _failure(e, 'Couldn\'t report');
     }
+  }
+
+  // ── Account deletion ───────────────────────────────────────
+
+  static final RegExp _postPath = RegExp(r'^arcs/[^/]+/posts/[^/]+$');
+  static final RegExp _replyPath =
+      RegExp(r'^arcs/[^/]+/posts/[^/]+/replies/[^/]+$');
+
+  /// Removes what [uid] left in Arcs, before their account goes: their
+  /// replies, then their posts, then their likes, then their place in each
+  /// arc. Every count moves with the document it counts, as the rules
+  /// require. An arc they made goes too when nobody else has posted in it or
+  /// joined it; otherwise it stays for the others, its maker shown as
+  /// "Deleted account" and its about cleared.
+  ///
+  /// Best effort: never throws. Each write is caught on its own, so one
+  /// refusal doesn't stop the rest, and [ArcsWipe.leftover] says what
+  /// stayed. Lookups ask the server (collection-group queries; their indexes
+  /// are in firestore.indexes.json): a cached answer would quietly miss
+  /// whatever this device never loaded.
+  Future<ArcsWipe> wipeUser(String uid) async {
+    final out = ArcsWipe();
+    const server = GetOptions(source: Source.server);
+
+    Future<List<QueryDocumentSnapshot<Map<String, dynamic>>>> look(
+        String what, Query<Map<String, dynamic>> q, RegExp path) async {
+      try {
+        final s = await q.get(server);
+        return [for (final d in s.docs) if (path.hasMatch(d.reference.path)) d];
+      } catch (_) {
+        out.unknown.add(what);
+        return const [];
+      }
+    }
+
+    // 1. Replies first: each moves its post's count, their own posts' too.
+    final replies = await look(
+        'replies',
+        _db.collectionGroup('replies').where('authorId', isEqualTo: uid),
+        _replyPath);
+    out.replies = replies.length;
+    for (final d in replies) {
+      final post = d.reference.parent.parent!;
+      try {
+        await _db.runTransaction((tx) async {
+          final p = await tx.get(post);
+          tx.delete(d.reference);
+          // A reply under a deleted post has no count left to move.
+          if (p.exists) {
+            tx.update(post, {
+              'replyCount': FieldValue.increment(-1),
+              'countedReply': d.id,
+            });
+          }
+        });
+        out.repliesRemoved++;
+      } catch (_) {}
+    }
+
+    // 2. Posts. Other people's replies under them stay, out of sight, as
+    // when a post is deleted in the app.
+    final posts = await look(
+        'posts',
+        _db.collectionGroup('posts').where('authorId', isEqualTo: uid),
+        _postPath);
+    out.posts = posts.length;
+    for (final d in posts) {
+      final arc = d.reference.parent.parent!;
+      try {
+        await _db.runTransaction((tx) async {
+          final a = await tx.get(arc);
+          tx.delete(d.reference);
+          if (a.exists) {
+            tx.update(arc, {
+              'postCount': FieldValue.increment(-1),
+              'countedPost': d.id,
+            });
+          }
+        });
+        out.postsRemoved++;
+      } catch (_) {}
+    }
+
+    // 3. Likes on other people's posts.
+    final liked = await look(
+        'likes',
+        _db.collectionGroup('posts').where('likes', arrayContains: uid),
+        _postPath);
+    out.likes = liked.length;
+    for (final d in liked) {
+      try {
+        await _db.runTransaction((tx) async {
+          final snap = await tx.get(d.reference);
+          final likes = List<dynamic>.from(
+              snap.data()?['likes'] as List? ?? const []);
+          if (!likes.contains(uid)) return;
+          final count = (snap.data()?['likeCount'] as num?)?.toInt() ?? 0;
+          tx.update(d.reference, {
+            'likes': likes..removeWhere((e) => e == uid),
+            'likeCount': count - 1,
+          });
+        });
+        out.likesRemoved++;
+      } catch (_) {}
+    }
+
+    // 4. Arcs they're in, and arcs they made (they may have left those).
+    final arcs = <String, QueryDocumentSnapshot<Map<String, dynamic>>>{};
+    for (final q in [
+      _arcs.where('members', arrayContains: uid),
+      _arcs.where('createdBy', isEqualTo: uid),
+    ]) {
+      for (final d in await look('memberships', q, RegExp(r'^arcs/[^/]+$'))) {
+        arcs[d.id] = d;
+      }
+    }
+    out.arcs = arcs.length;
+    for (final d in arcs.values) {
+      try {
+        final ref = d.reference;
+        final data = d.data();
+        final made = data['createdBy'] == uid;
+        if (made) {
+          // Nothing anyone wrote and nobody else in it: it goes with them.
+          // (Read after step 2, so their own posts are already gone.)
+          final alone = ((data['members'] as List?) ?? const [])
+              .every((m) => m == uid);
+          final count = (data['postCount'] as num?)?.toInt() ?? 0;
+          final empty = (await _posts(d.id).limit(1).get(server)).docs.isEmpty;
+          if (empty && alone && count == 0) {
+            await ref.delete();
+            out.arcsDone++;
+            continue;
+          }
+        }
+        await setMember(d.id, uid, join: false);
+        if (made) {
+          await ref.update({'creatorName': 'Deleted account', 'description': ''});
+        }
+        out.arcsDone++;
+      } catch (_) {}
+    }
+    return out;
   }
 
   static String postPath(String arcId, String postId) =>
