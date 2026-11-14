@@ -27,8 +27,11 @@ import '../../models/achievements.dart' show Achievements;
 import '../../services/achievements_service.dart';
 import '../achievements/achievements_screen.dart' show AchievementSlip;
 import '../anime_detail/anime_detail_screen.dart';
+import 'arcs_this_week.dart';
 import 'tonight_watch.dart';
 import 'upcoming_anime.dart';
+import '../social/arcs_hanko.dart' show ArcsIndexScreen;
+import '../social/arcs_screen.dart' show ArcsScreen;
 import '../calendar/anime_calendar_screen.dart';
 import '../discovery/discovery_screen.dart';
 import '../my_list/my_list_screen.dart';
@@ -107,6 +110,13 @@ class _HomeScreenState extends State<HomeScreen> {
   // Continue's shelf, the hero and the band. Off, each opens Detail with the
   // push it always had (MaterialPageRoute).
   static const bool _flight = true;
+
+  // ── Your arcs this week (arcs-home, 2026-11-14) ──
+  // The running arcs you've joined, one row each, under tonight's band
+  // (ArcsThisWeek, arcs_this_week.dart). It draws nothing when you have
+  // none, and follows Arcs' own gate (ArcsScreen.open). Off, Home is as it
+  // was on abf3671, and no arcs are read.
+  static const bool _arcsThisWeek = true;
 
   /// A print's Hero tag on Home (P6): its place and its show, since one show
   /// can lie in two places at once (the hero's fallback is the shelf's first
@@ -1072,6 +1082,24 @@ class _HomeScreenState extends State<HomeScreen> {
                   padding: const EdgeInsets.only(top: 4),
                   child: _TonightCard(anime: _animeOfDay!, open: _open),
                 ))),
+              ),
+
+            // ── Your arcs this week ──────────────────────────
+            // Nothing at all without a running arc you've joined. Its own 24
+            // above it when it shows, as a section has; Tonight's watch keeps
+            // its 24 below.
+            if (_arcsThisWeek && ArcsScreen.open)
+              SliverToBoxAdapter(
+                key: const ValueKey('home-arcs-this-week'),
+                child: _recordColumn(ArcsThisWeek(
+                  entries: _entries,
+                  open: _open,
+                  more: _QuietLink(
+                    label: 'All arcs',
+                    onTap: () => _open(MaterialPageRoute(
+                        builder: (_) => const ArcsIndexScreen())),
+                  ),
+                )),
               ),
 
             // ── Tonight's Watch ──────────────────────────────
