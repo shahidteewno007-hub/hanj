@@ -661,7 +661,13 @@ class _ArcStartSheetState extends State<ArcStartSheet> {
             spacing: 8,
             runSpacing: 8,
             children: [
-              for (var i = 0; i < 3; i++)
+              // On a Saturday, "Saturday" would be next Saturday, the same
+              // day as In a week, so it's left out (phone check, 2026-11-14).
+              for (final i in [
+                0,
+                if (_today.weekday != DateTime.saturday) 1,
+                2,
+              ])
                 IntrinsicWidth(
                   child: HankoChip(
                     label: ['Today', 'Saturday', 'In a week'][i],
