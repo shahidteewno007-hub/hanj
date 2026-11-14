@@ -114,8 +114,17 @@ class UpNext {
 
   /// The title as it sits in a sentence: never broken after a hyphen (the
   /// phone broke "One-" / "Punch Man" in the old lede), which a word joiner
-  /// forbids and draws nothing.
-  String get _titleInSentence => title.replaceAll('-', '-⁠');
+  /// forbids and draws nothing; and a short last word ("Season 3", "Part
+  /// 2") kept with the word before it, since at 1.3x "3" was left alone on
+  /// a line beside the print.
+  String get _titleInSentence {
+    var t = title.replaceAll('-', '-\u2060');
+    final last = t.lastIndexOf(' ');
+    if (last > 0 && t.length - last - 1 <= 3) {
+      t = '${t.substring(0, last)}\u00A0${t.substring(last + 1)}';
+    }
+    return t;
+  }
 
   /// The Mincho sentence. Its number keeps its word ("Episode 8") and "is
   /// next" stays together, by no-break spaces, so neither is left alone on
@@ -128,11 +137,11 @@ class UpNext {
           : 'You’re caught up on $t';
     }
     final total = this.total;
-    if (total == 1) return '$t is next';
+    if (total == 1) return '$t is\u00A0next';
     if (total != null && next == total && total >= 2) {
-      return 'The finale of $t is next';
+      return 'The finale of $t is\u00A0next';
     }
-    return 'Episode $next of $t is next';
+    return 'Episode\u00A0$next of $t is\u00A0next';
   }
 
   /// The line under it, in Jost: whether the episode is out and how far you
@@ -142,7 +151,7 @@ class UpNext {
     if (caughtUp) {
       final next = nextAiring;
       if (next == null) return null;
-      return 'Episode ${next.episode} airs ${airsWhen(next.at, now)}';
+      return 'Episode\u00A0${next.episode} airs ${airsWhen(next.at, now)}';
     }
     final total = this.total;
     final progress = current == 0
@@ -159,7 +168,7 @@ class UpNext {
         total - current == 1 ? 'one to go' : '${total - current} to go',
     ];
     if (parts.isEmpty) return null;
-    return parts.map((p) => p.replaceAll(' ', ' ')).join(' · ');
+    return parts.map((p) => p.replaceAll(' ', '\u00A0')).join('\u00A0· ');
   }
 
   /// What a screen reader says for the whole hero.
@@ -210,7 +219,7 @@ class UpNextTonight {
 
   /// "Frieren, episode 9 at 21:30": the episode and its time kept together.
   String rest() => '$title, '
-      '${'episode ${airing.episode} at ${_hhmm(airing.at)}'.replaceAll(' ', ' ')}';
+      '${'episode ${airing.episode} at ${_hhmm(airing.at)}'.replaceAll(' ', '\u00A0')}';
 
   String spoken() => _plain('${lead()}: ${rest()}');
 }
@@ -234,7 +243,7 @@ String airsWhen(DateTime t, DateTime now) {
   } else {
     phrase = 'on ${DateFormat('d MMMM').format(t)}';
   }
-  return phrase.replaceAll(' ', ' ');
+  return phrase.replaceAll(' ', '\u00A0');
 }
 
 String _hhmm(DateTime t) =>
@@ -244,7 +253,7 @@ bool _sameDay(DateTime a, DateTime b) =>
     a.year == b.year && a.month == b.month && a.day == b.day;
 
 String _plain(String s) =>
-    s.replaceAll(' ', ' ').replaceAll('⁠', '');
+    s.replaceAll('\u00A0', ' ').replaceAll('\u2060', '');
 
 /// The hero's words (up-next): the sentence in Mincho at [sentenceStyle]
 /// (Home's lede size beside the print), and the line under it in Jost,

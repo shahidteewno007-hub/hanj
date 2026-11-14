@@ -90,7 +90,7 @@ Future<void> _finish(WidgetTester tester) async {
   _drain(tester);
 }
 
-String _plain(String s) => s.replaceAll(' ', ' ').replaceAll('⁠', '');
+String _plain(String s) => s.replaceAll('\u00A0', ' ').replaceAll('\u2060', '');
 
 void main() {
   final frieren = _show('154587', 'Frieren', current: 8, episodes: 28);
@@ -174,6 +174,15 @@ void main() {
                   caughtUp: false)
               .sentence()),
           'Your Name is next');
+    });
+
+    test('a short last word stays with the word before it', () {
+      final u = UpNext(
+          entry: _show('9', 'The Apothecary Diaries Season 3', current: 4),
+          caughtUp: true);
+      expect(u.sentence(), contains('Season\u00A03'));
+      expect(UpNext(entry: frieren, caughtUp: false).sentence(),
+          'Episode\u00A09 of Frieren is\u00A0next');
     });
 
     test('when it airs', () {
