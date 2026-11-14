@@ -339,6 +339,15 @@ service cloud.firestore {
           && changed().affectedKeys().hasOnly(['name', 'description'])
           && arcText(request.resource.data);
       }
+      // The maker deleting their account while other people's posts keep
+      // the arc alive: it stays for them, without the maker's name or words.
+      // Only these two fields, and only to exactly these values.
+      function isMakerGone() {
+        return resource.data.createdBy == uid()
+          && changed().affectedKeys().hasOnly(['creatorName', 'description'])
+          && request.resource.data.creatorName == 'Deleted account'
+          && request.resource.data.description == '';
+      }
 
       allow read: if request.auth != null;
 
@@ -358,7 +367,8 @@ service cloud.firestore {
         && arcShape(request.resource.data);
 
       allow update: if request.auth != null
-        && (isJoin() || isLeave() || isPostCount() || isCreatorEdit());
+        && (isJoin() || isLeave() || isPostCount() || isCreatorEdit()
+            || isMakerGone());
 
       // Only an arc with no posts (nothing left behind under it).
       allow delete: if request.auth != null
@@ -445,10 +455,18 @@ service cloud.firestore {
         allow update: if request.auth != null
           && (isLikeToggle() || isReplyCount() || isAuthorEdit());
 
+        // Under an arc that no longer exists (an old arc deleted with a
+        // drifted count) there is no count to move, and only the author can
+        // clear the post: account deletion's sweep. exists() reads the
+        // state before the batch, so a batch can't delete the arc to use it.
         allow delete: if request.auth != null
-          && (resource.data.authorId == request.auth.uid
-              || arc().createdBy == request.auth.uid)
-          && countedWith(-1);
+          && (
+            (resource.data.authorId == request.auth.uid && !exists(arcPath()))
+            ||
+            ((resource.data.authorId == request.auth.uid
+                || arc().createdBy == request.auth.uid)
+              && countedWith(-1))
+          );
 
         // ── Replies ──
         // Members only, like posts (arcs-design.md A-6).
@@ -505,12 +523,37 @@ service cloud.firestore {
               || isReplyLikeToggle()
             );
 
+          // Under a post that no longer exists (its author deleted it) there
+          // is no count to move, and only the reply's author can clear it:
+          // account deletion's sweep. exists() reads the state before the
+          // batch, so a batch can't delete the post to use it.
           allow delete: if request.auth != null
-            && (resource.data.authorId == request.auth.uid
-                || arc().createdBy == request.auth.uid)
-            && countedRep(-1);
+            && (
+              (resource.data.authorId == request.auth.uid && !exists(postPath()))
+              ||
+              ((resource.data.authorId == request.auth.uid
+                  || arc().createdBy == request.auth.uid)
+                && countedRep(-1))
+            );
         }
       }
+    }
+
+    // ── Arcs: finding your own posts, replies and likes ──
+    // Account deletion finds what a user left in arcs with collection-group
+    // queries (firestore.indexes.json holds the indexes they need). Listing
+    // only, and only your own: a query must ask for your posts or replies
+    // (authorId == you) or the posts you like (likes array-contains you).
+    // Single documents and per-arc lists are governed by the arcs block.
+    // `posts` and `replies` are arcs' names: no other collection may use them.
+    match /{path=**}/posts/{postId} {
+      allow list: if request.auth != null
+        && (resource.data.authorId == request.auth.uid
+            || request.auth.uid in resource.data.likes);
+    }
+    match /{path=**}/replies/{replyId} {
+      allow list: if request.auth != null
+        && resource.data.authorId == request.auth.uid;
     }
 
     // ── Reports (arcs redesign) ──
