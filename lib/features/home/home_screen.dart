@@ -4316,6 +4316,12 @@ class _ContinueCardState extends State<_ContinueCard> {
   /// what a screen reader hears.
   static const bool _reel = false;
 
+  /// The shelf's count keeps clear of +1 (LG phone check, 2026-11-16: at
+  /// 1.1x text "1140 watched" ran under the tile). The count gets the
+  /// print's width less the tile and a 6 dp gap, and shrinks to fit it.
+  /// False is the count as it was, free to run under the tile.
+  static const bool _countClearsTile = true;
+
   late int _current;
   bool _saving = false;
 
@@ -4566,6 +4572,24 @@ class _ContinueCardState extends State<_ContinueCard> {
           genres: genres,
         ),
         place: 'shelf'));
+    // The count rolls to the new one when +1 lands (round seven).
+    Widget count = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _RollingCount(value: _current, style: countStyle),
+        Text(hasTotal ? ' of $total' : ' watched', style: countStyle),
+      ],
+    );
+    if (_countClearsTile) {
+      count = SizedBox(
+        width: _ContinueCard.itemWidth - _PlusOneTile.drawn - 6,
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: count,
+        ),
+      );
+    }
     final item = Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -4611,14 +4635,7 @@ class _ContinueCardState extends State<_ContinueCard> {
           height: AppTheme.hankoTouch,
           child: Align(
             alignment: Alignment.centerLeft,
-            // The count rolls to the new one when +1 lands (round seven).
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _RollingCount(value: _current, style: countStyle),
-                Text(hasTotal ? ' of $total' : ' watched', style: countStyle),
-              ],
-            ),
+            child: count,
           ),
         ),
       ],
