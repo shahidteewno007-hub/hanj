@@ -147,6 +147,26 @@ void main() {
       expect(_plain(u.meta(_now)!), 'Out now · 8 of 28');
     });
 
+    // Continue's +1 writes the new episode into the entry's map, which
+    // Home's list shares, and asks Home to rebuild (_ContinueCard.onProgress;
+    // the phone-backlog repro, 2026-11-16). Picking again on the same maps
+    // must move on.
+    test('a +1 that catches you up moves Up next on', () {
+      final blueBox = _show('3', 'Blue Box Season 2', current: 5, episodes: 12);
+      final firefly = _show('2', 'Firefly Wedding', current: 7, episodes: 12);
+      final watching = [blueBox, firefly];
+      final aired = {'3': 6, '2': 8};
+      UpNext pick() => UpNext.pick(watching,
+          airedFor: (e) => aired[e['animeId']],
+          nextAiringFor: (e) => (episode: aired[e['animeId']]! + 1, at: thursday),
+          now: _now)!;
+
+      expect(_plain(pick().sentence()), 'Episode 6 of Blue Box Season 2 is next');
+      blueBox['currentEpisode'] = 6;
+      expect(pick().entry, same(firefly));
+      expect(_plain(pick().sentence()), 'Episode 8 of Firefly Wedding is next');
+    });
+
     test('nothing on Continue: no hero', () {
       expect(
           UpNext.pick([], airedFor: (_) => null, nextAiringFor: (_) => null, now: _now),
