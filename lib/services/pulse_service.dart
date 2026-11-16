@@ -12,6 +12,13 @@ class PulseService {
   static const _apiUrl = 'https://graphql.anilist.co';
   static const _cacheTtl = Duration(hours: 2);
 
+  /// For You lists an upcoming show once (LG phone check, 2026-11-16:
+  /// Shangri-La Frontier Season 3 came under Action and again under
+  /// Adventure, since each genre's card id names its genre). The first
+  /// genre that finds it keeps its reason, and a show already on a card
+  /// above (a sequel announced) isn't repeated. False is the list as it was.
+  static const bool _oneCardPerShow = true;
+
   static final Map<String, List<PulseCard>> _memCache = {};
   static final Map<String, DateTime> _cacheTs = {};
 
@@ -352,6 +359,7 @@ class PulseService {
         .map((e) => e.key)
         .toList();
 
+    final shown = {for (final c in cards) c.animeId};
     for (final genre in topGenres) {
       final media = await _fetchByStatus(
         'NOT_YET_RELEASED',
@@ -362,6 +370,7 @@ class PulseService {
       );
       for (final item in media) {
         final animeId = item['id'].toString();
+        if (_oneCardPerShow && !shown.add(animeId)) continue;
         final title = _displayTitle(item);
         add(PulseCard(
           id: PulseCard.makeId(PulseCardType.upcoming, animeId, 'g_$genre'),
