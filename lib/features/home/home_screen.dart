@@ -215,6 +215,57 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _airingFailed = false;
   int _airingRun = 0;
 
+  /// How far the status bar's scrim has come in, 0 to 1 (top-inset). With
+  /// the device's inset (OfflineBanner.deviceInset) the hero's field runs
+  /// up under the status bar, and once the page scrolls, sumi comes in
+  /// behind the clock so no title or cover sits under it (_statusScrim).
+  final _scrim = ValueNotifier<double>(0);
+
+  @override
+  void dispose() {
+    _scrim.dispose();
+    super.dispose();
+  }
+
+  /// The status bar's height with the device's inset, which Home's top line
+  /// sits below; 0 with the banner's reserved height, which put it there.
+  double _statusBar(BuildContext context) =>
+      OfflineBanner.deviceInset ? MediaQuery.paddingOf(context).top : 0;
+
+  /// [page] with the status bar's scrim over it (top-inset): clear at the
+  /// top of the page, so the field shows under the status bar, and sumi
+  /// once the page has scrolled 40 dp, so nothing scrolls under the clock.
+  /// Only the scrim rebuilds as the page scrolls.
+  Widget _statusScrim(Widget page) {
+    if (!OfflineBanner.deviceInset) return page;
+    return Stack(
+      children: [
+        NotificationListener<ScrollUpdateNotification>(
+          onNotification: (n) {
+            if (n.depth == 0 && n.metrics.axis == Axis.vertical) {
+              _scrim.value = (n.metrics.pixels / 40).clamp(0.0, 1.0);
+            }
+            return false;
+          },
+          child: page,
+        ),
+        Positioned(
+          left: 0,
+          top: 0,
+          right: 0,
+          height: _statusBar(context),
+          child: IgnorePointer(
+            child: ValueListenableBuilder<double>(
+              valueListenable: _scrim,
+              builder: (context, shown, _) => ColoredBox(
+                  color: AppTheme.hankoSumi.withValues(alpha: shown)),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -922,7 +973,7 @@ class _HomeScreenState extends State<HomeScreen> {
       return Scaffold(
         backgroundColor: AppTheme.background,
         body: Padding(
-          padding: const EdgeInsets.only(top: 4),
+          padding: EdgeInsets.only(top: 4 + _statusBar(context)),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -947,17 +998,19 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       backgroundColor: AppTheme.background,
-      body: RefreshIndicator(
+      body: _statusScrim(RefreshIndicator(
         onRefresh: _loadData,
         color: AppTheme.primary,
         backgroundColor: AppTheme.surfaceMid,
+        edgeOffset: _statusBar(context),
         child: CustomScrollView(
           slivers: [
             // ── Top line, date and headline ─────────────────
             SliverToBoxAdapter(
               key: const ValueKey('home-header'),
               child: _heroField(Padding(
-                padding: const EdgeInsets.only(top: 4, bottom: 20),
+                padding: EdgeInsets.only(
+                    top: 4 + _statusBar(context), bottom: 20),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -1452,7 +1505,7 @@ class _HomeScreenState extends State<HomeScreen> {
             const SliverToBoxAdapter(child: SizedBox(height: 40)),
           ],
         ),
-      ),
+      )),
     );
   }
 

@@ -21,6 +21,7 @@ import '../../widgets/hanko_seal_register.dart';
 import '../../services/auth_service.dart';
 import '../../services/firestore_service.dart';
 import '../../services/founder_service.dart';
+import '../../services/connectivity_service.dart';
 import 'founder_card.dart';
 import '../profile/edit_profile_screen.dart';
 import '../stats/stats_screen.dart';
@@ -452,7 +453,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
             _readColours(favourites, afterWall: wall != null);
           }
 
-          return MediaQuery.removePadding(
+          // With the device's inset (OfflineBanner.deviceInset), the page
+          // starts under the status bar, as the banner's reserved height
+          // used to start it; the bar keeps no status bar room of its own,
+          // so nothing scrolls under the clock when it floats away.
+          return Padding(
+            padding: EdgeInsets.only(
+                top: OfflineBanner.deviceInset
+                    ? MediaQuery.paddingOf(context).top
+                    : 0),
+            child: MediaQuery.removePadding(
             context: context,
             removeTop: true,
             child: CustomScrollView(
@@ -799,7 +809,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               const SliverToBoxAdapter(child: SizedBox(height: 40)),
             ],
           ),
-        );
+        ));
         },
       ),
     );
