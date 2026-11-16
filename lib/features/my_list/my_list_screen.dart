@@ -389,7 +389,7 @@ class _MyListScreenState extends State<MyListScreen> {
                         maintainAnimation: true,
                         maintainState: true,
                         child: Text(
-                          '${allDocs.length} TITLES · ${_formatWatchTime(totalEps)}',
+                          '${allDocs.length} ${allDocs.length == 1 ? 'TITLE' : 'TITLES'} · ${_formatWatchTime(totalEps)}',
                           style: HankoBoard.labelStyle(
                               color: AppTheme.hankoStone),
                         ),
@@ -697,7 +697,7 @@ class _MyListScreenState extends State<MyListScreen> {
                               maintainAnimation: true,
                               maintainState: true,
                               child: Text(
-                                '${allDocs.length} TITLES · ${_formatWatchTime(totalEps)}',
+                                '${allDocs.length} ${allDocs.length == 1 ? 'TITLE' : 'TITLES'} · ${_formatWatchTime(totalEps)}',
                                 style: AppTheme.mono(
                                     fontSize: 11,
                                     color: AppTheme.textMuted,
