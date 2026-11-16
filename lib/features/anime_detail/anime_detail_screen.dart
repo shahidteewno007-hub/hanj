@@ -103,6 +103,14 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
   // answer in one frame, with _lightLoads' narrower rebuilds.
   static const bool _spreadAnswer = true;
 
+  // The page's title hands over to the bar's (LG phone check, 2026-11-16):
+  // as the bar's title fades in, over the same 24 dp, the page's fades out,
+  // so the two never show at once (the page's top line used to sit under
+  // the bar, cut in half, beside the bar's title). The bar was opaque
+  // already. Screen readers keep the page's title. False is the page's
+  // title staying as it was until it scrolls away.
+  static const bool _titleHandsOver = true;
+
   final _firestoreService = FirestoreService();
   final _aniListService   = AnilistService();
   final _confettiKey      = GlobalKey<ConfettiOverlayState>();
@@ -1446,6 +1454,7 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
             final studio = _studioName;
             final director = _director;
             return HankoDetailHeader(
+              scroll: _printRoom && _titleHandsOver ? _scroll : null,
               title: title(),
               nativeTitle: _nativeTitle,
               coverUrl: cover,
@@ -1554,7 +1563,12 @@ class HankoDetailHeader extends StatefulWidget {
     this.onRate,
     this.onStatus,
     this.onBump,
+    this.scroll,
   });
+
+  /// The page's scroll, when the header's title hands over to the bar's
+  /// (`_AnimeDetailScreenState._titleHandsOver`). Null keeps it still.
+  final ScrollController? scroll;
 
   /// The show's name as the app shows it: English, else romaji.
   final String title;
@@ -2007,7 +2021,25 @@ class _HankoDetailHeaderState extends State<HankoDetailHeader> {
                   ),
                   // Print Room's title is larger (28) and needs the air.
                   SizedBox(height: printRoom ? _PrintRoomField.titleGap : 12),
-                  _HankoTitle(title: widget.title),
+                  if (printRoom && widget.scroll != null)
+                    // Out as _PrintRoomBar's title comes in.
+                    AnimatedBuilder(
+                      animation: widget.scroll!,
+                      child: _HankoTitle(title: widget.title),
+                      builder: (context, title) {
+                        final s = widget.scroll!;
+                        final offset = s.hasClients ? s.offset : 0.0;
+                        final gone = ((offset - _PrintRoomField.titleTop(g.printHeight)) / 24)
+                            .clamp(0.0, 1.0);
+                        return Opacity(
+                          opacity: 1 - gone,
+                          alwaysIncludeSemantics: true,
+                          child: title,
+                        );
+                      },
+                    )
+                  else
+                    _HankoTitle(title: widget.title),
                   const SizedBox(height: 8),
                   // The status row (H3 g): "Add to list" as the screen's one
                   // main action, or your status as a word that opens the
