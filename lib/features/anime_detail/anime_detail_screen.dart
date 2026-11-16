@@ -103,6 +103,58 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
   // answer in one frame, with _lightLoads' narrower rebuilds.
   static const bool _spreadAnswer = true;
 
+  // The page's title hands over to the bar's (LG phone check, 2026-11-16):
+  // as the bar's title fades in, over the same 24 dp, the page's fades out,
+  // so the two never show at once (the page's top line used to sit under
+  // the bar, cut in half, beside the bar's title). The bar was opaque
+  // already. Screen readers keep the page's title. False is the page's
+  // title staying as it was until it scrolls away.
+  static const bool _titleHandsOver = true;
+
+  // People's names as AniList gives them, trimmed and with runs of spaces
+  // made one (LG phone check, 2026-11-16: "Directed by Daisuke  Sakou" was
+  // indented and had a double space). The header's director, the Cast
+  // tab's characters and voices, and its staff. False shows them as given.
+  static const bool _tidyNames = true;
+
+  static String _personName(String name) =>
+      _tidyNames ? name.trim().replaceAll(RegExp(r'\s+'), ' ') : name;
+
+  // The Cast tab's staff start with the roles that made the show (LG phone
+  // check, 2026-11-16: AniList's order opened on "ADR Producer (English)"
+  // and "ADR Director (French)"): director, series composition, original
+  // creator, character design, music, in that order, then the rest as
+  // AniList gives them. A role's note in brackets ("Director (eps 1-12)")
+  // doesn't change its place. False is AniList's order.
+  static const bool _keyStaffFirst = true;
+  static const _keyRoles = [
+    'chief director',
+    'director',
+    'series composition',
+    'original creator',
+    'original story',
+    'character design',
+    'music',
+  ];
+
+  static List _staffInOrder(List staff) {
+    if (!_keyStaffFirst) return staff;
+    int rank(Object? e) {
+      final role = e is Map ? e['role'] as String? : null;
+      if (role == null) return _keyRoles.length;
+      final base = role.replaceFirst(RegExp(r'\s*\(.*\)\s*$'), '').trim().toLowerCase();
+      final i = _keyRoles.indexOf(base);
+      return i < 0 ? _keyRoles.length : i;
+    }
+    // A stable sort: within a rank, AniList's order.
+    final indexed = [for (var i = 0; i < staff.length; i++) (i, staff[i])];
+    indexed.sort((a, b) {
+      final r = rank(a.$2).compareTo(rank(b.$2));
+      return r != 0 ? r : a.$1.compareTo(b.$1);
+    });
+    return [for (final e in indexed) e.$2];
+  }
+
   final _firestoreService = FirestoreService();
   final _aniListService   = AnilistService();
   final _confettiKey      = GlobalKey<ConfettiOverlayState>();
@@ -1362,7 +1414,8 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
       for (final e in edges) {
         if (e is! Map || (e['role'] as String?)?.trim().toLowerCase() != role) continue;
         final id = e['node']?['id'] as int?;
-        final name = e['node']?['name']?['full'] as String?;
+        final full = e['node']?['name']?['full'] as String?;
+        final name = full == null ? null : _personName(full);
         if (id != null && name != null && name.isNotEmpty) return (id: id, name: name);
       }
     }
@@ -1446,6 +1499,7 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
             final studio = _studioName;
             final director = _director;
             return HankoDetailHeader(
+              scroll: _printRoom && _titleHandsOver ? _scroll : null,
               title: title(),
               nativeTitle: _nativeTitle,
               coverUrl: cover,
@@ -1554,7 +1608,12 @@ class HankoDetailHeader extends StatefulWidget {
     this.onRate,
     this.onStatus,
     this.onBump,
+    this.scroll,
   });
+
+  /// The page's scroll, when the header's title hands over to the bar's
+  /// (`_AnimeDetailScreenState._titleHandsOver`). Null keeps it still.
+  final ScrollController? scroll;
 
   /// The show's name as the app shows it: English, else romaji.
   final String title;
@@ -2007,7 +2066,25 @@ class _HankoDetailHeaderState extends State<HankoDetailHeader> {
                   ),
                   // Print Room's title is larger (28) and needs the air.
                   SizedBox(height: printRoom ? _PrintRoomField.titleGap : 12),
-                  _HankoTitle(title: widget.title),
+                  if (printRoom && widget.scroll != null)
+                    // Out as _PrintRoomBar's title comes in.
+                    AnimatedBuilder(
+                      animation: widget.scroll!,
+                      child: _HankoTitle(title: widget.title),
+                      builder: (context, title) {
+                        final s = widget.scroll!;
+                        final offset = s.hasClients ? s.offset : 0.0;
+                        final gone = ((offset - _PrintRoomField.titleTop(g.printHeight)) / 24)
+                            .clamp(0.0, 1.0);
+                        return Opacity(
+                          opacity: 1 - gone,
+                          alwaysIncludeSemantics: true,
+                          child: title,
+                        );
+                      },
+                    )
+                  else
+                    _HankoTitle(title: widget.title),
                   const SizedBox(height: 8),
                   // The status row (H3 g): "Add to list" as the screen's one
                   // main action, or your status as a word that opens the
@@ -4820,7 +4897,7 @@ class _CastTab extends StatelessWidget {
   Widget build(BuildContext context) {
     if (isLoading) return const Center(child: CircularProgressIndicator(color: AppTheme.hankoWashi, strokeWidth: 1.5));
     final characters = staffData?['characters']?['edges'] as List? ?? [];
-    final staff      = staffData?['staff']?['edges'] as List? ?? [];
+    final staff      = _AnimeDetailScreenState._staffInOrder(staffData?['staff']?['edges'] as List? ?? []);
 
     // Visible empty state so the tab is never just blank.
     if (characters.isEmpty && staff.isEmpty) {
@@ -4877,16 +4954,18 @@ class _CastRow extends StatelessWidget {
     final vas  = edge['voiceActors'] as List? ?? [];
     final va   = vas.isNotEmpty ? vas[0] as Map : null;
     final vaId   = va?['id'] as int?;
-    final vaName = va?['name']?['full'] as String? ?? '';
+    final vaName = _AnimeDetailScreenState._personName(va?['name']?['full'] as String? ?? '');
+    final charName = char?['name']?['full'] as String?;
+    final shownChar = charName == null ? null : _AnimeDetailScreenState._personName(charName);
     // Hanko: a plain row, no card; the voice actor's name is a link in
     // washi with the edge underline, not coral.
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(children: [
-        _Avatar(url: char?['image']?['medium'] as String?, name: char?['name']?['full'] as String? ?? '?'),
+        _Avatar(url: char?['image']?['medium'] as String?, name: shownChar ?? '?'),
         const SizedBox(width: 12),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(char?['name']?['full'] as String? ?? '—', style: AppTheme.hankoSans(weight: FontWeight.w500), maxLines: 1, overflow: TextOverflow.ellipsis),
+          Text(shownChar ?? '—', style: AppTheme.hankoSans(weight: FontWeight.w500), maxLines: 1, overflow: TextOverflow.ellipsis),
           Text('Character', style: AppTheme.hankoSans(fontSize: AppTheme.hankoLabelSize, color: AppTheme.hankoStone)),
         ])),
         if (va != null) ...[
@@ -4947,6 +5026,8 @@ class _StaffRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final node = edge['node'] as Map?;
     final role = edge['role'] as String? ?? '—';
+    final full = node?['name']?['full'] as String?;
+    final name = full == null ? null : _AnimeDetailScreenState._personName(full);
     // Its own semantics node (container), named by the name and role, with
     // the InkWell's tap and focus inside it (question 139, R5B's pattern):
     // with a GestureDetector the keyboard couldn't reach it. The row's words
@@ -4957,11 +5038,11 @@ class _StaffRow extends StatelessWidget {
       child: Semantics(
         container: true,
         button: true,
-        label: '${node?['name']?['full'] as String? ?? 'Unknown'}, $role',
+        label: '${name ?? 'Unknown'}, $role',
         child: Material(
           type: MaterialType.transparency,
           child: InkWell(
-            onTap: () { final id = node?['id'] as int?; final name = node?['name']?['full'] as String? ?? ''; if (id != null) Navigator.push(context, MaterialPageRoute(builder: (_) => StaffDetailScreen(staffId: id, staffName: name))); },
+            onTap: () { final id = node?['id'] as int?; if (id != null) Navigator.push(context, MaterialPageRoute(builder: (_) => StaffDetailScreen(staffId: id, staffName: name ?? ''))); },
             splashFactory: NoSplash.splashFactory,
             highlightColor: AppTheme.hankoPressWash,
             child: ExcludeSemantics(
@@ -4970,10 +5051,10 @@ class _StaffRow extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(vertical: 4),
                 color: Colors.transparent,
                 child: Row(children: [
-                  _Avatar(url: node?['image']?['medium'] as String?, name: node?['name']?['full'] as String? ?? '?'),
+                  _Avatar(url: node?['image']?['medium'] as String?, name: name ?? '?'),
                   const SizedBox(width: 12),
                   Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(node?['name']?['full'] as String? ?? '—', style: AppTheme.hankoSans(weight: FontWeight.w500)),
+                    Text(name ?? '—', style: AppTheme.hankoSans(weight: FontWeight.w500)),
                     Text(role, style: AppTheme.hankoSans(fontSize: AppTheme.hankoLabelSize, color: AppTheme.hankoStone)),
                   ])),
                   const Icon(Icons.chevron_right_sharp, color: AppTheme.hankoStone, size: 20),
@@ -5167,7 +5248,11 @@ class _EpisodeInputDialogState extends State<_EpisodeInputDialog> {
     // keyboard — so the two animations play in sequence, not on top of
     // each other (which is what reads as lag).
     Future.delayed(const Duration(milliseconds: 260), () {
-      if (mounted) _focusNode.requestFocus();
+      // Not once it is closing: a Cancel inside the 260 ms raised the
+      // keyboard over the page the dialog went back to.
+      if (mounted && (!_dropKeyboard || (ModalRoute.of(context)?.isCurrent ?? true))) {
+        _focusNode.requestFocus();
+      }
     });
   }
 
@@ -5178,10 +5263,15 @@ class _EpisodeInputDialogState extends State<_EpisodeInputDialog> {
     super.dispose();
   }
 
+  /// The keyboard goes as the dialog closes (LG phone check, 2026-11-16:
+  /// it stayed up 2-5 s over Detail after Save or Cancel). False leaves it
+  /// to the route's own focus handover, as before.
+  static const bool _dropKeyboard = true;
+
   @override
   Widget build(BuildContext context) {
     final total = widget.total;
-    return AlertDialog(
+    final dialog = AlertDialog(
       backgroundColor: AppTheme.surfaceMid,
       title: Text('Current episode',
           style: AppTheme.serif(fontSize: 18, weight: FontWeight.w600)),
@@ -5241,6 +5331,13 @@ class _EpisodeInputDialogState extends State<_EpisodeInputDialog> {
                   color: AppTheme.hankoWashi, weight: FontWeight.w600)),
         ),
       ],
+    );
+    if (!_dropKeyboard) return dialog;
+    return PopScope(
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) FocusManager.instance.primaryFocus?.unfocus();
+      },
+      child: dialog,
     );
   }
 }

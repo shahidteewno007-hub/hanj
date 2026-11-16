@@ -30,6 +30,13 @@ class _PulseScreenState extends State<PulseScreen>
   /// in place of Shimmer, which moves even with Remove animations on. False
   /// gives back 07faabe's Pulse as it was.
   static const bool _printRoom = true;
+
+  /// A trailer's long title fades its third line sideways, as Home's titles
+  /// do (_FadeTitle; LG phone check, 2026-11-16: Flutter's fade on a long
+  /// title's third line faded its bottom half, which read as letters cut in
+  /// half). Not an ellipsis: Shippori draws it as the centred Japanese ⋯.
+  /// False is the fade as it was.
+  static const bool _titleFadesSideways = true;
   static const _printedTabs = ['For you', 'Trailers', 'Airing', 'Upcoming'];
 
   late final TabController _tabController;
@@ -479,13 +486,21 @@ class _TrailerCard extends StatelessWidget {
                                 style: HankoBoard.labelStyle(
                                     color: AppTheme.hankoWashi)),
                             const SizedBox(height: 6),
-                            Text(
-                              card.title,
-                              maxLines: 3,
-                              overflow: TextOverflow.fade,
-                              style: AppTheme.hankoSerif(
-                                  fontSize: 17, height: 1.25),
-                            ),
+                            if (_PulseScreenState._titleFadesSideways)
+                              _FadeTitle(
+                                card.title,
+                                maxLines: 3,
+                                style: AppTheme.hankoSerif(
+                                    fontSize: 17, height: 1.25),
+                              )
+                            else
+                              Text(
+                                card.title,
+                                maxLines: 3,
+                                overflow: TextOverflow.fade,
+                                style: AppTheme.hankoSerif(
+                                    fontSize: 17, height: 1.25),
+                              ),
                             if (reason != null) ...[
                               const SizedBox(height: 6),
                               Text(
@@ -884,5 +899,63 @@ class _TypeBadge extends StatelessWidget {
         letterSpacing: 1.1,
       ),
     );
+  }
+}
+
+// A copy of Profile's _FadeTitle (profile_screen.dart), as Home and the calendar
+// keep theirs: a trailer's long title fades its last line sideways (lg-batch).
+/// A Shippori title on up to [maxLines] lines whose last line fades out at
+/// its end when the title runs longer, instead of an ellipsis: Shippori
+/// draws "…" as the centred Japanese ⋯ (AppTheme.hankoSerif). Flutter's own
+/// TextOverflow.fade on a multi-line Text fades the bottom half of the last
+/// line instead, so the title is split after its last full line and that
+/// line is set on its own, one line with TextOverflow.fade, as the mockup's
+/// .fade does.
+class _FadeTitle extends StatelessWidget {
+  const _FadeTitle(this.text, {required this.style, required this.maxLines});
+
+  final String text;
+  final TextStyle style;
+  final int maxLines;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(builder: (context, constraints) {
+      final painter = TextPainter(
+        text: TextSpan(text: text, style: style),
+        textDirection: Directionality.of(context),
+        textScaler: MediaQuery.textScalerOf(context),
+        maxLines: maxLines,
+      )..layout(maxWidth: constraints.maxWidth);
+      final overflows = painter.didExceedMaxLines;
+      final lines = overflows ? painter.computeLineMetrics() : null;
+      final lastStart = lines == null || lines.length < maxLines
+          ? 0
+          : painter
+              .getPositionForOffset(Offset(
+                  0, lines[maxLines - 1].baseline - lines[maxLines - 1].ascent / 2))
+              .offset;
+      painter.dispose();
+      if (!overflows || lastStart <= 0) {
+        return Text(text,
+            style: style,
+            maxLines: maxLines,
+            softWrap: maxLines > 1,
+            overflow: TextOverflow.fade);
+      }
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(text.substring(0, lastStart).trimRight(),
+              style: style, maxLines: maxLines - 1),
+          Text(text.substring(lastStart).trimLeft(),
+              style: style,
+              maxLines: 1,
+              softWrap: false,
+              overflow: TextOverflow.fade),
+        ],
+      );
+    });
   }
 }

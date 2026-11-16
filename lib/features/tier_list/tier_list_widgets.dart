@@ -41,6 +41,13 @@ abstract final class TierListSwitches {
   /// The Gauntlet template (tier_list_gauntlet.dart): one challenger
   /// against five phases.
   static const bool gauntlet = true;
+
+  /// The Gauntlet at larger text (LG phone check, 2026-11-16, 1.1x): its
+  /// title, in the editor and on the hub's card, keeps a short last word
+  /// with the word before it ("go?" was
+  /// left alone on a line), and the coral "Falls" seal keeps its size, as
+  /// "Beats" does, so it stays in its 64 dp slot. Off: as they were.
+  static const bool gauntletFit = true;
 }
 
 /// A tier colour.

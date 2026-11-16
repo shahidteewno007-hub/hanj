@@ -441,7 +441,10 @@ class _SavedListCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(list.title,
+                    Text(
+                        TierListSwitches.gauntletFit && list.isGauntlet
+                            ? keepShortLastWord(list.title)
+                            : list.title,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: AppTheme.hankoSerif(fontSize: 17, height: 1.2)),

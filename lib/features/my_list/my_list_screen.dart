@@ -62,6 +62,21 @@ class _MyListScreenState extends State<MyListScreen> {
   /// 7f3afdc back.
   static const bool _heldStream = true;
 
+  /// An empty filter says what's empty (LG phone check, 2026-11-16: on
+  /// Completed, with a show on the list, it said "Add some anime to get
+  /// started"). That stays for All. False is that line on every filter.
+  static const bool _emptyPerFilter = true;
+
+  String get _emptyLine => !_emptyPerFilter
+      ? 'Add some anime to get started'
+      : switch (_selectedStatus) {
+          'WATCHING' => 'Nothing you’re watching yet',
+          'COMPLETED' => 'Nothing completed yet',
+          'PLAN_TO_WATCH' => 'Nothing planned yet',
+          'DROPPED' => 'Nothing dropped',
+          _ => 'Add some anime to get started',
+        };
+
   // _heldStream: the stream build() hands StreamBuilder.
   Stream<QuerySnapshot>? _animeList;
 
@@ -536,7 +551,7 @@ class _MyListScreenState extends State<MyListScreen> {
                     Text(
                       _searchQuery.isNotEmpty
                           ? 'No results for "$_searchQuery"'
-                          : 'Add some anime to get started',
+                          : _emptyLine,
                       textAlign: TextAlign.center,
                       style: AppTheme.hankoSans(color: AppTheme.hankoStone),
                     ),
@@ -908,7 +923,7 @@ class _MyListScreenState extends State<MyListScreen> {
                                 Text(
                                   _searchQuery.isNotEmpty
                                       ? 'No results for "$_searchQuery"'
-                                      : 'Add some anime to get started',
+                                      : _emptyLine,
                                   style: AppTheme.sans(
                                       fontSize: 14,
                                       color: AppTheme.textMuted),

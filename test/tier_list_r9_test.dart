@@ -146,7 +146,12 @@ void main() {
         });
         await _show(tester, const TierListHomeScreen());
         expect(_drain(tester), isEmpty);
-        expect(find.text('How far does Naruto Uzumaki go?'), findsOneWidget);
+        // The card keeps a short last word with the one before it (lg-batch-9b).
+        expect(
+            find.text(TierListSwitches.gauntletFit
+                ? 'How far does Naruto Uzumaki\u00A0go?'
+                : 'How far does Naruto Uzumaki go?'),
+            findsOneWidget);
         expect(find.textContaining('Falls at Phase 3'), findsOneWidget);
         await tester.drag(find.byType(CustomScrollView), const Offset(0, -600));
         await tester.pump(const Duration(milliseconds: 400));
