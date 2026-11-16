@@ -470,7 +470,7 @@ class _TierGauntletScreenState extends State<TierGauntletScreen> {
               asking
                   ? 'How far does your pick go?'
                   : TierListSwitches.gauntletFit
-                      ? _keepLastWord(_list.title)
+                      ? keepShortLastWord(_list.title)
                       : _list.title,
               style: AppTheme.hankoSerif(
                 fontSize: 24,
@@ -788,7 +788,7 @@ class _EmptySlot extends StatelessWidget {
 /// and a dash on one never reached.
 /// [title] with a short last word (three letters or fewer, "go?") joined
 /// to the word before it by a no-break space, as Up next does.
-String _keepLastWord(String title) {
+String keepShortLastWord(String title) {
   final last = title.lastIndexOf(' ');
   if (last <= 0 || title.length - last - 1 > 3) return title;
   return '${title.substring(0, last)}\u00A0${title.substring(last + 1)}';
