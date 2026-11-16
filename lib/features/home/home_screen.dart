@@ -399,6 +399,14 @@ class _HomeScreenState extends State<HomeScreen> {
     if (mounted) _reloadList();
   }
 
+  /// A +1 on Continue that didn't finish the show (_ContinueCard.onProgress).
+  /// Its card already wrote the new episode into the entry's map, which
+  /// _continueWatching shares, so a rebuild is all Up next needs: it picks
+  /// again, and a new show fades in (_buildUpNext). No re-read.
+  void _progressed() {
+    if (mounted) setState(() {});
+  }
+
   bool _reloading = false;
 
   /// Re-reads the list from the device's cache, with estimated server
@@ -1033,6 +1041,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             // cache, so the row leaves with no AniList
                             // request (it used to re-run the whole load).
                             onUpdated: _reloadList,
+                            onProgress: _progressed,
                             aired: _airedFor(data),
                             open: _open,
                           ),
@@ -1564,6 +1573,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   data: data,
                   firestoreService: _firestoreService,
                   onUpdated: _reloadList,
+                  onProgress: _progressed,
                   aired: _airedFor(data),
                   open: _open,
                 ),
@@ -4262,6 +4272,11 @@ class _ContinueCard extends StatefulWidget {
   final FirestoreService firestoreService;
   final VoidCallback onUpdated;
 
+  /// A +1 that doesn't finish the show has landed, and [data] holds the new
+  /// episode. Home rebuilds so Up next picks again: a +1 that catches you
+  /// up moves the hero on (upnext-plus-one).
+  final VoidCallback? onProgress;
+
   /// Episodes aired so far, from Home's airing batch (next episode − 1),
   /// or null when the batch knows nothing about this show.
   final int? aired;
@@ -4272,6 +4287,7 @@ class _ContinueCard extends StatefulWidget {
     required this.data,
     required this.firestoreService,
     required this.onUpdated,
+    this.onProgress,
     required this.aired,
     required this.open,
   });
@@ -4395,6 +4411,9 @@ class _ContinueCardState extends State<_ContinueCard> {
         // onUpdated triggers _loadData() in HomeScreen, which re-queries
         // getAnimeByStatus('WATCHING') — COMPLETED entries won't appear.
         widget.onUpdated();
+      } else {
+        // Not finished: no reload, so tell Home the map moved on.
+        widget.onProgress?.call();
       }
     } catch (_) {
       // Revert on failure.
