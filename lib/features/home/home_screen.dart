@@ -29,6 +29,7 @@ import '../achievements/achievements_screen.dart' show AchievementSlip;
 import '../anime_detail/anime_detail_screen.dart';
 import 'arcs_this_week.dart';
 import 'tonight_watch.dart';
+import 'up_next.dart';
 import 'upcoming_anime.dart';
 import '../social/arcs_hanko.dart' show ArcsIndexScreen;
 import '../social/arcs_screen.dart' show ArcsScreen;
@@ -118,6 +119,23 @@ class _HomeScreenState extends State<HomeScreen> {
   // was on abf3671, and no arcs are read.
   static const bool _arcsThisWeek = true;
 
+  // ── Up next, in place of the lede (up-next, 2026-11-14) ──
+  // Shahid, 2026-11-14: "why do I need to see what I last did? ... we need
+  // to replace it with something useful." The top of Home now says what to
+  // watch next: the show you watched most recently that has an episode you
+  // can watch now, its next episode, and whether it's out (_buildUpNext),
+  // on that show's colour and beside its print, with no seal. Under it, a
+  // show you're watching that airs later today. From the list and the
+  // airing batch Home already loads: no new request. Off, the lede about
+  // your newest rating, as on 314a313.
+  static const bool _upNextLede = true;
+
+  /// The airing batch's last answer for each user, so a Home rebuilt by a
+  /// tab switch picks the same up-next show from its first frame instead of
+  /// changing it when the batch lands (up-next). A display cache only: the
+  /// batch is sent as before, and its answer replaces this.
+  static final Map<String, Map<int, Map<String, dynamic>>> _airingSeen = {};
+
   /// A print's Hero tag on Home (P6): its place and its show, since one show
   /// can lie in two places at once (the hero's fallback is the shelf's first
   /// show). Null, no Hero, with the flight off.
@@ -200,6 +218,10 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    if (_upNextLede) {
+      final seen = _airingSeen[FirebaseAuth.instance.currentUser?.uid];
+      if (seen != null) _airing = seen;
+    }
     _loadData();
   }
 
@@ -501,6 +523,8 @@ class _HomeScreenState extends State<HomeScreen> {
       if (airing != null) {
         _airing = airing;
         _airingAsked = ids;
+        final uid = FirebaseAuth.instance.currentUser?.uid;
+        if (_upNextLede && uid != null) _airingSeen[uid] = airing;
       }
       _airingFailed = airing == null;
       _airingLoading = false;
@@ -718,10 +742,13 @@ class _HomeScreenState extends State<HomeScreen> {
   /// watching (DESIGN.md §9.5). Null, so no print and no field, with Print
   /// Room off, while the list loads or when it couldn't be read, and when
   /// that show has no cover.
+  /// With Up next (up-next) it's the up-next show's instead (_upNext).
   String? _heroCover() {
     if (!_printRoom || _isLoading || _listFailed) return null;
-    final entry = _newestRating() ??
-        (_continueWatching.isEmpty ? null : _continueWatching.first);
+    final entry = _upNextLede
+        ? _upNext()?.entry
+        : _newestRating() ??
+            (_continueWatching.isEmpty ? null : _continueWatching.first);
     final url = (entry?['imageUrl'] as String?)?.trim() ?? '';
     return url.isEmpty ? null : url;
   }
@@ -1634,7 +1661,8 @@ class _HomeScreenState extends State<HomeScreen> {
   /// its picture in the first frame when you open it from the lede. Errors
   /// are swallowed here: reported, they would reach Crashlytics as fatal.
   void _precacheLede() {
-    final url = _newestRating()?['imageUrl'] as String?;
+    final url = (_upNextLede ? _upNext()?.entry : _newestRating())?['imageUrl']
+        as String?;
     if (url == null || url.isEmpty || !mounted) return;
     precacheImage(CachedNetworkImageProvider(url), context,
         onError: (_, _) {});
@@ -1697,7 +1725,14 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
 
-    final rated = _newestRating();
+    // Up next (up-next): what to watch next, in place of the lede. With
+    // nothing on Continue, the lines below, which say nothing of the past.
+    if (_upNextLede) {
+      final upNext = _buildUpNext(style);
+      if (upNext != null) return upNext;
+    }
+
+    final rated = _upNextLede ? null : _newestRating();
     if (rated != null) return _buildLede(rated, style);
 
     // count is how many WATCHING shows are on the list, not episodes that
@@ -1730,6 +1765,109 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
     return Text(line, style: style);
+  }
+
+  /// The show the top of Home is about with Up next on (up-next): the one
+  /// you watched most recently that you can watch now (UpNext.pick).
+  UpNext? _upNext() => UpNext.pick(_continueWatching,
+      airedFor: _airedFor,
+      nextAiringFor: _nextAiringFor,
+      now: DateTime.now());
+
+  /// The airing batch's next episode for [data]'s show, and when it airs.
+  /// Null when the batch knows nothing about it, as for _airedFor.
+  NextAiring? _nextAiringFor(Map<String, dynamic> data) {
+    if (_isMalImport(data)) return null;
+    final id = int.tryParse((data['animeId'] ?? data['id'] ?? '').toString());
+    final airing = id == null ? null : _airing[id];
+    final episode = (airing?['episode'] as num?)?.toInt();
+    final airingAt = (airing?['airingAt'] as num?)?.toInt();
+    if (episode == null || airingAt == null) return null;
+    return (
+      episode: episode,
+      at: DateTime.fromMillisecondsSinceEpoch(airingAt * 1000),
+    );
+  }
+
+  /// The top of Home with Up next on (up-next; up_next.dart): what to watch
+  /// next, beside that show's print on its colour field, the whole hero one
+  /// button that opens the show (as the lede was), with no seal. Under it,
+  /// a show you're watching that airs later today, a button of its own.
+  /// Null with nothing on Continue. A new up-next show (after +1 catches you
+  /// up, or when the airing batch lands) fades in, at once with Remove
+  /// animations on.
+  Widget? _buildUpNext(TextStyle style) {
+    final upNext = _upNext();
+    if (upNext == null) return null;
+    final now = DateTime.now();
+    final entry = upNext.entry;
+    final cover = _heroCover();
+    final onPrint = cover != null;
+    final words = UpNextWords(
+      upNext: upNext,
+      now: now,
+      sentenceStyle:
+          onPrint ? style.copyWith(fontSize: _ledeBesidePrint) : style,
+    );
+    final hero = Semantics(
+      container: true,
+      button: true,
+      label: upNext.spoken(now),
+      onTapHint: 'open ${upNext.title}',
+      child: _inkOnField(
+        onPrint,
+        InkWell(
+          onTap: () => _openEntry(entry, place: onPrint ? 'hero' : null),
+          splashFactory: NoSplash.splashFactory,
+          highlightColor: AppTheme.hankoPressWash,
+          hoverColor: AppTheme.hankoPressWash,
+          child: ExcludeSemantics(
+            child: ConstrainedBox(
+              constraints:
+                  const BoxConstraints(minHeight: AppTheme.hankoTouch),
+              child: onPrint
+                  ? _HeroRow(
+                      sentence: words,
+                      url: cover,
+                      heroTag: _printTag('hero', upNext.id),
+                    )
+                  : words,
+            ),
+          ),
+        ),
+      ),
+    );
+    final tonight = UpNextTonight.pick(_continueWatching,
+        except: entry, nextAiringFor: _nextAiringFor, now: now);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        AnimatedSwitcher(
+          duration: MediaQuery.disableAnimationsOf(context)
+              ? Duration.zero
+              : const Duration(milliseconds: 220),
+          layoutBuilder: (current, previous) => Stack(
+            alignment: Alignment.topLeft,
+            clipBehavior: Clip.none,
+            children: [...previous, ?current],
+          ),
+          child: KeyedSubtree(
+            key: ValueKey('home-up-next-${upNext.id}'),
+            child: hero,
+          ),
+        ),
+        if (tonight != null) ...[
+          const SizedBox(height: 8),
+          _inkOnField(
+            onPrint,
+            UpNextTonightLine(
+              tonight: tonight,
+              onTap: () => _openEntry(tonight.entry),
+            ),
+          ),
+        ],
+      ],
+    );
   }
 
   Widget _buildLede(Map<String, dynamic> entry, TextStyle style) {
