@@ -120,6 +120,41 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
   static String _personName(String name) =>
       _tidyNames ? name.trim().replaceAll(RegExp(r'\s+'), ' ') : name;
 
+  // The Cast tab's staff start with the roles that made the show (LG phone
+  // check, 2026-11-16: AniList's order opened on "ADR Producer (English)"
+  // and "ADR Director (French)"): director, series composition, original
+  // creator, character design, music, in that order, then the rest as
+  // AniList gives them. A role's note in brackets ("Director (eps 1-12)")
+  // doesn't change its place. False is AniList's order.
+  static const bool _keyStaffFirst = true;
+  static const _keyRoles = [
+    'chief director',
+    'director',
+    'series composition',
+    'original creator',
+    'original story',
+    'character design',
+    'music',
+  ];
+
+  static List _staffInOrder(List staff) {
+    if (!_keyStaffFirst) return staff;
+    int rank(Object? e) {
+      final role = e is Map ? e['role'] as String? : null;
+      if (role == null) return _keyRoles.length;
+      final base = role.replaceFirst(RegExp(r'\s*\(.*\)\s*$'), '').trim().toLowerCase();
+      final i = _keyRoles.indexOf(base);
+      return i < 0 ? _keyRoles.length : i;
+    }
+    // A stable sort: within a rank, AniList's order.
+    final indexed = [for (var i = 0; i < staff.length; i++) (i, staff[i])];
+    indexed.sort((a, b) {
+      final r = rank(a.$2).compareTo(rank(b.$2));
+      return r != 0 ? r : a.$1.compareTo(b.$1);
+    });
+    return [for (final e in indexed) e.$2];
+  }
+
   final _firestoreService = FirestoreService();
   final _aniListService   = AnilistService();
   final _confettiKey      = GlobalKey<ConfettiOverlayState>();
@@ -4862,7 +4897,7 @@ class _CastTab extends StatelessWidget {
   Widget build(BuildContext context) {
     if (isLoading) return const Center(child: CircularProgressIndicator(color: AppTheme.hankoWashi, strokeWidth: 1.5));
     final characters = staffData?['characters']?['edges'] as List? ?? [];
-    final staff      = staffData?['staff']?['edges'] as List? ?? [];
+    final staff      = _AnimeDetailScreenState._staffInOrder(staffData?['staff']?['edges'] as List? ?? []);
 
     // Visible empty state so the tab is never just blank.
     if (characters.isEmpty && staff.isEmpty) {
