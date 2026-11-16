@@ -78,6 +78,11 @@ class TierCharacterPickerScreen extends StatefulWidget {
 }
 
 class _TierCharacterPickerScreenState extends State<TierCharacterPickerScreen> {
+  /// The keyboard goes as the picker closes (LG phone check, 2026-11-16: it
+  /// stayed up 2-5 s over the editor after a pick). False leaves it to the
+  /// route's own focus handover, as before.
+  static const bool _dropKeyboard = true;
+
   final _field = TextEditingController();
   final _fieldFocus = FocusNode();
   Timer? _debounce;
@@ -249,6 +254,7 @@ class _TierCharacterPickerScreenState extends State<TierCharacterPickerScreen> {
     return PopScope(
       canPop: _open == null,
       onPopInvokedWithResult: (didPop, _) {
+        if (didPop && _dropKeyboard) FocusManager.instance.primaryFocus?.unfocus();
         if (!didPop && _open != null) setState(() => _open = null);
       },
       child: Scaffold(

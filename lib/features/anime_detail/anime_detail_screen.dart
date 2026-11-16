@@ -5248,7 +5248,11 @@ class _EpisodeInputDialogState extends State<_EpisodeInputDialog> {
     // keyboard — so the two animations play in sequence, not on top of
     // each other (which is what reads as lag).
     Future.delayed(const Duration(milliseconds: 260), () {
-      if (mounted) _focusNode.requestFocus();
+      // Not once it is closing: a Cancel inside the 260 ms raised the
+      // keyboard over the page the dialog went back to.
+      if (mounted && (!_dropKeyboard || (ModalRoute.of(context)?.isCurrent ?? true))) {
+        _focusNode.requestFocus();
+      }
     });
   }
 
@@ -5259,10 +5263,15 @@ class _EpisodeInputDialogState extends State<_EpisodeInputDialog> {
     super.dispose();
   }
 
+  /// The keyboard goes as the dialog closes (LG phone check, 2026-11-16:
+  /// it stayed up 2-5 s over Detail after Save or Cancel). False leaves it
+  /// to the route's own focus handover, as before.
+  static const bool _dropKeyboard = true;
+
   @override
   Widget build(BuildContext context) {
     final total = widget.total;
-    return AlertDialog(
+    final dialog = AlertDialog(
       backgroundColor: AppTheme.surfaceMid,
       title: Text('Current episode',
           style: AppTheme.serif(fontSize: 18, weight: FontWeight.w600)),
@@ -5322,6 +5331,13 @@ class _EpisodeInputDialogState extends State<_EpisodeInputDialog> {
                   color: AppTheme.hankoWashi, weight: FontWeight.w600)),
         ),
       ],
+    );
+    if (!_dropKeyboard) return dialog;
+    return PopScope(
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) FocusManager.instance.primaryFocus?.unfocus();
+      },
+      child: dialog,
     );
   }
 }
