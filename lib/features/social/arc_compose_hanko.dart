@@ -16,12 +16,20 @@ import 'arcs_hanko.dart';
 // says why under the action.
 // ─────────────────────────────────────────────────────────────
 
+/// Every arc sheet takes the screen's width (LG phone check, 2026-11-16: at
+/// 411 dp the show picker hugged its words, about 305 dp, centred). The
+/// modal sheet's width is only a maximum, so a sheet whose content is
+/// narrower shrank to it. False is the sheet as it was.
+const bool _fullWidthSheets = true;
+
 Widget _sheet(BuildContext context, {required Widget child}) {
   final media = MediaQuery.of(context);
   return Padding(
     padding: EdgeInsets.only(bottom: media.viewInsets.bottom),
     child: ConstrainedBox(
-      constraints: BoxConstraints(maxHeight: media.size.height * 0.92),
+      constraints: BoxConstraints(
+          minWidth: _fullWidthSheets ? double.infinity : 0,
+          maxHeight: media.size.height * 0.92),
       child: Material(
         color: AppTheme.hankoSumi2,
         shape: const RoundedRectangleBorder(
