@@ -30,6 +30,11 @@ class _PulseScreenState extends State<PulseScreen>
   /// in place of Shimmer, which moves even with Remove animations on. False
   /// gives back 07faabe's Pulse as it was.
   static const bool _printRoom = true;
+
+  /// A trailer's title ends its third line with an ellipsis, as Pulse's
+  /// other printed rows do (LG phone check, 2026-11-16: the fade on a long
+  /// title's third line read as letters cut in half). False is the fade.
+  static const bool _titleEllipsis = true;
   static const _printedTabs = ['For you', 'Trailers', 'Airing', 'Upcoming'];
 
   late final TabController _tabController;
@@ -482,7 +487,9 @@ class _TrailerCard extends StatelessWidget {
                             Text(
                               card.title,
                               maxLines: 3,
-                              overflow: TextOverflow.fade,
+                              overflow: _PulseScreenState._titleEllipsis
+                                  ? TextOverflow.ellipsis
+                                  : TextOverflow.fade,
                               style: AppTheme.hankoSerif(
                                   fontSize: 17, height: 1.25),
                             ),
