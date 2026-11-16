@@ -63,6 +63,19 @@ class OfflineBanner extends StatefulWidget {
   final Widget child;
   const OfflineBanner({super.key, required this.child});
 
+  /// The page's top inset is the device's (top-inset, 2026-11-16). The pill
+  /// used to sit in a Column above the page and slide out of sight, which
+  /// kept its height: every tab started ~36 dp down whatever the status bar
+  /// was, a sumi strip under a 29 dp one (LG V60) and the page under a 40 dp
+  /// one (CPH2573), and the pill itself showed mostly under the status bar.
+  /// Now the pill takes no room while it's hidden and the page gets the
+  /// status bar's height as its top padding. Shown, the pill runs under the
+  /// status bar with its words below it, pushes the page down by its own
+  /// height and takes the page's top padding over, so nothing is covered
+  /// and nothing is inset twice. Home and Profile read this to pad by the
+  /// status bar themselves. false is the reserved height, as before.
+  static const bool deviceInset = true;
+
   @override
   State<OfflineBanner> createState() => _OfflineBannerState();
 }
@@ -71,6 +84,8 @@ class _OfflineBannerState extends State<OfflineBanner>
     with SingleTickerProviderStateMixin {
   late AnimationController _ctrl;
   late Animation<Offset> _slide;
+  // How much of the pill shows (deviceInset): 0 hidden, 1 all of it.
+  late Animation<double> _shown;
   late StreamSubscription<bool> _sub;
 
   bool _isOnline = true;
@@ -87,6 +102,7 @@ class _OfflineBannerState extends State<OfflineBanner>
       begin: const Offset(0, -1),
       end:   Offset.zero,
     ).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOut));
+    _shown = CurvedAnimation(parent: _ctrl, curve: Curves.easeOut);
 
     if (!_isOnline) _ctrl.forward();
 
@@ -113,6 +129,7 @@ class _OfflineBannerState extends State<OfflineBanner>
 
   @override
   Widget build(BuildContext context) {
+    if (OfflineBanner.deviceInset) return _buildOverInset(context);
     return Column(
       children: [
         SlideTransition(
@@ -148,6 +165,84 @@ class _OfflineBannerState extends State<OfflineBanner>
         ),
         Expanded(child: widget.child),
       ],
+    );
+  }
+
+  /// The pill and the page with the device's inset (deviceInset). The pill
+  /// is revealed from its foot, so it comes down from the top as the slide
+  /// did. While a fraction f of it shows, the page's top padding is (1 - f)
+  /// of the status bar's, so the page's content moves down by exactly the
+  /// pill's own height, smoothly, without measuring it. Hidden, the page's
+  /// MediaQuery equals the window's and nothing under it rebuilds.
+  Widget _buildOverInset(BuildContext context) {
+    final media = MediaQuery.of(context);
+    final top = media.padding.top;
+    return AnimatedBuilder(
+      animation: _shown,
+      child: widget.child,
+      builder: (context, page) {
+        final shown = _shown.value.clamp(0.0, 1.0);
+        final taken = top * shown;
+        return Column(
+          children: [
+            ClipRect(
+              child: Align(
+                alignment: Alignment.bottomCenter,
+                heightFactor: shown,
+                // A hidden pill isn't read out, as the slid-away one was.
+                child: ExcludeSemantics(
+                  excluding: shown == 0,
+                  child: _insetPill(top),
+                ),
+              ),
+            ),
+            Expanded(
+              child: MediaQuery(
+                data: media.copyWith(
+                  padding: media.padding.copyWith(top: top - taken),
+                  viewPadding: media.viewPadding.copyWith(
+                      top: (media.viewPadding.top - taken)
+                          .clamp(0.0, double.infinity)),
+                ),
+                child: page!,
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  /// build()'s pill, with [top] more room above its words: its colour runs
+  /// under the status bar and its words sit below it.
+  Widget _insetPill(double top) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
+      width: double.infinity,
+      padding: EdgeInsets.fromLTRB(16, 8 + top, 16, 8),
+      color: _isOnline
+          ? AppTheme.completed.withValues(alpha: 0.9)
+          : AppTheme.dropped.withValues(alpha: 0.9),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            _isOnline
+                ? Icons.wifi_rounded
+                : Icons.wifi_off_rounded,
+            color: Colors.white,
+            size: 14,
+          ),
+          const SizedBox(width: 8),
+          Text(
+            _isOnline ? 'Back online' : 'You\'re offline',
+            style: AppTheme.sans(
+                fontSize: 12,
+                color: Colors.white,
+                weight: FontWeight.w500),
+          ),
+        ],
+      ),
     );
   }
 }
