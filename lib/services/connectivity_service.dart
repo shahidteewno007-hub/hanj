@@ -39,11 +39,13 @@ class ConnectivityService {
     }
   }
 
+  // connectivity_plus names a transport only for a network that has
+  // internet (NET_CAPABILITY_INTERNET) and says `none` otherwise, so any
+  // other answer is online. Counting only mobile, Wi-Fi and Ethernet read a
+  // VPN-only connection (the test phone's USB internet, gnirehtet) as
+  // offline, and Bluetooth tethering too.
   bool _isConnected(List<ConnectivityResult> results) {
-    return results.any((r) =>
-        r == ConnectivityResult.mobile ||
-        r == ConnectivityResult.wifi   ||
-        r == ConnectivityResult.ethernet);
+    return results.any((r) => r != ConnectivityResult.none);
   }
 
   void dispose() => _controller.close();
