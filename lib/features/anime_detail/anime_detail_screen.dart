@@ -111,6 +111,15 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
   // title staying as it was until it scrolls away.
   static const bool _titleHandsOver = true;
 
+  // People's names as AniList gives them, trimmed and with runs of spaces
+  // made one (LG phone check, 2026-11-16: "Directed by Daisuke  Sakou" was
+  // indented and had a double space). The header's director, the Cast
+  // tab's characters and voices, and its staff. False shows them as given.
+  static const bool _tidyNames = true;
+
+  static String _personName(String name) =>
+      _tidyNames ? name.trim().replaceAll(RegExp(r'\s+'), ' ') : name;
+
   final _firestoreService = FirestoreService();
   final _aniListService   = AnilistService();
   final _confettiKey      = GlobalKey<ConfettiOverlayState>();
@@ -1370,7 +1379,8 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
       for (final e in edges) {
         if (e is! Map || (e['role'] as String?)?.trim().toLowerCase() != role) continue;
         final id = e['node']?['id'] as int?;
-        final name = e['node']?['name']?['full'] as String?;
+        final full = e['node']?['name']?['full'] as String?;
+        final name = full == null ? null : _personName(full);
         if (id != null && name != null && name.isNotEmpty) return (id: id, name: name);
       }
     }
@@ -4909,16 +4919,18 @@ class _CastRow extends StatelessWidget {
     final vas  = edge['voiceActors'] as List? ?? [];
     final va   = vas.isNotEmpty ? vas[0] as Map : null;
     final vaId   = va?['id'] as int?;
-    final vaName = va?['name']?['full'] as String? ?? '';
+    final vaName = _AnimeDetailScreenState._personName(va?['name']?['full'] as String? ?? '');
+    final charName = char?['name']?['full'] as String?;
+    final shownChar = charName == null ? null : _AnimeDetailScreenState._personName(charName);
     // Hanko: a plain row, no card; the voice actor's name is a link in
     // washi with the edge underline, not coral.
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(children: [
-        _Avatar(url: char?['image']?['medium'] as String?, name: char?['name']?['full'] as String? ?? '?'),
+        _Avatar(url: char?['image']?['medium'] as String?, name: shownChar ?? '?'),
         const SizedBox(width: 12),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(char?['name']?['full'] as String? ?? '—', style: AppTheme.hankoSans(weight: FontWeight.w500), maxLines: 1, overflow: TextOverflow.ellipsis),
+          Text(shownChar ?? '—', style: AppTheme.hankoSans(weight: FontWeight.w500), maxLines: 1, overflow: TextOverflow.ellipsis),
           Text('Character', style: AppTheme.hankoSans(fontSize: AppTheme.hankoLabelSize, color: AppTheme.hankoStone)),
         ])),
         if (va != null) ...[
@@ -4979,6 +4991,8 @@ class _StaffRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final node = edge['node'] as Map?;
     final role = edge['role'] as String? ?? '—';
+    final full = node?['name']?['full'] as String?;
+    final name = full == null ? null : _AnimeDetailScreenState._personName(full);
     // Its own semantics node (container), named by the name and role, with
     // the InkWell's tap and focus inside it (question 139, R5B's pattern):
     // with a GestureDetector the keyboard couldn't reach it. The row's words
@@ -4989,11 +5003,11 @@ class _StaffRow extends StatelessWidget {
       child: Semantics(
         container: true,
         button: true,
-        label: '${node?['name']?['full'] as String? ?? 'Unknown'}, $role',
+        label: '${name ?? 'Unknown'}, $role',
         child: Material(
           type: MaterialType.transparency,
           child: InkWell(
-            onTap: () { final id = node?['id'] as int?; final name = node?['name']?['full'] as String? ?? ''; if (id != null) Navigator.push(context, MaterialPageRoute(builder: (_) => StaffDetailScreen(staffId: id, staffName: name))); },
+            onTap: () { final id = node?['id'] as int?; if (id != null) Navigator.push(context, MaterialPageRoute(builder: (_) => StaffDetailScreen(staffId: id, staffName: name ?? ''))); },
             splashFactory: NoSplash.splashFactory,
             highlightColor: AppTheme.hankoPressWash,
             child: ExcludeSemantics(
@@ -5002,10 +5016,10 @@ class _StaffRow extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(vertical: 4),
                 color: Colors.transparent,
                 child: Row(children: [
-                  _Avatar(url: node?['image']?['medium'] as String?, name: node?['name']?['full'] as String? ?? '?'),
+                  _Avatar(url: node?['image']?['medium'] as String?, name: name ?? '?'),
                   const SizedBox(width: 12),
                   Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(node?['name']?['full'] as String? ?? '—', style: AppTheme.hankoSans(weight: FontWeight.w500)),
+                    Text(name ?? '—', style: AppTheme.hankoSans(weight: FontWeight.w500)),
                     Text(role, style: AppTheme.hankoSans(fontSize: AppTheme.hankoLabelSize, color: AppTheme.hankoStone)),
                   ])),
                   const Icon(Icons.chevron_right_sharp, color: AppTheme.hankoStone, size: 20),
