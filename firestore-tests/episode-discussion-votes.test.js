@@ -191,11 +191,12 @@ test('ALLOWS a voter to read their own record — _loadMyVote', async () => {
   assert.equal(snap.data().dir, 1);
 });
 
-test('ALLOWS the author editing her own comment text', async () => {
-  // No edit UI exists; this is the old rule's intent, kept.
+test('DENIES the author editing her own comment text (closed, code batch 2)', async () => {
+  // No edit UI exists. The old rule's intent is kept behind
+  // discussionsOpen(); while Discussion is hidden no text changes (LR-005).
   await seed('r5_edit');
   const db = testEnv.authenticatedContext(ALICE).firestore();
-  await assertSucceeds(
+  await assertFails(
     updateDoc(comment(db, 'r5_edit'), { commentText: 'edited', containsSpoilers: true }),
   );
 });
@@ -319,9 +320,9 @@ const fresh = (uid, extra = {}) => ({
   ...extra,
 });
 
-test('ALLOWS a new comment with zero counters and the server\'s timestamp', async () => {
+test('DENIES even a well-formed new comment (closed, code batch 2)', async () => {
   const db = testEnv.authenticatedContext(BOB).firestore();
-  await assertSucceeds(addDoc(collection(db, 'episodeDiscussions'), fresh(BOB)));
+  await assertFails(addDoc(collection(db, 'episodeDiscussions'), fresh(BOB)));
 });
 
 test('DENIES a new comment that starts with votes', async () => {

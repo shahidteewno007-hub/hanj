@@ -155,14 +155,18 @@ test('ALLOWS a signed-in user to load a thread — the screen\'s own query', asy
   assert.ok(snap.docs.some((d) => d.id === 'd13_legacy'));
 });
 
-test('ALLOWS the fixed client\'s comment', async () => {
+// Code batch 2 (LR-005) closes discussions to new comments while Discussion
+// is hidden, so the three writes the D13 fix allowed are now refused too.
+// discussionsOpen() in the rules gives them back.
+
+test('DENIES the fixed client\'s comment (closed, code batch 2)', async () => {
   const db = testEnv.authenticatedContext(ALICE).firestore();
-  await assertSucceeds(addDoc(collection(db, 'episodeDiscussions'), clientComment(ALICE)));
+  await assertFails(addDoc(collection(db, 'episodeDiscussions'), clientComment(ALICE)));
 });
 
-test('ALLOWS the fixed client\'s comment with no displayName (\'Anonymous\')', async () => {
+test('DENIES the fixed client\'s comment with no displayName (closed, code batch 2)', async () => {
   const db = testEnv.authenticatedContext(BOB).firestore();
-  await assertSucceeds(
+  await assertFails(
     addDoc(
       collection(db, 'episodeDiscussions'),
       clientComment(BOB, { userName: 'Anonymous' }),
@@ -170,9 +174,9 @@ test('ALLOWS the fixed client\'s comment with no displayName (\'Anonymous\')', a
   );
 });
 
-test('ALLOWS a reply — a comment with a parentId', async () => {
+test('DENIES a reply — a comment with a parentId (closed, code batch 2)', async () => {
   const db = testEnv.authenticatedContext(BOB).firestore();
-  await assertSucceeds(
+  await assertFails(
     addDoc(
       collection(db, 'episodeDiscussions'),
       clientComment(BOB, { userName: 'Bob', parentId: 'd13_legacy' }),
@@ -180,7 +184,7 @@ test('ALLOWS a reply — a comment with a parentId', async () => {
   );
 });
 
-test('ALLOWS a signed-in user to read a review', async () => {
+test('DENIES a signed-in user reading a review (closed, code batch 2, LR-020)', async () => {
   const db = testEnv.authenticatedContext(BOB).firestore();
-  await assertSucceeds(getDoc(doc(db, 'reviews', 'd13_review')));
+  await assertFails(getDoc(doc(db, 'reviews', 'd13_review')));
 });
