@@ -587,19 +587,36 @@ service cloud.firestore {
         && resource.data.authorId == request.auth.uid;
     }
 
-    // ── Reports (arcs redesign) ──
-    // Create-only: anyone signed in can report a post or reply in an arc, as
-    // themselves. Nobody reads reports in the app; they're read in the
-    // Firebase console.
+    // ── Reports (arcs redesign; code batch 2) ──
+    // Create-only: anyone signed in can report, as themselves, a post or
+    // reply in an arc, an arc (its name and description), or a person
+    // (code batch 2, LR-006). A person is `users/{uid}`, never yourself, and
+    // may name `from`, the post or reply they were reported from, so the
+    // console shows what they wrote. 'name' is a reason for a person only.
+    // Nobody reads reports in the app; they're read in the Firebase console.
     match /reports/{reportId} {
+      function rep() { return request.resource.data; }
+      function arcsPath(x) {
+        return x is string && x.size() <= 400
+          && x.matches('arcs/[^/]+(/posts/[^/]+(/replies/[^/]+)?)?');
+      }
+      function aboutWords() {
+        return arcsPath(rep().path)
+          && rep().reason in ['spoiler', 'spam', 'abuse']
+          && !('from' in rep());
+      }
+      function aboutPerson() {
+        return rep().path is string && rep().path.size() <= 200
+          && rep().path.matches('users/[^/]+')
+          && rep().path != 'users/' + request.auth.uid
+          && rep().reason in ['name', 'spam', 'abuse']
+          && (!('from' in rep()) || arcsPath(rep().from));
+      }
       allow create: if request.auth != null
-        && request.resource.data.keys().hasOnly(['reporter', 'path', 'reason', 'createdAt'])
-        && request.resource.data.reporter == request.auth.uid
-        && request.resource.data.path is string
-        && request.resource.data.path.size() <= 400
-        && request.resource.data.path.matches('arcs/[^/]+/posts/[^/]+(/replies/[^/]+)?')
-        && request.resource.data.reason in ['spoiler', 'spam', 'abuse']
-        && request.resource.data.createdAt == request.time;
+        && rep().keys().hasOnly(['reporter', 'path', 'reason', 'from', 'createdAt'])
+        && rep().reporter == request.auth.uid
+        && (aboutWords() || aboutPerson())
+        && rep().createdAt == request.time;
     }
   }
 }

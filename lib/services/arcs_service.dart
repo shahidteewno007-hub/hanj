@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 
 import '../core/display_name.dart';
 
@@ -688,22 +689,88 @@ class ArcsService {
     }
   }
 
-  /// Reports a post or reply by its path. Reports are create-only: nobody
-  /// reads them in the app; they're read in the Firebase console.
+  /// Reports a post, reply, arc or person by its path ([postPath],
+  /// [replyPath], [arcPath], [personPath]). [from] is where a person was
+  /// reported from (their post or reply), so the console shows what they
+  /// wrote. Reports are create-only: nobody reads them in the app; they're
+  /// read in the Firebase console.
   Future<void> report({
     required String uid,
     required String path,
     required String reason,
+    String? from,
   }) async {
     try {
       await _db.collection('reports').add({
         'reporter': uid,
         'path': path,
         'reason': reason,
+        'from': ?from,
         'createdAt': FieldValue.serverTimestamp(),
       });
     } catch (e) {
       throw _failure(e, 'Couldn\'t report');
+    }
+  }
+
+  // ── The safety kit (code batch 2, audit 7a item 7, Q179, LR-006) ───────
+  //
+  // Both live on the reader's own user document, which only they can read:
+  // `arcsRulesAt`, when they agreed to the community rules, and `blocked`,
+  // the people whose posts and replies they don't see. No server work: a
+  // block hides words from one reader; it doesn't stop anyone posting.
+
+  /// People who agreed to the rules on this run, so the record is read once.
+  static final Set<String> _agreed = <String>{};
+
+  /// Whether [uid] has agreed to the community rules. A read that fails
+  /// counts as not yet, so the rules show again rather than never.
+  Future<bool> rulesAgreed(String uid) async {
+    if (_agreed.contains(uid)) return true;
+    try {
+      final d = await _db.collection('users').doc(uid).get();
+      if (d.data()?['arcsRulesAt'] != null) _agreed.add(uid);
+    } catch (_) {}
+    return _agreed.contains(uid);
+  }
+
+  /// Stores that [uid] agreed to the rules now. Not awaited (offline it
+  /// waits for the network); a refusal is logged, never thrown, so it
+  /// can't become a fatal report.
+  void agreeToRules(String uid) {
+    _agreed.add(uid);
+    _db
+        .collection('users')
+        .doc(uid)
+        .set({'arcsRulesAt': FieldValue.serverTimestamp()},
+            SetOptions(merge: true))
+        .then((_) {},
+            onError: (Object e) => debugPrint('Rules agreement not saved: $e'));
+  }
+
+  /// The people [uid] has blocked, as their record holds them. Empty when
+  /// the record can't be read.
+  Stream<Set<String>> blocked(String uid) => _db
+      .collection('users')
+      .doc(uid)
+      .snapshots()
+      .map((d) => <String>{
+            ...((d.data()?['blocked'] as List<dynamic>?) ?? const [])
+                .whereType<String>()
+          })
+      .handleError((Object _) {});
+
+  /// Blocks [other] for [uid], or unblocks them.
+  Future<void> setBlocked(String uid, String other,
+      {required bool block}) async {
+    try {
+      await _db.collection('users').doc(uid).set({
+        'blocked': block
+            ? FieldValue.arrayUnion([other])
+            : FieldValue.arrayRemove([other]),
+      }, SetOptions(merge: true));
+    } catch (e) {
+      throw _failure(e, block ? 'Couldn\'t block' : 'Couldn\'t undo');
     }
   }
 
@@ -855,4 +922,8 @@ class ArcsService {
 
   static String replyPath(String arcId, String postId, String replyId) =>
       'arcs/$arcId/posts/$postId/replies/$replyId';
+
+  static String arcPath(String arcId) => 'arcs/$arcId';
+
+  static String personPath(String uid) => 'users/$uid';
 }

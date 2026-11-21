@@ -65,8 +65,10 @@ String arcWhen(DateTime? t, DateTime now) {
   return _date.format(t);
 }
 
-/// Shows a short message at the foot of the screen.
-void arcSay(BuildContext context, String message) {
+/// Shows a short message at the foot of the screen, with [action] (for
+/// example Undo) when given.
+void arcSay(BuildContext context, String message,
+    {String? action, VoidCallback? onAction}) {
   final m = ScaffoldMessenger.maybeOf(context);
   m?.hideCurrentSnackBar();
   m?.showSnackBar(SnackBar(
@@ -75,7 +77,206 @@ void arcSay(BuildContext context, String message) {
     shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(AppTheme.hankoRadius)),
     content: Text(message, style: AppTheme.hankoSans(height: 1.35)),
+    action: action == null || onAction == null
+        ? null
+        : SnackBarAction(
+            label: action,
+            textColor: AppTheme.hankoWashi,
+            onPressed: onAction),
   ));
+}
+
+// ─────────────────────────────────────────────────────────────
+// The safety kit (code batch 2, audit 7a item 7, Q179, LR-006): the
+// community rules once before a first post, reply or new arc; report a
+// person or an arc as well as a post; block a person. Words from the copy
+// report (05-copy-voice.md 4.4).
+// ─────────────────────────────────────────────────────────────
+
+/// Each switch false gives back Arcs as it was on main.
+class ArcSafety {
+  ArcSafety._();
+
+  /// The rules sheet before a first post, reply or "Start an arc".
+  static const bool rulesFirst = true;
+
+  /// "Report this post" with its reasons, "Report this person" and
+  /// "Report this arc", in place of the three report rows.
+  static const bool reportMore = true;
+
+  /// "Block this person", and their posts and replies hidden for you.
+  static const bool block = true;
+}
+
+/// The community rules, as the copy report gives them (4.4).
+const List<String> arcRules = [
+  'Be kind. Argue about the show, not the person.',
+  'Keep spoilers to their episode. Hanj hides a post until the reader '
+      'reaches it.',
+  'No adult content, no hate, no threats.',
+  'No spam, ads or links to pirated streams.',
+  'Hanj can remove posts and close accounts that break these rules.',
+];
+
+/// Before [uid]'s first post, reply or new arc: shows the rules once, with
+/// I agree and Not now, and stores the day they agreed on their record.
+/// True when they have agreed (now or before), so the write may go on.
+Future<bool> arcRulesFirst(BuildContext context, String uid) async {
+  if (!ArcSafety.rulesFirst) return true;
+  final svc = ArcsService.instance;
+  if (await svc.rulesAgreed(uid)) return true;
+  if (!context.mounted) return false;
+  final yes = await showModalBottomSheet<bool>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: (ctx) => const _ArcRulesSheet(),
+  );
+  if (yes != true) return false;
+  svc.agreeToRules(uid);
+  return true;
+}
+
+class _ArcRulesSheet extends StatelessWidget {
+  const _ArcRulesSheet();
+
+  @override
+  Widget build(BuildContext context) {
+    final media = MediaQuery.of(context);
+    return ConstrainedBox(
+      constraints: BoxConstraints(
+          minWidth: double.infinity, maxHeight: media.size.height * 0.92),
+      child: Material(
+        color: AppTheme.hankoSumi2,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(
+              top: Radius.circular(AppTheme.hankoSheetRadius)),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: SafeArea(
+          top: false,
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(
+                AppTheme.hankoGutter, 24, AppTheme.hankoGutter, 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Semantics(
+                  header: true,
+                  child: Text('Before you post',
+                      style: AppTheme.hankoSerif(
+                          fontSize: AppTheme.hankoFeaturedSize, height: 1.3)),
+                ),
+                const SizedBox(height: 16),
+                for (var i = 0; i < arcRules.length; i++)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: MergeSemantics(
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          SizedBox(
+                            width: 24,
+                            child: Text('${i + 1}.',
+                                style: AppTheme.hankoSans(
+                                    color: AppTheme.hankoStone,
+                                    height: 1.5)),
+                          ),
+                          Expanded(
+                            child: Text(arcRules[i],
+                                style: AppTheme.hankoSans(height: 1.5)),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                const SizedBox(height: 12),
+                ArcAction(
+                  label: 'I agree',
+                  expand: true,
+                  onTap: () => Navigator.pop(context, true),
+                ),
+                const SizedBox(height: 8),
+                ArcAction(
+                  label: 'Not now',
+                  filled: false,
+                  expand: true,
+                  onTap: () => Navigator.pop(context, false),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// What is being reported, for [arcReportReason].
+enum ArcReportKind { post, reply, person, arc }
+
+/// Asks why a [kind] is reported. Returns the reason the rules take
+/// ('spoiler', 'spam', 'abuse' or, for a person, 'name'), or null.
+Future<String?> arcReportReason(BuildContext context, ArcReportKind kind) {
+  final (title, reasons) = switch (kind) {
+    ArcReportKind.post => (
+        'Report this post?',
+        const [
+          ('spoiler', 'A spoiler that isn’t marked'),
+          ('spam', 'Spam'),
+          ('abuse', 'Abuse or hate'),
+        ]
+      ),
+    ArcReportKind.reply => (
+        'Report this reply?',
+        const [
+          ('spoiler', 'A spoiler'),
+          ('spam', 'Spam'),
+          ('abuse', 'Abuse or hate'),
+        ]
+      ),
+    ArcReportKind.person => (
+        'Report this person?',
+        const [
+          ('name', 'Their name'),
+          ('spam', 'Spam'),
+          ('abuse', 'Abuse or hate'),
+        ]
+      ),
+    ArcReportKind.arc => (
+        'Report this arc?',
+        const [
+          ('spoiler', 'Spoilers in its name or description'),
+          ('spam', 'Spam'),
+          ('abuse', 'Abuse or hate'),
+        ]
+      ),
+  };
+  return showDialog<String>(
+    context: context,
+    builder: (ctx) => SimpleDialog(
+      backgroundColor: AppTheme.hankoSumi2,
+      shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppTheme.hankoSheetRadius)),
+      title: Text(title, style: AppTheme.hankoSerif(fontSize: 18)),
+      children: [
+        for (final (value, label) in reasons)
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(ctx, value),
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+            child: Text(label, style: AppTheme.hankoSans()),
+          ),
+        SimpleDialogOption(
+          onPressed: () => Navigator.pop(ctx),
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+          child: Text('Cancel',
+              style: AppTheme.hankoSans(
+                  weight: FontWeight.w500, color: AppTheme.hankoStone)),
+        ),
+      ],
+    ),
+  );
 }
 
 /// Hanko's app bar for Arcs' pages: a Mincho title and an optional stone
@@ -458,6 +659,8 @@ class _ArcsIndexScreenState extends State<ArcsIndexScreen> {
           builder: (_) => ArcPageScreen(arcId: arc.id, initial: arc)));
 
   Future<void> _start() async {
+    final uid = _uid;
+    if (uid == null || !await arcRulesFirst(context, uid) || !mounted) return;
     final id = await showArcStartSheet(context, show: widget.show);
     if (!mounted || id == null) return;
     Navigator.push(context,
