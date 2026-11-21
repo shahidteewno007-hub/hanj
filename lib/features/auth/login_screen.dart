@@ -6,6 +6,7 @@ import 'package:google_sign_in/google_sign_in.dart'
     show GoogleSignInAuthenticationEvent, GoogleSignInAuthenticationEventSignIn;
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../widgets/google_g_logo.dart';
+import '../../core/legal_links.dart';
 import '../../core/theme/app_theme.dart';
 
 import '../../services/auth_service.dart';
@@ -302,6 +303,18 @@ class _LoginScreenState extends State<LoginScreen>
                       padding: const EdgeInsets.symmetric(horizontal: 24),
                       child: _buildGoogleButton(),
                     ),
+
+                    // Google sign-in also creates accounts, so the age,
+                    // Terms and Privacy line sits under it too (code batch
+                    // 1, LR-004), once the pages exist (LegalLinks.live).
+                    if (LegalLinks.live) ...[
+                      const SizedBox(height: 12),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 32),
+                        child: LegalConsentLine(
+                            color: Colors.white.withValues(alpha: 0.6)),
+                      ),
+                    ],
 
                     const SizedBox(height: 20),
 

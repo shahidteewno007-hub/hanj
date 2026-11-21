@@ -9,6 +9,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/legal_links.dart';
 import '../../core/responsive.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/anime_model.dart';
@@ -2235,6 +2236,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           fontSize: 18, weight: FontWeight.w700)),
                 ),
               ),
+              // The legal rows (code batch 1, audit 7a item 5): the four
+              // pages, shown once they're published (LegalLinks.live).
+              if (LegalLinks.live)
+                for (final (icon, title, url) in const [
+                  (Icons.privacy_tip_outlined, 'Privacy policy',
+                      LegalLinks.privacy),
+                  (Icons.description_outlined, 'Terms', LegalLinks.terms),
+                  (Icons.rule_outlined, 'Community rules', LegalLinks.rules),
+                  (Icons.person_remove_outlined, 'Delete your data',
+                      LegalLinks.deleteAccount),
+                ])
+                  ListTile(
+                    leading: Icon(icon,
+                        color: AppTheme.textSecondary, size: 20),
+                    title: Text(title,
+                        style: AppTheme.sans(
+                            fontSize: 14, color: AppTheme.textPrimary)),
+                    trailing: const Icon(Icons.open_in_new_rounded,
+                        color: AppTheme.textMuted, size: 18),
+                    onTap: () => LegalLinks.open(url),
+                  ),
               // Analytics, on only after a Yes (code batch 1, Q183): the
               // way to change the answer, beside the legal rows.
               if (AnalyticsConsent.askFirst)
