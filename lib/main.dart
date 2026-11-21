@@ -15,6 +15,7 @@ import 'core/theme_provider.dart';
 import 'services/auth_service.dart';
 import 'services/connectivity_service.dart';
 import 'services/notification_service.dart';
+import 'services/analytics_consent.dart';
 import 'features/auth/login_screen.dart';
 import 'features/main_screen.dart';
 import 'features/auth/email_verification_screen.dart';
@@ -28,6 +29,7 @@ import 'features/tier_list/tier_list_home_screen.dart';
 import 'firebase_options.dart';
 
 final _scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
+final _analyticsGate = AnalyticsGate();
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -215,6 +217,10 @@ Future<void> main() async {
     );
   });
 
+  // The stored analytics answer, before the first screen view (code batch
+  // 1). A SharedPreferences read; it never throws.
+  await AnalyticsConsent.instance.load();
+
   runApp(const HanjApp());
 }
 
@@ -240,7 +246,11 @@ class HanjApp extends StatelessWidget {
             navigatorKey: NotificationNavigator.navigatorKey,
             scaffoldMessengerKey: _scaffoldMessengerKey,
             navigatorObservers: [
-              FirebaseAnalyticsObserver(analytics: FirebaseAnalytics.instance),
+              // Screen views reach Analytics only after a Yes (code batch 1,
+              // Q183); AnalyticsGate holds them back until then.
+              AnalyticsConsent.askFirst
+                  ? _analyticsGate
+                  : FirebaseAnalyticsObserver(analytics: FirebaseAnalytics.instance),
             ],
             routes: {
               // The route keeps its name, so old links and the card_unlock
@@ -248,13 +258,13 @@ class HanjApp extends StatelessWidget {
               // Locked until Hanj+ (kAchievementsEnabled), it stays
               // registered, so the deep link never throws, and closes at
               // once (_ClosesAtOnce): the app stays where it was.
-              '/cards': (_) => Achievements.replaceCards
+              '/cards': (_) => _signedIn(Achievements.replaceCards
                   ? (kAchievementsEnabled
                       ? const AchievementsScreen()
                       : const _ClosesAtOnce())
-                  : const CardCollectionScreen(),
-              '/cadre': (_) => const CadreLobbyScreen(),
-              '/tierlist': (_) => const TierListHomeScreen(),
+                  : const CardCollectionScreen()),
+              '/cadre': (_) => _signedIn(const CadreLobbyScreen()),
+              '/tierlist': (_) => _signedIn(const TierListHomeScreen()),
             },
             home: const AuthWrapper(),
           );
@@ -303,6 +313,63 @@ class AuthWrapper extends StatelessWidget {
   }
 }
 
+/// The named routes open only for someone signed in (code batch 1, audit 4c):
+/// on the web `/#/cadre`, `/#/cards` and `/#/tierlist` used to open their
+/// screens with nobody signed in. False gives back the routes as they were.
+const bool _routesNeedSignIn = true;
+
+Widget _signedIn(Widget screen) =>
+    _routesNeedSignIn ? _SignedInOnly(child: screen) : screen;
+
+// A named route's screen once Auth has said who is here: signed out, it
+// closes at once (_ClosesAtOnce) and leaves AuthWrapper's sign-in below it.
+// In the app every pushNamed comes from a signed-in screen, so the first
+// event is the user and the screen shows as before.
+class _SignedInOnly extends StatelessWidget {
+  final Widget child;
+  const _SignedInOnly({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<User?>(
+      stream: FirebaseAuth.instance.authStateChanges(),
+      initialData: FirebaseAuth.instance.currentUser,
+      builder: (context, snapshot) {
+        final user = snapshot.data;
+        if (user != null) return child;
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const ColoredBox(color: Color(0xFF121110));
+        }
+        return const _ClosesAtOnce();
+      },
+    );
+  }
+}
+
+// The app past onboarding, asking once about analytics after its first
+// frame (code batch 1, Q183). AnalyticsConsent.maybeAsk does nothing once
+// this device has answered.
+class _AsksAboutAnalytics extends StatefulWidget {
+  final Widget child;
+  const _AsksAboutAnalytics({required this.child});
+
+  @override
+  State<_AsksAboutAnalytics> createState() => _AsksAboutAnalyticsState();
+}
+
+class _AsksAboutAnalyticsState extends State<_AsksAboutAnalytics> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) AnalyticsConsent.instance.maybeAsk(context);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
+}
+
 // /cards while achievements are locked until Hanj+ (kAchievementsEnabled).
 // NotificationService pushes it by name when a card_unlock push is tapped,
 // so it must build something: the app's sumi, popped after its first frame,
@@ -346,7 +413,9 @@ class _OnboardingGate extends StatelessWidget {
         final data = snap.data?.data() as Map<String, dynamic>?;
         final done = data?['onboardingComplete'] == true;
         if (!done) return const OnboardingScreen();
-        return const MainScreen();
+        return AnalyticsConsent.askFirst
+            ? const _AsksAboutAnalytics(child: MainScreen())
+            : const MainScreen();
       },
     );
   }

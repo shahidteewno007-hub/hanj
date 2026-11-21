@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/legal_links.dart';
 import '../../core/theme/app_theme.dart';
 import '../../services/auth_service.dart';
 import '../../widgets/google_g_logo.dart';
@@ -54,7 +55,11 @@ class _SignupScreenState extends State<SignupScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(e.toString()),
+            // Plain words, never code (code batch 1, LR-019): AuthService's
+            // own messages are text; anything else gets one line.
+            content: Text(e is String
+                ? e
+                : 'Google sign-in didn’t finish. Try again.'),
             backgroundColor: AppTheme.error,
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -290,6 +295,13 @@ class _SignupScreenState extends State<SignupScreen> {
                     ),
                   ),
                 ),
+
+                // Age, Terms and Privacy, under both ways in (code batch
+                // 1, LR-004), once the pages exist (LegalLinks.live).
+                if (LegalLinks.live) ...[
+                  const SizedBox(height: 16),
+                  const LegalConsentLine(),
+                ],
               ],
             ),
           ),

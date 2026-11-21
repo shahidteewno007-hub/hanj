@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:provider/provider.dart';
+import '../../core/legal_links.dart';
 import '../../core/theme/app_theme.dart';
 import '../../services/auth_service.dart';
 import '../../services/achievements_service.dart';
@@ -29,6 +30,15 @@ class DeleteAccountScreen extends StatefulWidget {
 class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
   bool _busy        = false;
   bool _confirmed   = false;
+
+  /// The screen says what the wipe below really does (code batch 1, audit
+  /// 7a item 9, LR-007, CW 5.6 version A): no cards line (cards are
+  /// locked), no followers line (nobody can follow), and a "Not deleted
+  /// yet" list for what stays (Arcs posts and arcs, votes, reports) until
+  /// claude/arcs-account-delete-8dfccc is merged and deployed. Errors are
+  /// plain words, never Firebase's text. False gives back the screen's
+  /// words as they were.
+  static const bool _trueList = true;
   final _passwordCtrl = TextEditingController();
 
   @override
@@ -42,7 +52,7 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
     if (user == null) return;
     final auth = Provider.of<AuthService>(context, listen: false);
 
-    setState(() => _busy = true);
+    setState(() { _busy = true; _error = null; });
 
     try {
       // 1. Re-authenticate (Firebase requires recent auth for delete)
@@ -86,20 +96,33 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
       String msg;
       switch (e.code) {
         case 'wrong-password':
-          msg = 'Incorrect password';
+          msg = _trueList ? 'That password isn’t right.' : 'Incorrect password';
           break;
         case 'requires-recent-login':
-          msg = 'Please sign out and sign back in, then try again';
+          msg = _trueList
+              ? 'For your safety, sign out, sign in again, then come back here.'
+              : 'Please sign out and sign back in, then try again';
           break;
         case 'user-mismatch':
           msg = 'Choose the Google account you signed in with';
           break;
         default:
-          msg = 'Could not delete account: ${e.message ?? e.code}';
+          // The wipe may already have started, so never "nothing was
+          // deleted" (LR-007 holds the order of the steps).
+          // Newer Firebase answers a wrong password with invalid-credential.
+          msg = !_trueList
+              ? 'Could not delete account: ${e.message ?? e.code}'
+              : e.code == 'invalid-credential'
+                  ? 'That password isn’t right.'
+                  : 'Couldn’t finish deleting your account. Sign in again '
+                      'and repeat this step.';
       }
       _showSnackbar(msg);
     } catch (e) {
-      _showSnackbar('Something went wrong. Try again.');
+      _showSnackbar(_trueList
+          ? 'Couldn’t finish deleting your account. Sign in again and '
+              'repeat this step.'
+          : 'Something went wrong. Try again.');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -162,8 +185,44 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
     await AchievementsService.instance.clearLocal(uid);
   }
 
+  /// The tick, the back button and errors for a screen reader and the
+  /// keyboard (code batch 1, audit 3b, A11Y-02, A11Y-16): the tick is one
+  /// checkbox node with its state, an InkWell that takes keyboard focus,
+  /// 48 dp tall, its empty box drawn in hankoEdge; the back arrow is named;
+  /// an error stays on the page, announced, instead of a 3 second
+  /// snackbar. False gives back the hand-built tick and the snackbar.
+  static const bool _readableTick = true;
+
+  /// The last error, shown above the Delete button ([_readableTick]).
+  String? _error;
+
+  Widget _tickNode(Widget tick) {
+    if (!_readableTick) return tick;
+    return Semantics(
+      container: true,
+      checked: _confirmed,
+      enabled: !_busy,
+      label: _trueList
+          ? 'I understand this can’t be undone'
+          : 'I understand this is permanent',
+      child: InkWell(
+        onTap: _busy ? null : () => setState(() => _confirmed = !_confirmed),
+        child: ExcludeSemantics(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 48),
+            child: Align(alignment: Alignment.centerLeft, child: tick),
+          ),
+        ),
+      ),
+    );
+  }
+
   void _showSnackbar(String msg) {
     if (!mounted) return;
+    if (_readableTick) {
+      setState(() => _error = msg);
+      return;
+    }
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(msg),
@@ -194,6 +253,7 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded,
               color: AppTheme.textPrimary, size: 20),
+          tooltip: _readableTick ? 'Back' : null, // A11Y-02
           onPressed: _busy ? null : () => Navigator.pop(context),
         ),
         title: Text(
@@ -225,7 +285,9 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        'This action is permanent and cannot be undone.',
+                        _trueList
+                            ? 'This can’t be undone.'
+                            : 'This action is permanent and cannot be undone.',
                         style: AppTheme.sans(
                           fontSize: 14,
                           color: AppTheme.textPrimary,
@@ -242,13 +304,14 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
 
               // ── What gets deleted ──────────────────────────────────
               Text(
-                'What will be deleted',
+                _trueList ? 'Deleted now' : 'What will be deleted',
                 style: AppTheme.mono(
                     fontSize: 11,
                     color: AppTheme.textMuted,
                     letterSpacing: 1.5),
               ),
               const SizedBox(height: 12),
+              if (!_trueList) ...[
               _bullet('Your anime list and ratings'),
               _bullet('Your watch history and progress'),
               _bullet('All your Hanj cards and points'),
@@ -256,12 +319,44 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
               _bullet('Your followers and following list'),
               _bullet('Your discussion comments and replies'),
               _bullet('Your profile and account credentials'),
+              ] else ...[
+                _bullet('Your list, ratings and progress'),
+                _bullet('Your favourites and shelves'),
+                _bullet('Your reminders and notification choices'),
+                _bullet('Your comments in episode discussions'),
+                _bullet('Your profile and your sign-in'),
+                const SizedBox(height: 20),
+                Text(
+                  'Not deleted yet',
+                  style: AppTheme.mono(
+                      fontSize: 11,
+                      color: AppTheme.textMuted,
+                      letterSpacing: 1.5),
+                ),
+                const SizedBox(height: 12),
+                _bullet('Posts and replies you wrote in Arcs, and arcs you '
+                    'started. They stay visible under your name.'),
+                _bullet('Votes you gave, kept as counts with no name'),
+                _bullet('Reports you sent'),
+                if (LegalLinks.live) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    'To have these removed too, use the page at '
+                    'hanj.app/delete-account.',
+                    style: AppTheme.sans(
+                        fontSize: 13,
+                        color: AppTheme.textSecondary,
+                        height: 1.5),
+                  ),
+                ],
+              ],
 
               const SizedBox(height: 28),
 
               // ── Confirmation checkbox ──────────────────────────────
-              GestureDetector(
-                onTap: _busy
+              _tickNode(GestureDetector(
+                // With _readableTick the InkWell around it takes the tap.
+                onTap: _busy || _readableTick
                     ? null
                     : () => setState(() => _confirmed = !_confirmed),
                 child: Row(
@@ -278,7 +373,11 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
                         border: Border.all(
                           color: _confirmed
                               ? AppTheme.dropped
-                              : AppTheme.border,
+                              // hankoEdge is 4.02:1 on sumi; border was
+                              // 1.55:1, too faint to find (A11Y-16).
+                              : _readableTick
+                                  ? AppTheme.hankoEdge
+                                  : AppTheme.border,
                           width: 1.5,
                         ),
                       ),
@@ -290,7 +389,9 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        'I understand this is permanent',
+                        _trueList
+                            ? 'I understand this can’t be undone'
+                            : 'I understand this is permanent',
                         style: AppTheme.sans(
                             fontSize: 14,
                             color: AppTheme.textPrimary,
@@ -299,7 +400,7 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
                     ),
                   ],
                 ),
-              ),
+              )),
 
               // ── Password (only if email/password user) ─────────────
               if (hasPassword) ...[
@@ -341,6 +442,21 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
               ],
 
               const SizedBox(height: 32),
+
+              // ── The last error, on the page and announced (A11Y-02) ─
+              if (_readableTick && _error != null) ...[
+                Semantics(
+                  liveRegion: true,
+                  child: Text(
+                    _error!,
+                    style: AppTheme.sans(
+                        fontSize: 14,
+                        color: AppTheme.textPrimary,
+                        height: 1.4),
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
 
               // ── Delete button ──────────────────────────────────────
               SizedBox(

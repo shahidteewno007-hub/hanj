@@ -8,6 +8,46 @@ import '../models/anime_model.dart';
 class AnilistService {
   static const String _apiUrl = 'https://graphql.anilist.co';
 
+  // ── Adult titles (code batch 1, audit LR-010, Q181) ─────────
+  // Hanj shows no title AniList marks isAdult, with no setting to turn
+  // them on. List queries ask AniList for isAdult: false; where AniList
+  // takes no such argument (a studio's works, a person's works, the airing
+  // schedule) the field is asked for and the entry dropped. A lookup by id
+  // that turns out adult is refused: getAnimeById returns null and the id
+  // is remembered here, and Detail shows "Not available in Hanj".
+  static final Set<String> _adultIds = {};
+
+  // ── MyAnimeList ids (code batch 1, audit 7b item 16, Q173) ──
+  // Each list entry saves its show's MyAnimeList id from now on, so the
+  // list can be matched to a second source if AniList ever can't be used.
+  // The requests the add flows already make ask for idMal (Detail's
+  // per-open request and its seasons, search, the lookup by id, vibes,
+  // Tonight, Pulse's lists, a studio's works), and it is kept here by
+  // AniList id for addAnimeToList to read. No request is made for it.
+  static final Map<String, int> _idMal = {};
+
+  /// The MyAnimeList id AniList gave for this show this run, if any.
+  static int? idMalFor(String id) => _idMal[id];
+
+  /// Notes a media map's idMal, when it has one.
+  static void noteIdMal(Object? media) {
+    if (media is! Map) return;
+    final mal = media['idMal'];
+    final id = media['id'];
+    if (mal is int && id != null) _idMal[id.toString()] = mal;
+  }
+
+  /// Whether AniList has said this id is an adult title, this run.
+  static bool isAdultId(String id) => _adultIds.contains(id);
+
+  /// Notes an entry AniList marked adult; true if it was one.
+  static bool noteAdult(Object? media) {
+    if (media is! Map || media['isAdult'] != true) return false;
+    final id = media['id'];
+    if (id != null) _adultIds.add(id.toString());
+    return true;
+  }
+
   // ── Adaptive reservation-based throttle ─────────────────────
   // The gap between requests follows AniList's own rate-limit headers
   // (see noteLimits below). After a 429 it still backs off to at least
@@ -235,6 +275,7 @@ class AnilistService {
       Page(page: 1, perPage: 20) {
         media($mediaArgs) {
           id
+          idMal
           title { romaji english }
           coverImage { large }
           averageScore
@@ -272,6 +313,7 @@ class AnilistService {
           return [];
         }
         final mediaList = data['data']['Page']['media'] as List? ?? [];
+        mediaList.forEach(noteIdMal);
         return mediaList.map((item) => Anime(
           id: item['id'].toString(),
           title: item['title']['romaji'] ?? 'Unknown',
@@ -310,6 +352,8 @@ class AnilistService {
           media(sort: SCORE_DESC) {
             nodes {
               id
+              idMal
+              isAdult
               title { romaji english }
               coverImage { large }
               averageScore
@@ -337,7 +381,10 @@ class AnilistService {
         final studios = data['data']['Page']['studios'] as List? ?? [];
         if (studios.isEmpty) return [];
         final mediaList = studios[0]['media']['nodes'] as List? ?? [];
-        return mediaList.map((item) => Anime(
+        // A studio's works take no isAdult argument, so adult ones are
+        // dropped here (code batch 1).
+        mediaList.forEach(noteIdMal);
+        return mediaList.where((item) => !noteAdult(item)).map((item) => Anime(
           id: item['id'].toString(),
           title: item['title']['romaji'] ?? 'Unknown',
           titleEnglish: item['title']['english'],
@@ -397,6 +444,7 @@ class AnilistService {
           nodes {
             mediaRecommendation {
               id
+              idMal
               type
               isAdult
               title { romaji english }
@@ -459,7 +507,9 @@ class AnilistService {
       });
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        return data['data']?['Media'];
+        final media = data['data']?['Media'];
+        noteIdMal(media);
+        return media;
       }
       return null;
     } catch (e) {
@@ -479,6 +529,7 @@ class AnilistService {
       final item = (node as Map?)?['mediaRecommendation'];
       if (item is! Map<String, dynamic>) continue;
       if (item['type'] != 'ANIME' || item['isAdult'] == true) continue;
+      noteIdMal(item);
       out.add(Anime(
         id: item['id'].toString(),
         title: item['title']?['romaji'] ?? 'Unknown',
@@ -519,6 +570,7 @@ class AnilistService {
             staffRole
             node {
               id
+              isAdult
               title { romaji english }
               coverImage { large }
               averageScore
@@ -533,6 +585,7 @@ class AnilistService {
             characterName
             node {
               id
+              isAdult
               title { romaji english }
               coverImage { large }
               averageScore
@@ -551,7 +604,18 @@ class AnilistService {
       });
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        return data['data']?['Staff'];
+        final staff = data['data']?['Staff'];
+        // A person's works take no isAdult argument, so adult ones are
+        // dropped here (code batch 1).
+        if (staff is Map) {
+          for (final key in const ['staffMedia', 'characterMedia']) {
+            final edges = staff[key]?['edges'];
+            if (edges is List) {
+              edges.removeWhere((e) => e is Map && noteAdult(e['node']));
+            }
+          }
+        }
+        return staff;
       }
       return null;
     } catch (e) {
@@ -581,6 +645,8 @@ class AnilistService {
     query (\$id: Int) {
       Media(id: \$id, type: ANIME) {
         id
+        idMal
+        isAdult
         title { romaji english }
         coverImage { large }
         averageScore
@@ -604,6 +670,10 @@ class AnilistService {
         final data = jsonDecode(response.body);
         final item = data['data']?['Media'];
         if (item == null) return null;
+        // An adult title is refused (code batch 1): no entry, and Detail
+        // reads isAdultId to say it isn't available in Hanj.
+        if (noteAdult(item)) return null;
+        noteIdMal(item);
         return Anime(
           id: item['id'].toString(),
           title: item['title']['romaji'] ?? 'Unknown',
@@ -653,6 +723,7 @@ class AnilistService {
   /// What the strip needs of a show, for the open show and each relation.
   static const String _seasonFields = '''
           id
+          idMal
           type
           isAdult
           format

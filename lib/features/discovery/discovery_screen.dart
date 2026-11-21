@@ -1198,7 +1198,10 @@ class _SeasonalHubState extends State<_SeasonalHub>
   }
 
   Future<List<_SeasonalAnime>> _fetchSeasonAnime(String season, int year) async {
-    final cacheKey = 'cache_seasonal_hub_${season}_$year';
+    // "_sfw": a new key since the query left adult titles out (code batch
+    // 1), so a copy saved before, which may hold one, is never shown, even
+    // as the stale fallback.
+    final cacheKey = 'cache_seasonal_hub_sfw_${season}_$year';
     final prefs    = await SharedPreferences.getInstance();
     const ttlMs    = 60 * 60 * 1000; // 1 hour
 
@@ -1224,6 +1227,7 @@ class _SeasonalHubState extends State<_SeasonalHub>
           season: $season
           seasonYear: $year
           type: ANIME
+          isAdult: false
           sort: POPULARITY_DESC
           format_in: [TV, TV_SHORT, MOVIE, ONA]
         ) {

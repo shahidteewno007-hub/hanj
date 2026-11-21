@@ -1,11 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
-    <base-config cleartextTrafficPermitted="true">
+    <!-- Cleartext off everywhere (code batch 1, Q182, LR-017). Every address
+         Hanj uses is https: AniList, its image host, YouTube, Firebase,
+         MyAnimeList. -->
+    <base-config cleartextTrafficPermitted="false">
         <trust-anchors>
             <certificates src="system"/>
         </trust-anchors>
     </base-config>
-    <domain-config cleartextTrafficPermitted="true">
+    <domain-config cleartextTrafficPermitted="false">
         <domain includeSubdomains="true">graphql.anilist.co</domain>
         <domain includeSubdomains="true">img.youtube.com</domain>
         <domain includeSubdomains="true">www.youtube.com</domain>

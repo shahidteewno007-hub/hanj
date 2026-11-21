@@ -32,11 +32,17 @@ class _ActivityFeedScreenState extends State<ActivityFeedScreen>
     )),
   );
 
+  /// The Friends tab is hidden (code batch 1, audit 4a, UX-17): nothing in
+  /// Hanj can follow anyone, so it was always empty and it was the tab the
+  /// screen opened on. Without it the screen is My Activity alone, with no
+  /// tab bar, and the friends query isn't run. True gives back both tabs.
+  static const bool _friendsTab = false;
+
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
-    _loadFriendsActivity();
+    if (_friendsTab) _loadFriendsActivity();
   }
 
   @override
@@ -99,7 +105,9 @@ class _ActivityFeedScreenState extends State<ActivityFeedScreen>
         title: const Text('Activity Feed'),
         // On a wide window the two tabs keep the page's column instead of
         // splitting the whole width between them.
-        bottom: Responsive.isDesktop(context)
+        bottom: !_friendsTab
+            ? null
+            : Responsive.isDesktop(context)
             ? PreferredSize(
                 preferredSize: tabs.preferredSize,
                 child: Align(
@@ -114,7 +122,9 @@ class _ActivityFeedScreenState extends State<ActivityFeedScreen>
               )
             : tabs,
       ),
-      body: TabBarView(
+      body: !_friendsTab
+          ? _buildMyActivityTab()
+          : TabBarView(
         controller: _tabController,
         children: [
           _buildFriendsTab(),

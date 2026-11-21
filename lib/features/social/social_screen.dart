@@ -13,6 +13,11 @@ import 'soulmatch_screen.dart';
 class SocialScreen extends StatefulWidget {
   const SocialScreen({super.key});
 
+  /// Soulmatch and the share code, shown or hidden (code batch 1); see
+  /// [_SocialScreenState._soulmatch]. Public so Profile's Social row says
+  /// what the screen holds. False hides them.
+  static const bool soulmatch = false;
+
   @override
   State<SocialScreen> createState() => _SocialScreenState();
 }
@@ -144,6 +149,14 @@ class _SocialScreenState extends State<SocialScreen> {
   /// and drops "Coming soon" once Arcs is open (ArcsScreen.open). Off gives
   /// back the earlier line.
   static const bool _arcsLine = true;
+
+  /// Soulmatch and the share code are hidden (code batch 1, audit 4a,
+  /// LR-008): Soulmatch finds a friend by downloading every user's
+  /// document, and the code is the first eight characters of the account
+  /// id. They return once each user has a public half and lists are
+  /// owner-only (batch 2's rules). The screen keeps the Arcs row. True gives
+  /// back the code, Copy code and the Soulmatch row as they were.
+  static const bool _soulmatch = SocialScreen.soulmatch;
 
   @override
   Widget build(BuildContext context) {
@@ -376,6 +389,7 @@ class _SocialScreenState extends State<SocialScreen> {
   List<Widget> _buildHanko() {
     final code = _myShareCode;
     return [
+      if (_soulmatch) ...[
       Semantics(
         header: true,
         child: Text('Your share code',
@@ -414,6 +428,7 @@ class _SocialScreenState extends State<SocialScreen> {
             MaterialPageRoute(builder: (_) => const SoulmatchScreen())),
       ),
       const SizedBox(height: 4),
+      ],
       _SocialRow(
         icon: Icons.groups_2_sharp,
         title: 'Arcs',

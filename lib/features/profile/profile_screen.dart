@@ -9,6 +9,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/legal_links.dart';
 import '../../core/responsive.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/anime_model.dart';
@@ -22,6 +23,7 @@ import '../../services/auth_service.dart';
 import '../../services/firestore_service.dart';
 import '../../services/founder_service.dart';
 import '../../services/connectivity_service.dart';
+import '../../services/analytics_consent.dart';
 import 'founder_card.dart';
 import '../profile/edit_profile_screen.dart';
 import '../stats/stats_screen.dart';
@@ -568,7 +570,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         _menuItem('calendar', Icons.calendar_month_rounded, 'Anime Calendar'),
                         _menuItem('social', Icons.people_rounded, 'Social'),
                       ],
-                      _menuItem('notifications', Icons.notifications_outlined, 'Notifications'),
+                      if (_notificationsRow)
+                        _menuItem('notifications', Icons.notifications_outlined, 'Notifications'),
                       const PopupMenuDivider(),
                       _menuItem('more', Icons.more_horiz_rounded, 'More'),
                       _menuItem('signout', Icons.logout_rounded, 'Sign Out',
@@ -771,7 +774,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       _EntryRow(
                         icon: Icons.people_sharp,
                         title: 'Social',
-                        line: 'Compare your taste with a friend\'s',
+                        // With Soulmatch hidden (code batch 1) the screen
+                        // holds Arcs alone, so the line says that.
+                        line: SocialScreen.soulmatch
+                            ? 'Compare your taste with a friend\'s'
+                            : 'Watch a show together in Arcs',
                         onTap: () => Navigator.push(context, MaterialPageRoute(
                             builder: (_) => const SocialScreen())),
                       ),
@@ -822,6 +829,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
   /// here, switched off, so the menu's history stays readable; switching
   /// this on would list each tool twice.
   static const bool _identityToolsInMenu = false;
+
+  /// The Notifications row in the menu, shown or hidden (code batch 1,
+  /// audit 4a, T5). The audit hides it if no episode reminder is seen
+  /// arriving on a phone before the closed test; until that check it stays.
+  /// False hides the row; the screen stays.
+  static const bool _notificationsRow = true;
 
   /// The counts closed with "Top genres: A, B and C." until question 71.
   /// The Taste row below says the same thing, as the first of the ways on
@@ -2223,6 +2236,49 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           fontSize: 18, weight: FontWeight.w700)),
                 ),
               ),
+              // The legal rows (code batch 1, audit 7a item 5): the four
+              // pages, shown once they're published (LegalLinks.live).
+              if (LegalLinks.live)
+                for (final (icon, title, url) in const [
+                  (Icons.privacy_tip_outlined, 'Privacy policy',
+                      LegalLinks.privacy),
+                  (Icons.description_outlined, 'Terms', LegalLinks.terms),
+                  (Icons.rule_outlined, 'Community rules', LegalLinks.rules),
+                  (Icons.person_remove_outlined, 'Delete your data',
+                      LegalLinks.deleteAccount),
+                ])
+                  ListTile(
+                    leading: Icon(icon,
+                        color: AppTheme.textSecondary, size: 20),
+                    title: Text(title,
+                        style: AppTheme.sans(
+                            fontSize: 14, color: AppTheme.textPrimary)),
+                    trailing: const Icon(Icons.open_in_new_rounded,
+                        color: AppTheme.textMuted, size: 18),
+                    onTap: () => LegalLinks.open(url),
+                  ),
+              // Analytics, on only after a Yes (code batch 1, Q183): the
+              // way to change the answer, beside the legal rows.
+              if (AnalyticsConsent.askFirst)
+                ValueListenableBuilder<bool?>(
+                  valueListenable: AnalyticsConsent.instance.consent,
+                  builder: (_, consent, _) => SwitchListTile(
+                    secondary: const Icon(Icons.insights_outlined,
+                        color: AppTheme.textSecondary, size: 20),
+                    title: Text('Share usage data',
+                        style: AppTheme.sans(
+                            fontSize: 14, color: AppTheme.textPrimary)),
+                    subtitle: Text(
+                        'Which screens you open, through Google Analytics',
+                        style: AppTheme.sans(
+                            fontSize: 12, color: AppTheme.textMuted)),
+                    value: consent == true,
+                    activeThumbColor: AppTheme.hankoSumi,
+                    activeTrackColor: AppTheme.hankoWashi,
+                    onChanged: (v) =>
+                        AnalyticsConsent.instance.setConsent(v),
+                  ),
+                ),
               ListTile(
                 leading: const Icon(Icons.delete_forever_rounded,
                     color: AppTheme.error, size: 20),

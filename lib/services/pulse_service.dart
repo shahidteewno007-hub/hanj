@@ -107,6 +107,7 @@ class PulseService {
             relationType
             node {
               id
+              isAdult
               title { romaji english }
               coverImage { large }
               status
@@ -327,6 +328,9 @@ class PulseService {
           final relType = edge['relationType'] as String?;
           if (relType != 'SEQUEL' && relType != 'SIDE_STORY') continue;
           final node = edge['node'] as Map<String, dynamic>;
+          // A sequel or side story marked adult is never announced (code
+          // batch 1).
+          if (AnilistService.noteAdult(node)) continue;
           final nodeStatus = node['status'] as String?;
           if (nodeStatus != 'NOT_YET_RELEASED' && nodeStatus != 'RELEASING') {
             continue;

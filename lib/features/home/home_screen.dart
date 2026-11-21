@@ -18,6 +18,7 @@ import '../../widgets/hanko_reel.dart';
 import '../../widgets/hanko_seal.dart';
 import '../../core/responsive.dart';
 import '../../services/anilist_service.dart';
+import '../../services/notification_service.dart';
 import '../../services/firestore_service.dart';
 import '../../services/offline_cache_service.dart';
 import '../../services/connectivity_service.dart';
@@ -5636,6 +5637,10 @@ Future<void> _saveReminder(BuildContext context, String animeId, bool val) async
       .collection('users').doc(uid)
       .collection('alerts').doc(animeId);
   if (val) {
+    // The phone's prompt opens here, at the first bell (code batch 1).
+    if (!NotificationService.askAtLaunch) {
+      NotificationService.instance.askPermission();
+    }
     await ref.set({
       'animeId': animeId,
       'addedAt': FieldValue.serverTimestamp(),

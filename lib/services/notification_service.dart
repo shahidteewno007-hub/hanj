@@ -37,21 +37,34 @@ class NotificationService {
 
   // ── Init ──────────────────────────────────────────────────────────────────
 
+  /// Whether the phone's permission prompt opens at start-up, before sign-in
+  /// (code batch 1, audit 4a, PF-20, TS-008). False: start-up only reads
+  /// what was decided before, and the prompt opens the first time someone
+  /// sets a bell or turns a reminder on ([askPermission]). True gives back
+  /// the prompt at launch as it was.
+  static const bool askAtLaunch = false;
+
   Future<void> init() async {
     // 1. Request permission
-    final settings = await _fcm.requestPermission(
-      alert: true,
-      badge: true,
-      sound: true,
-      provisional: false,
-    );
+    final settings = askAtLaunch
+        ? await _fcm.requestPermission(
+            alert: true,
+            badge: true,
+            sound: true,
+            provisional: false,
+          )
+        : await _fcm.getNotificationSettings();
 
     debugPrint('[FCM] Permission: ${settings.authorizationStatus}');
     if (settings.authorizationStatus == AuthorizationStatus.denied) return;
 
-    // 2. Get & save FCM token
-    await _saveToken();
-    _fcm.onTokenRefresh.listen(_saveToken);
+    // 2. Get & save FCM token. Not yet asked: no token until the first bell
+    // (askPermission), but the taps below are still heard.
+    if (askAtLaunch ||
+        settings.authorizationStatus != AuthorizationStatus.notDetermined) {
+      await _saveToken();
+      _listenForToken();
+    }
 
     // 3. Foreground messages → broadcast to UI
     FirebaseMessaging.onMessage.listen((msg) {
@@ -73,10 +86,59 @@ class NotificationService {
     if (initial != null) _handlePayload(initial);
   }
 
+  // ── Permission at the first bell ─────────────────────────────────────────
+
+  bool _listeningForToken = false;
+
+  void _listenForToken() {
+    if (_listeningForToken) return;
+    _listeningForToken = true;
+    _fcm.onTokenRefresh.listen(_saveToken);
+  }
+
+  /// Opens the phone's permission prompt, once, when someone first asks for
+  /// a notification: a bell set on Home, Detail, Calendar or Upcoming, or a
+  /// reminder turned on in Notifications. A prompt already answered doesn't
+  /// open again; the phone just reports the answer. On a yes the token is
+  /// saved, as init() used to at launch. Never throws, so callers needn't
+  /// await it (Crashlytics files an unhandled async error as fatal). With
+  /// [askAtLaunch] on it does nothing, as before.
+  Future<void> askPermission() async {
+    if (askAtLaunch) return;
+    try {
+      final settings = await _fcm.requestPermission(
+        alert: true,
+        badge: true,
+        sound: true,
+        provisional: false,
+      );
+      if (settings.authorizationStatus == AuthorizationStatus.denied) return;
+      await _saveToken();
+      _listenForToken();
+    } catch (e) {
+      debugPrint('[FCM] Permission request failed: $e');
+    }
+  }
+
   // ── Token ─────────────────────────────────────────────────────────────────
 
   /// Call this after login/signup so the token is saved with the correct uid.
-  Future<void> saveTokenForCurrentUser() => _saveToken();
+  /// Not yet asked ([askAtLaunch] off): nothing, since on the web asking for
+  /// a token opens the browser's prompt, which waits for the first bell.
+  Future<void> saveTokenForCurrentUser() async {
+    if (!askAtLaunch) {
+      try {
+        final settings = await _fcm.getNotificationSettings();
+        if (settings.authorizationStatus == AuthorizationStatus.notDetermined ||
+            settings.authorizationStatus == AuthorizationStatus.denied) {
+          return;
+        }
+      } catch (_) {
+        return;
+      }
+    }
+    return _saveToken();
+  }
 
   Future<void> _saveToken([String? token]) async {
     final uid = FirebaseAuth.instance.currentUser?.uid;

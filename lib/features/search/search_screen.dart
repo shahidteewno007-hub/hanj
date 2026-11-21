@@ -128,10 +128,17 @@ class _SearchScreenState extends State<SearchScreen>
 
   // ── Search ────────────────────────────────────────────────
 
+  /// Typing "ecchi" no longer turns into an Ecchi genre filter (code batch
+  /// 1, audit 4a, LR-010, DX-17): AniList doesn't count ecchi as adult, so
+  /// the adult filter lets it through, and the store's content rating
+  /// shouldn't be invited by a search shortcut. The word is searched as
+  /// text instead. True gives back the shortcut.
+  static const bool _ecchiShortcut = false;
+
   /// AniList's exact genre strings (case-sensitive on their API)
   static const _knownGenres = {
     'action': 'Action', 'adventure': 'Adventure', 'comedy': 'Comedy',
-    'drama': 'Drama', 'ecchi': 'Ecchi', 'fantasy': 'Fantasy',
+    'drama': 'Drama', if (_ecchiShortcut) 'ecchi': 'Ecchi', 'fantasy': 'Fantasy',
     'horror': 'Horror', 'mecha': 'Mecha', 'music': 'Music',
     'mystery': 'Mystery', 'psychological': 'Psychological',
     'romance': 'Romance', 'sci-fi': 'Sci-Fi', 'scifi': 'Sci-Fi',

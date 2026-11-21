@@ -1,12 +1,17 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/anime_model.dart';
+import 'anilist_service.dart';
 
 class FirestoreService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
   String? get _uid => _auth.currentUser?.uid;
+
+  /// New entries save the show's MyAnimeList id (code batch 1); see
+  /// addAnimeToList. False gives back main's entry.
+  static const bool _saveIdMal = true;
 
   CollectionReference? get _animeListRef {
     if (_uid == null) return null;
@@ -39,6 +44,14 @@ class FirestoreService {
       'lastWatched':  FieldValue.serverTimestamp(),
     };
 
+    // The show's MyAnimeList id, when AniList gave one in a request this
+    // run (code batch 1, Q173): a way to match the list to a second
+    // source. firestore.rules checks no keys on animeList, so the write
+    // needs no deploy. False leaves it out, as before.
+    if (_saveIdMal) {
+      final idMal = AnilistService.idMalFor(anime.id);
+      if (idMal != null) data['idMal'] = idMal;
+    }
     if (rating != null) data['userRating'] = rating;
     if (currentEpisode != null) data['currentEpisode'] = currentEpisode;
     if (notes != null) data['notes'] = notes;

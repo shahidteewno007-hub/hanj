@@ -28,6 +28,7 @@ import '../../widgets/confetti_overlay.dart';
 import '../../models/anime_model.dart';
 import '../../services/firestore_service.dart';
 import '../../services/anilist_service.dart';
+import '../../services/notification_service.dart';
 import '../../services/offline_cache_service.dart';
 import '../../core/trailer_launcher.dart';
 import '../../widgets/share_card.dart';
@@ -298,6 +299,52 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
     'FINISHED', 'RELEASING', 'NOT_YET_RELEASED', 'CANCELLED', 'HIATUS',
   };
 
+  /// AniList says this is an adult title (code batch 1, LR-010, Q181).
+  /// Hanj shows none, so the page becomes "Not available in Hanj" with a
+  /// way back, whichever door it was opened from (a list entry kept from
+  /// before, a push, a link).
+  bool _notInHanj = false;
+
+  void _refuseAdult() {
+    if (!mounted || _notInHanj) return;
+    setState(() => _notInHanj = true);
+  }
+
+  Widget _buildNotInHanj(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppTheme.hankoSumi,
+      appBar: AppBar(
+        backgroundColor: AppTheme.hankoSumi,
+        leading: IconButton(
+          tooltip: 'Back',
+          icon: const Icon(Icons.arrow_back_sharp, color: AppTheme.hankoWashi),
+          onPressed: () => Navigator.maybePop(context),
+        ),
+      ),
+      body: Padding(
+        padding: const EdgeInsets.fromLTRB(
+            AppTheme.hankoGutter, 24, AppTheme.hankoGutter, 24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Semantics(
+              header: true,
+              child: Text('Not available in Hanj',
+                  style: AppTheme.hankoSerif(
+                      fontSize: AppTheme.hankoSectionSize, height: 1.3)),
+            ),
+            const SizedBox(height: 10),
+            Text('Hanj doesn’t show titles marked as adult.',
+                style: AppTheme.hankoSans(
+                    fontSize: AppTheme.hankoMetaSize,
+                    color: AppTheme.hankoStone,
+                    height: 1.5)),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _loadFullAnime() async {
     // Skip if we already have rich data (opened from search/trending).
     if (!_isStub(widget.anime)) {
@@ -305,6 +352,10 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
     }
     try {
       final full = await _aniListService.getAnimeById(widget.anime.id);
+      if (full == null && AnilistService.isAdultId(widget.anime.id)) {
+        _refuseAdult();
+        return;
+      }
       if (full != null && mounted) {
         if (_lightLoads) {
           _staffChanged(() => _anime = full);
@@ -473,6 +524,10 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
     }
     try {
       final data = await _aniListService.getAnimeStaff(_anime.id);
+      if (AnilistService.noteAdult(data)) {
+        _refuseAdult();
+        return;
+      }
       if (mounted) {
         final chars = data?['characters']?['edges'] as List? ?? [];
         final imgs = <String>[];
@@ -1096,6 +1151,7 @@ class _AnimeDetailScreenState extends State<AnimeDetailScreen>
 
   @override
   Widget build(BuildContext context) {
+    if (_notInHanj) return _buildNotInHanj(context);
     final anime = _anime;
     final screenHeight = MediaQuery.of(context).size.height;
 
@@ -4076,6 +4132,13 @@ class _OverviewTab extends StatelessWidget {
   // once Arcs is open (ArcsScreen.open). Off gives back Overview as it was.
   static const bool _watchAlong = true;
 
+  // ── Discussion is hidden (code batch 1, audit 4a, LR-005) ──
+  // Episode discussions are public comments with no report, block or delete
+  // and no length cap in the rules, so the door on every Detail page closes
+  // before the closed test. The screen and its rules are untouched. True
+  // gives back the "Join the discussion" row as it was.
+  static const bool _discussionDoor = false;
+
   /// AniList's official streaming links for the show (`externalLinks` of
   /// type STREAMING, from Stage 1c's request), one per site, the first kept
   /// (question 113): AniList can list a site more than once (two Crunchyroll
@@ -4282,6 +4345,7 @@ class _OverviewTab extends StatelessWidget {
 
         // ── Discussion ──────────────────────────────────────
         // A plain 48 dp row in Hanko: no card, no coral arrow.
+        if (_discussionDoor)
         InkWell(
           key: const ValueKey('discussion'),
           onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => EpisodeDiscussionScreen(anime: anime, episodeNumber: 0))),
@@ -5764,6 +5828,10 @@ class _NextEpisodeCountdownState extends State<_NextEpisodeCountdown> {
         .collection('users').doc(uid)
         .collection('alerts').doc(widget.animeId);
     if (value) {
+      // The phone's prompt opens here, at the first bell (code batch 1).
+      if (!NotificationService.askAtLaunch) {
+        NotificationService.instance.askPermission();
+      }
       await ref.set({
         'animeId': widget.animeId,
         'episode': widget.episode,
