@@ -7,6 +7,7 @@ import '../../core/legal_links.dart';
 import '../../core/theme/app_theme.dart';
 import '../../services/auth_service.dart';
 import '../../services/achievements_service.dart';
+import '../../services/arcs_service.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Account Deletion Screen
@@ -14,8 +15,8 @@ import '../../services/achievements_service.dart';
 // Play Store / App Store require an in-app account deletion flow. This:
 //   1. Shows a clear warning about what's deleted
 //   2. Re-authenticates the user (Firebase requires recent auth for deletion)
-//   3. Deletes their discussion comments, then all Firestore subcollections
-//      (animeList, alerts, cards, etc.)
+//   3. Deletes their discussion comments, then what they left in Arcs, then
+//      all Firestore subcollections (animeList, alerts, cards, etc.)
 //   4. Deletes the user's auth account
 //   5. Pops to the login screen
 // ─────────────────────────────────────────────────────────────────────────────
@@ -28,7 +29,13 @@ class DeleteAccountScreen extends StatefulWidget {
 }
 
 class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
+  /// Account deletion removes what the user left in Arcs (posts, replies,
+  /// likes, memberships) and says what it couldn't (arcs-account-delete,
+  /// 2026-11-14). false = before: Arcs untouched, the screen as it was.
+  static const bool _arcsWipe = true;
+
   bool _busy        = false;
+  ArcsWipe? _arcsLeft;
   bool _confirmed   = false;
 
   /// The screen says what the wipe below really does (code batch 1, audit
@@ -90,7 +97,19 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
 
       // 5. Pop back to root — AuthWrapper will redirect to login
       if (mounted) {
+        final messenger = ScaffoldMessenger.of(context);
         Navigator.of(context).popUntil((r) => r.isFirst);
+        // The account is gone either way; say what stayed in Arcs.
+        final left = _arcsWipe ? _arcsLeft?.leftover() : null;
+        if (left != null) {
+          messenger.showSnackBar(SnackBar(
+            content: Text('Account deleted. $left'),
+            backgroundColor: AppTheme.surfaceLight,
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+            duration: const Duration(seconds: 10),
+          ));
+        }
       }
     } on FirebaseAuthException catch (e) {
       String msg;
@@ -151,6 +170,12 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
       }
       await batch.commit();
     }
+
+    // What they left in Arcs: replies, posts, likes, memberships. Unlike the
+    // comments above, best effort: it never throws, and a write the rules
+    // refuse (or an index not yet built) doesn't stop the deletion. What
+    // stayed is said once the account is gone.
+    if (_arcsWipe) _arcsLeft = await ArcsService.instance.wipeUser(uid);
 
     // Known subcollections — explicit list so nothing is missed
     const subcollections = [
@@ -318,6 +343,12 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
               _bullet('Your alerts and notification preferences'),
               _bullet('Your followers and following list'),
               _bullet('Your discussion comments and replies'),
+              if (_arcsWipe) ...[
+                _bullet('Your Arcs posts, replies and likes, and your place '
+                    'in each arc'),
+                _bullet('Arcs you started, unless others are in them: those '
+                    'stay, without your name'),
+              ],
               _bullet('Your profile and account credentials'),
               ] else ...[
                 _bullet('Your list, ratings and progress'),
