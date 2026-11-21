@@ -77,6 +77,13 @@ void arcSay(BuildContext context, String message,
     shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(AppTheme.hankoRadius)),
     content: Text(message, style: AppTheme.hankoSans(height: 1.35)),
+    // A snackbar with an action stays until dismissed in this Flutter
+    // (persist defaults to true), which left "Blocked" over later screens'
+    // buttons (web check, code batch 2). It goes after 6 s instead.
+    persist: action == null ? null : false,
+    duration: action == null
+        ? const Duration(milliseconds: 4000)
+        : const Duration(seconds: 6),
     action: action == null || onAction == null
         ? null
         : SnackBarAction(
