@@ -37,6 +37,10 @@ class _AnilistImportScreenState extends State<AnilistImportScreen> {
   int _lookedUp = 0;
   List<String> _unmatched = const [];
 
+  // Titles AniList marks adult, left out of either import (code batch 1,
+  // LR-010, Q181). The done screen says how many.
+  int _adultLeftOut = 0;
+
   /// The screen in flat Hanko (the Vibes report's next stage: a form, so no
   /// boards): sumi with sumi 2 panels and 2 px corners, the chosen source
   /// keylined and ticked in washi (CLAUDE.md: never coral, which is only ever
@@ -109,6 +113,7 @@ class _AnilistImportScreenState extends State<AnilistImportScreen> {
       _matching = false;
       _lookedUp = 0;
       _unmatched = const [];
+      _adultLeftOut = 0;
       _currentAnime = '';
     });
 
@@ -137,7 +142,7 @@ class _AnilistImportScreenState extends State<AnilistImportScreen> {
           entries {
             status score(format: POINT_10_DECIMAL) progress
             media {
-              id title { romaji english }
+              id isAdult title { romaji english }
               coverImage { large }
               episodes averageScore genres
               format status seasonYear season
@@ -166,14 +171,23 @@ class _AnilistImportScreenState extends State<AnilistImportScreen> {
 
     final lists = data['data']['MediaListCollection']['lists'] as List;
     int total = 0;
+    int adult = 0;
     for (final l in lists) {
-      total += (l['entries'] as List).length;
+      for (final entry in l['entries'] as List) {
+        if (AnilistService.noteAdult(entry['media'])) {
+          adult++;
+        } else {
+          total++;
+        }
+      }
     }
-    if (mounted) setState(() => _total = total);
+    if (mounted) setState(() { _total = total; _adultLeftOut = adult; });
 
     for (final list in lists) {
       for (final entry in list['entries'] as List) {
         final media = entry['media'];
+        // Adult titles are left out (code batch 1); counted above.
+        if (AnilistService.noteAdult(media)) continue;
         if (mounted) {
           setState(() => _currentAnime =
             media['title']['english'] ?? media['title']['romaji'] ?? '');
@@ -255,11 +269,15 @@ class _AnilistImportScreenState extends State<AnilistImportScreen> {
     // id. The done screen says how many were left out, and which.
     final matched = <(Map<String, dynamic>, Map<String, dynamic>)>[];
     final unmatched = <String>[];
+    var adult = 0;
     for (final entry in entries) {
       final node = entry['node'] as Map<String, dynamic>;
       final media = aniList[node['id']];
       if (media == null) {
         unmatched.add(node['title'] as String? ?? 'Unknown');
+      } else if (AnilistService.noteAdult(media)) {
+        // Adult titles are left out (code batch 1), and counted.
+        adult++;
       } else {
         matched.add((media, entry['list_status'] as Map<String, dynamic>));
       }
@@ -269,6 +287,7 @@ class _AnilistImportScreenState extends State<AnilistImportScreen> {
         _matching = false;
         _total = matched.length;
         _unmatched = unmatched;
+        _adultLeftOut = adult;
       });
     }
 
@@ -308,7 +327,7 @@ class _AnilistImportScreenState extends State<AnilistImportScreen> {
     Page(page: $page, perPage: 50) {
       pageInfo { hasNextPage }
       media(idMal_in: $ids, type: ANIME) {
-        id idMal title { romaji english }
+        id idMal isAdult title { romaji english }
         coverImage { large }
         episodes averageScore genres
         format status seasonYear season
@@ -935,6 +954,16 @@ class _AnilistImportScreenState extends State<AnilistImportScreen> {
               const SizedBox(height: 8),
               inset(Text('$_imported anime imported successfully',
                   style: AppTheme.hankoSans(color: AppTheme.hankoStone))),
+              if (_adultLeftOut > 0) ...[
+                const SizedBox(height: 16),
+                inset(Text(
+                    _adultLeftOut == 1
+                        ? '1 title marked as adult was left out. Hanj '
+                            'doesn’t show adult titles.'
+                        : '$_adultLeftOut titles marked as adult were left '
+                            'out. Hanj doesn’t show adult titles.',
+                    style: meta)),
+              ],
               if (_unmatched.isNotEmpty) ...[
                 const SizedBox(height: 16),
                 inset(Text(

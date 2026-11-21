@@ -133,6 +133,7 @@ class _AnimeCalendarScreenState extends State<AnimeCalendarScreen> {
             episode
             media {
               id
+              isAdult
               title { romaji english }
               coverImage { medium }
               averageScore
@@ -177,6 +178,9 @@ class _AnimeCalendarScreenState extends State<AnimeCalendarScreen> {
       for (final schedule in schedules) {
         final mediaId = schedule['media']['id'].toString();
         if (!watchingIds.contains(mediaId)) continue;
+        // The schedule takes no isAdult argument, so adult titles are left
+        // out here (code batch 1).
+        if (AnilistService.noteAdult(schedule['media'])) continue;
 
         final airingAt =
             DateTime.fromMillisecondsSinceEpoch(schedule['airingAt'] * 1000);
