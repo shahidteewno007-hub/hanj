@@ -28,6 +28,7 @@ import '../../widgets/confetti_overlay.dart';
 import '../../models/anime_model.dart';
 import '../../services/firestore_service.dart';
 import '../../services/anilist_service.dart';
+import '../../services/notification_service.dart';
 import '../../services/offline_cache_service.dart';
 import '../../core/trailer_launcher.dart';
 import '../../widgets/share_card.dart';
@@ -4076,6 +4077,13 @@ class _OverviewTab extends StatelessWidget {
   // once Arcs is open (ArcsScreen.open). Off gives back Overview as it was.
   static const bool _watchAlong = true;
 
+  // ── Discussion is hidden (code batch 1, audit 4a, LR-005) ──
+  // Episode discussions are public comments with no report, block or delete
+  // and no length cap in the rules, so the door on every Detail page closes
+  // before the closed test. The screen and its rules are untouched. True
+  // gives back the "Join the discussion" row as it was.
+  static const bool _discussionDoor = false;
+
   /// AniList's official streaming links for the show (`externalLinks` of
   /// type STREAMING, from Stage 1c's request), one per site, the first kept
   /// (question 113): AniList can list a site more than once (two Crunchyroll
@@ -4282,6 +4290,7 @@ class _OverviewTab extends StatelessWidget {
 
         // ── Discussion ──────────────────────────────────────
         // A plain 48 dp row in Hanko: no card, no coral arrow.
+        if (_discussionDoor)
         InkWell(
           key: const ValueKey('discussion'),
           onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => EpisodeDiscussionScreen(anime: anime, episodeNumber: 0))),
@@ -5764,6 +5773,10 @@ class _NextEpisodeCountdownState extends State<_NextEpisodeCountdown> {
         .collection('users').doc(uid)
         .collection('alerts').doc(widget.animeId);
     if (value) {
+      // The phone's prompt opens here, at the first bell (code batch 1).
+      if (!NotificationService.askAtLaunch) {
+        NotificationService.instance.askPermission();
+      }
       await ref.set({
         'animeId': widget.animeId,
         'episode': widget.episode,

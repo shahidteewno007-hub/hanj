@@ -248,13 +248,13 @@ class HanjApp extends StatelessWidget {
               // Locked until Hanj+ (kAchievementsEnabled), it stays
               // registered, so the deep link never throws, and closes at
               // once (_ClosesAtOnce): the app stays where it was.
-              '/cards': (_) => Achievements.replaceCards
+              '/cards': (_) => _signedIn(Achievements.replaceCards
                   ? (kAchievementsEnabled
                       ? const AchievementsScreen()
                       : const _ClosesAtOnce())
-                  : const CardCollectionScreen(),
-              '/cadre': (_) => const CadreLobbyScreen(),
-              '/tierlist': (_) => const TierListHomeScreen(),
+                  : const CardCollectionScreen()),
+              '/cadre': (_) => _signedIn(const CadreLobbyScreen()),
+              '/tierlist': (_) => _signedIn(const TierListHomeScreen()),
             },
             home: const AuthWrapper(),
           );
@@ -298,6 +298,39 @@ class AuthWrapper extends StatelessWidget {
           );
         }
         return const LoginScreen();
+      },
+    );
+  }
+}
+
+/// The named routes open only for someone signed in (code batch 1, audit 4c):
+/// on the web `/#/cadre`, `/#/cards` and `/#/tierlist` used to open their
+/// screens with nobody signed in. False gives back the routes as they were.
+const bool _routesNeedSignIn = true;
+
+Widget _signedIn(Widget screen) =>
+    _routesNeedSignIn ? _SignedInOnly(child: screen) : screen;
+
+// A named route's screen once Auth has said who is here: signed out, it
+// closes at once (_ClosesAtOnce) and leaves AuthWrapper's sign-in below it.
+// In the app every pushNamed comes from a signed-in screen, so the first
+// event is the user and the screen shows as before.
+class _SignedInOnly extends StatelessWidget {
+  final Widget child;
+  const _SignedInOnly({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<User?>(
+      stream: FirebaseAuth.instance.authStateChanges(),
+      initialData: FirebaseAuth.instance.currentUser,
+      builder: (context, snapshot) {
+        final user = snapshot.data;
+        if (user != null) return child;
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const ColoredBox(color: Color(0xFF121110));
+        }
+        return const _ClosesAtOnce();
       },
     );
   }

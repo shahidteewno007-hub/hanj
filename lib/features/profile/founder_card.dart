@@ -22,6 +22,12 @@ class FounderCard extends StatelessWidget {
   final FounderStatus status;
   const FounderCard({super.key, required this.status});
 
+  /// The note promises only what Hanj keeps by itself (code batch 1, audit
+  /// 4a, CW-14): the number and the badge. "You get new features early" is
+  /// held back until Shahid says what early access means; nothing in the
+  /// app delivers it today. False gives back the line with it.
+  static const bool _keptPromises = true;
+
   @override
   Widget build(BuildContext context) {
     if (!status.isFounder) return const SizedBox.shrink();
@@ -55,8 +61,11 @@ class FounderCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '$who$when. Your badge and number are yours for good, and '
-                  'you get new features early.',
+                  _keptPromises
+                      ? '$who$when. Your founder badge and number stay on '
+                          'your profile for good.'
+                      : '$who$when. Your badge and number are yours for good, and '
+                          'you get new features early.',
                   style: AppTheme.hankoSans(
                     fontSize: AppTheme.hankoMetaSize,
                     color: AppTheme.hankoStone,

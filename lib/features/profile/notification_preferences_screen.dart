@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../../core/theme/app_theme.dart';
 import '../../services/notification_service.dart';
@@ -60,6 +61,29 @@ class _NotificationPreferencesScreenState
     ),
   ];
 
+  /// Three switches are hidden (code batch 1, audit 4a, LR-023, GR-017):
+  /// Friend Activity, whose push can never be sent since nobody can be
+  /// followed, and Streak Alerts and Weekly Recap, whose pushes say
+  /// something untrue and go off at the server until they are fixed (a
+  /// functions deploy, Shahid's). Stored choices are kept. False gives back
+  /// all five rows.
+  static const bool _quietSwitches = true;
+  static const _quietKeys = {'social', 'streak', 'weekly_recap'};
+
+  /// In an iPhone's browser a push can't arrive unless Hanj is added to the
+  /// Home Screen and opened from there (audit 4c, WEB-05), so the screen
+  /// says so in place of its server line. False gives back the server line
+  /// everywhere.
+  static const bool _iPhoneWebLine = true;
+
+  static bool get _iPhoneWeb =>
+      kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
+
+  static final _shown = [
+    for (final item in _items)
+      if (!_quietSwitches || !_quietKeys.contains(item.key)) item,
+  ];
+
   @override
   void initState() {
     super.initState();
@@ -73,6 +97,11 @@ class _NotificationPreferencesScreenState
 
   Future<void> _toggle(String key, bool value) async {
     setState(() => _prefs[key] = value);
+    // Turning a reminder on asks the phone, if it hasn't been asked (code
+    // batch 1: the prompt waits for the first bell or reminder).
+    if (value && !NotificationService.askAtLaunch) {
+      _service.askPermission();
+    }
     try {
       await _service.setPreference(key, value);
     } catch (_) {
@@ -122,8 +151,13 @@ class _NotificationPreferencesScreenState
                       const SizedBox(width: 10),
                       Expanded(
                         child: Text(
-                          'Notifications are sent by Hanj servers. '
-                          'You can change these anytime.',
+                          _iPhoneWebLine && _iPhoneWeb
+                              ? 'An iPhone browser can’t receive Hanj '
+                                  'notifications. Add Hanj to your Home '
+                                  'Screen from Safari’s Share menu, then '
+                                  'open it from there.'
+                              : 'Notifications are sent by Hanj servers. '
+                                  'You can change these anytime.',
                           style: AppTheme.sans(
                               fontSize: 12,
                               color: AppTheme.textSecondary,
@@ -142,10 +176,10 @@ class _NotificationPreferencesScreenState
                     border: Border.all(color: AppTheme.cardBorder),
                   ),
                   child: Column(
-                    children: _items.asMap().entries.map((entry) {
+                    children: _shown.asMap().entries.map((entry) {
                       final i    = entry.key;
                       final item = entry.value;
-                      final isLast = i == _items.length - 1;
+                      final isLast = i == _shown.length - 1;
 
                       return Column(
                         children: [

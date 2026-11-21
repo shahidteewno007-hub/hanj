@@ -49,6 +49,25 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   /// False gives back 49cb3e9's flat page 1. Only with [_printRoom].
   static const bool _richWelcome = true;
 
+  /// The pages promise only what Hanj has (code batch 1, audit 4a, UX-01):
+  /// no notes, no following, no Settings screen, and no "we" (Hanj never
+  /// says "we"). Page 2 drops "and note", page 4 shows the share cards in
+  /// place of following friends, and the import page says what happens:
+  /// Home keeps a card to finish the import, and import lives on Profile.
+  /// False gives back the words as they were.
+  static const bool _trueWords = true;
+
+  /// Pages 2, 3 and 4 (your list, discover, share), shown or skipped (code
+  /// batch 1, audit 4a, UX-01). The audit hides them only together with a
+  /// one-button empty state on Home (UX-07), or a new user lands on Home
+  /// with less said than today; that empty state isn't built yet, so they
+  /// stay. False skips them: welcome, then import.
+  static const bool _threePages = true;
+
+  /// The pages in order: all four, or the welcome alone ([_threePages]).
+  static List<_PageData> get _pages =>
+      _threePages ? _contentPages : _contentPages.sublist(0, 1);
+
   /// How long page 1 waits for its hand before going without it.
   static const _welcomeWait = Duration(seconds: 8);
 
@@ -69,7 +88,9 @@ class _OnboardingScreenState extends State<OnboardingScreen>
       iconColor: Color(0xFF4A9B6F),
       tag: 'YOUR LIST',
       title: 'Track\nEverything',
-      subtitle: 'Add anime to Watching,\nCompleted, Plan to Watch\nor Dropped. Rate and note.',
+      subtitle: _trueWords
+          ? 'Add anime to Watching,\nCompleted, Plan to Watch\nor Dropped. Rate each one.'
+          : 'Add anime to Watching,\nCompleted, Plan to Watch\nor Dropped. Rate and note.',
       accentColor: Color(0xFF4A9B6F),
     ),
     _PageData(
@@ -83,16 +104,18 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     _PageData(
       icon: Icons.people_outline_rounded,
       iconColor: Color(0xFFD4A96A),
-      tag: 'COMMUNITY',
+      tag: _trueWords ? 'SHARE' : 'COMMUNITY',
       title: 'Share Your\nJourney',
-      subtitle: 'Follow friends, see their\nactivity and share your\nanime card with the world.',
+      subtitle: _trueWords
+          ? 'Turn your list into\npictures worth posting:\nTop 9, taste card, tier lists.'
+          : 'Follow friends, see their\nactivity and share your\nanime card with the world.',
       accentColor: Color(0xFFD4A96A),
     ),
   ];
 
   // Total pages = content pages + import page
-  int get _totalPages => _contentPages.length + 1;
-  bool get _isImportPage => _currentPage == _contentPages.length;
+  int get _totalPages => _pages.length + 1;
+  bool get _isImportPage => _currentPage == _pages.length;
 
   @override
   void initState() {
@@ -195,7 +218,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
     if (_printRoom) return _printed(context);
     final accentColor = _isImportPage
         ? _coral
-        : _contentPages[_currentPage].accentColor;
+        : _pages[_currentPage].accentColor;
 
     return Scaffold(
       backgroundColor: _bg,
@@ -231,7 +254,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
             },
             itemCount: _totalPages,
             itemBuilder: (_, i) {
-              if (i == _contentPages.length) {
+              if (i == _pages.length) {
                 return _ImportPageContent(
                   fadeAnim: _fadeAnim,
                   selectedImport: _selectedImport,
@@ -239,7 +262,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                 );
               }
               return _PageContent(
-                page: _contentPages[i],
+                page: _pages[i],
                 fadeAnim: _fadeAnim,
               );
             },
@@ -363,7 +386,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
               },
               itemCount: _totalPages,
               itemBuilder: (_, i) {
-                if (i == _contentPages.length) {
+                if (i == _pages.length) {
                   return _PrintedImportPage(
                     fadeAnim: fade,
                     selectedImport: _selectedImport,
@@ -372,12 +395,12 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                 }
                 if (_richWelcome && i == 0) {
                   return _PrintedWelcomePage(
-                    page: _contentPages[i],
+                    page: _pages[i],
                     fadeAnim: fade,
                     covers: _welcomeCovers,
                   );
                 }
-                return _PrintedPage(page: _contentPages[i], fadeAnim: fade);
+                return _PrintedPage(page: _pages[i], fadeAnim: fade);
               },
             ),
           ),
@@ -1215,11 +1238,15 @@ class _PrintedImportPage extends StatelessWidget {
                 excludeFromSemantics: true,
               ),
               const SizedBox(height: 32),
-              const _PrintedHeading(
+              _PrintedHeading(
                 tag: 'IMPORT',
                 title: 'Bring Your List Along',
-                body: 'Already tracking on AniList or MAL? '
-                    'We’ll import your list after you sign in.',
+                body: _OnboardingScreenState._trueWords
+                    ? 'Already tracking on AniList or MyAnimeList? Choose '
+                        'one, and Home keeps a card for you to finish the '
+                        'import.'
+                    : 'Already tracking on AniList or MAL? '
+                        'We’ll import your list after you sign in.',
               ),
               const SizedBox(height: 28),
               _PrintedImportOption(
@@ -1241,9 +1268,15 @@ class _PrintedImportPage extends StatelessWidget {
               ),
               const SizedBox(height: 20),
               Text(
-                selectedImport == null
-                    ? 'Or tap Get Started to skip — you can import later in Settings.'
-                    : 'We’ll remind you to complete the import once you’re in.',
+                !_OnboardingScreenState._trueWords
+                    ? (selectedImport == null
+                        ? 'Or tap Get Started to skip — you can import later in Settings.'
+                        : 'We’ll remind you to complete the import once you’re in.')
+                    : selectedImport == null
+                        ? 'Or tap Get Started to skip. You can import any '
+                            'time from your Profile.'
+                        : 'Home will keep a card for you to finish the '
+                            'import.',
                 style: AppTheme.hankoSans(
                   fontSize: AppTheme.hankoMetaSize,
                   color: AppTheme.hankoAsh,

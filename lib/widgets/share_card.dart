@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:share_plus/share_plus.dart' show XFile;
 import 'gal_mobile.dart' if (dart.library.html) 'gal_stub.dart' as galSaver;
 
 import '../core/theme/app_theme.dart';
@@ -47,6 +48,11 @@ class _ShareCardSheetState extends State<ShareCardSheet> {
   final _repaintKey = GlobalKey();
   bool _isCapturing = false;
 
+  /// On the web Save Image downloads the card (code batch 1, audit 4c,
+  /// W-08); it used to save nothing and show a right-click hint behind the
+  /// sheet. False gives back the hint.
+  static const bool _webDownload = true;
+
   Future<void> _downloadCard() async {
     setState(() => _isCapturing = true);
     try {
@@ -60,7 +66,13 @@ class _ShareCardSheetState extends State<ShareCardSheet> {
 
       final bytes = byteData.buffer.asUint8List();
 
-      if (kIsWeb) {
+      if (kIsWeb && _webDownload) {
+        // The browser saves the PNG as a download, as the tier list's
+        // export does on the web.
+        final name = 'hanj_share_${DateTime.now().millisecondsSinceEpoch}.png';
+        await XFile.fromData(bytes, mimeType: 'image/png', name: name)
+            .saveTo(name);
+      } else if (kIsWeb) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(

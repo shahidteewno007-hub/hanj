@@ -568,7 +568,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         _menuItem('calendar', Icons.calendar_month_rounded, 'Anime Calendar'),
                         _menuItem('social', Icons.people_rounded, 'Social'),
                       ],
-                      _menuItem('notifications', Icons.notifications_outlined, 'Notifications'),
+                      if (_notificationsRow)
+                        _menuItem('notifications', Icons.notifications_outlined, 'Notifications'),
                       const PopupMenuDivider(),
                       _menuItem('more', Icons.more_horiz_rounded, 'More'),
                       _menuItem('signout', Icons.logout_rounded, 'Sign Out',
@@ -771,7 +772,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       _EntryRow(
                         icon: Icons.people_sharp,
                         title: 'Social',
-                        line: 'Compare your taste with a friend\'s',
+                        // With Soulmatch hidden (code batch 1) the screen
+                        // holds Arcs alone, so the line says that.
+                        line: SocialScreen.soulmatch
+                            ? 'Compare your taste with a friend\'s'
+                            : 'Watch a show together in Arcs',
                         onTap: () => Navigator.push(context, MaterialPageRoute(
                             builder: (_) => const SocialScreen())),
                       ),
@@ -822,6 +827,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
   /// here, switched off, so the menu's history stays readable; switching
   /// this on would list each tool twice.
   static const bool _identityToolsInMenu = false;
+
+  /// The Notifications row in the menu, shown or hidden (code batch 1,
+  /// audit 4a, T5). The audit hides it if no episode reminder is seen
+  /// arriving on a phone before the closed test; until that check it stays.
+  /// False hides the row; the screen stays.
+  static const bool _notificationsRow = true;
 
   /// The counts closed with "Top genres: A, B and C." until question 71.
   /// The Taste row below says the same thing, as the first of the ways on

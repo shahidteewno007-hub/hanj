@@ -8,6 +8,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../../core/responsive.dart';
 import '../../core/theme/app_theme.dart';
 import '../../services/anilist_service.dart';
+import '../../services/notification_service.dart';
 import '../../services/firestore_service.dart';
 import '../../models/anime_model.dart';
 import '../anime_detail/anime_detail_screen.dart';
@@ -91,6 +92,10 @@ class _AnimeCalendarScreenState extends State<AnimeCalendarScreen> {
         .collection('users').doc(uid)
         .collection('alerts').doc(animeId);
     if (newVal) {
+      // The phone's prompt opens here, at the first bell (code batch 1).
+      if (!NotificationService.askAtLaunch) {
+        NotificationService.instance.askPermission();
+      }
       await ref.set({
         'animeId': animeId,
         'title': title,

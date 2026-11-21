@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
@@ -44,6 +45,21 @@ class _AnilistImportScreenState extends State<AnilistImportScreen> {
   /// one button for a screen reader and the keyboard. False gives back the
   /// coral tiles, the coral progress bar and the green badge as they were.
   static const bool _printRoom = true;
+
+  /// On the web only AniList is offered (code batch 1, audit 4c, W-03):
+  /// MyAnimeList's API refuses a browser, so that choice could only fail
+  /// with a line of code, and the CSV choice says "coming soon". One line
+  /// says where MyAnimeList import works instead. Android is unchanged.
+  /// False gives back all three choices on the web, MyAnimeList first.
+  static const bool _webAniListOnly = true;
+
+  static bool get _webOnly => kIsWeb && _webAniListOnly;
+
+  @override
+  void initState() {
+    super.initState();
+    if (_webOnly) _selectedSource = ImportSource.anilist;
+  }
 
   @override
   void dispose() {
@@ -724,6 +740,7 @@ class _AnilistImportScreenState extends State<AnilistImportScreen> {
             const SizedBox(height: 8),
 
             // Source options
+            if (!_webOnly) ...[
             _PrintedSourceTile(
               label: 'MyAnimeList',
               tag: 'MAL',
@@ -732,6 +749,7 @@ class _AnilistImportScreenState extends State<AnilistImportScreen> {
               onTap: () => setState(() => _selectedSource = ImportSource.mal),
             ),
             const SizedBox(height: 2),
+            ],
             _PrintedSourceTile(
               label: 'AniList',
               tag: 'AL',
@@ -739,6 +757,7 @@ class _AnilistImportScreenState extends State<AnilistImportScreen> {
               selected: _selectedSource == ImportSource.anilist,
               onTap: () => setState(() => _selectedSource = ImportSource.anilist),
             ),
+            if (!_webOnly) ...[
             const SizedBox(height: 2),
             _PrintedSourceTile(
               label: 'CSV file',
@@ -747,6 +766,11 @@ class _AnilistImportScreenState extends State<AnilistImportScreen> {
               selected: _selectedSource == ImportSource.csv,
               onTap: () => setState(() => _selectedSource = ImportSource.csv),
             ),
+            ] else ...[
+              const SizedBox(height: 10),
+              inset(Text('MyAnimeList import works in the Android app.',
+                  style: meta)),
+            ],
 
             const SizedBox(height: 20),
 

@@ -8,6 +8,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/anime_model.dart';
 import '../../services/anilist_service.dart';
+import '../../services/notification_service.dart';
 import '../anime_detail/anime_detail_screen.dart';
 
 // ─────────────────────────────────────────────────────────────
@@ -170,6 +171,10 @@ class _UpcomingAnimeScreenState extends State<UpcomingAnimeScreen>
         );
       }
     } else {
+      // The phone's prompt opens here, at the first bell (code batch 1).
+      if (!NotificationService.askAtLaunch) {
+        NotificationService.instance.askPermission();
+      }
       try {
         await ref.set({
           'animeId':    anime.id,
@@ -580,6 +585,10 @@ class _UpcomingAnimeRowState extends State<UpcomingAnimeRow> {
       if (!mounted) return;
       setState(() => _alertedIds.remove(anime.id));
     } else {
+      // The phone's prompt opens here, at the first bell (code batch 1).
+      if (!NotificationService.askAtLaunch) {
+        NotificationService.instance.askPermission();
+      }
       await ref.set({
         'animeId':    anime.id,
         'title':      anime.titleEnglish ?? anime.title,
