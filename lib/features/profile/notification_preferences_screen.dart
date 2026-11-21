@@ -120,6 +120,7 @@ class _NotificationPreferencesScreenState
         elevation: 0,
         scrolledUnderElevation: 0,
         leading: IconButton(
+          tooltip: _PrefTile._readable ? 'Back' : null, // A11Y-01
           icon: const Icon(Icons.arrow_back_rounded,
               color: AppTheme.textPrimary, size: 20),
           onPressed: () => Navigator.pop(context),
@@ -229,9 +230,15 @@ class _PrefTile extends StatelessWidget {
     required this.onChanged,
   });
 
+  /// Each row is one switch for a screen reader and the keyboard (code
+  /// batch 1, audit 3b, A11Y-01): the toggles had no name, no role and no
+  /// state, and the row couldn't be tapped. False gives back the bare
+  /// toggle as it was.
+  static const bool _readable = true;
+
   @override
   Widget build(BuildContext context) {
-    return Padding(
+    final row = Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       child: Row(
         children: [
@@ -273,6 +280,20 @@ class _PrefTile extends StatelessWidget {
           // Toggle — custom, unified coral accent
           _ModernToggle(value: value, onChanged: onChanged),
         ],
+      ),
+    );
+    if (!_readable) return row;
+    // One node a screen reader lands on: the row's name, its line and
+    // whether it is on, as a switch. The InkWell inside it holds the tap
+    // and keyboard focus for the whole row (48 dp and more), and the
+    // visuals sit under ExcludeSemantics (CLAUDE.md's rule).
+    return Semantics(
+      container: true,
+      toggled: value,
+      label: '$title. $subtitle',
+      child: InkWell(
+        onTap: () => onChanged(!value),
+        child: ExcludeSemantics(child: row),
       ),
     );
   }
