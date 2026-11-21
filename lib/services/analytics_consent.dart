@@ -58,7 +58,15 @@ class AnalyticsConsent {
     } catch (_) {}
   }
 
+  /// Whether Analytics was started this run. A No before that leaves it
+  /// untouched: on the web even setting collection off creates Analytics,
+  /// which fetches its config (seen in the batch 1 web check), and on
+  /// Android the manifest already has it off.
+  bool _started = false;
+
   void _apply(bool on) {
+    if (!on && !_started) return;
+    _started = true;
     try {
       FirebaseAnalytics.instance
           .setAnalyticsCollectionEnabled(on)
