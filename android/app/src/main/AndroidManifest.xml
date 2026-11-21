@@ -42,6 +42,12 @@
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_color"
             android:resource="@color/notification_accent" />
+        <!-- Analytics collects nothing until a Yes on the in-app sheet (code
+             batch 1, Q183). AnalyticsConsent turns it on after a Yes, and
+             at every launch when AnalyticsConsent.askFirst is false. -->
+        <meta-data
+            android:name="firebase_analytics_collection_enabled"
+            android:value="false" />
     </application>
     <queries>
         <intent>

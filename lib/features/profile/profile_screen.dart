@@ -22,6 +22,7 @@ import '../../services/auth_service.dart';
 import '../../services/firestore_service.dart';
 import '../../services/founder_service.dart';
 import '../../services/connectivity_service.dart';
+import '../../services/analytics_consent.dart';
 import 'founder_card.dart';
 import '../profile/edit_profile_screen.dart';
 import '../stats/stats_screen.dart';
@@ -2234,6 +2235,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           fontSize: 18, weight: FontWeight.w700)),
                 ),
               ),
+              // Analytics, on only after a Yes (code batch 1, Q183): the
+              // way to change the answer, beside the legal rows.
+              if (AnalyticsConsent.askFirst)
+                ValueListenableBuilder<bool?>(
+                  valueListenable: AnalyticsConsent.instance.consent,
+                  builder: (_, consent, _) => SwitchListTile(
+                    secondary: const Icon(Icons.insights_outlined,
+                        color: AppTheme.textSecondary, size: 20),
+                    title: Text('Share usage data',
+                        style: AppTheme.sans(
+                            fontSize: 14, color: AppTheme.textPrimary)),
+                    subtitle: Text(
+                        'Which screens you open, through Google Analytics',
+                        style: AppTheme.sans(
+                            fontSize: 12, color: AppTheme.textMuted)),
+                    value: consent == true,
+                    activeThumbColor: AppTheme.hankoSumi,
+                    activeTrackColor: AppTheme.hankoWashi,
+                    onChanged: (v) =>
+                        AnalyticsConsent.instance.setConsent(v),
+                  ),
+                ),
               ListTile(
                 leading: const Icon(Icons.delete_forever_rounded,
                     color: AppTheme.error, size: 20),
