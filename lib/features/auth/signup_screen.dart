@@ -55,7 +55,11 @@ class _SignupScreenState extends State<SignupScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(e.toString()),
+            // Plain words, never code (code batch 1, LR-019): AuthService's
+            // own messages are text; anything else gets one line.
+            content: Text(e is String
+                ? e
+                : 'Google sign-in didn’t finish. Try again.'),
             backgroundColor: AppTheme.error,
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),

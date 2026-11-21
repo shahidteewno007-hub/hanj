@@ -55,6 +55,23 @@ class _LoginScreenState extends State<LoginScreen>
   // ── More posters: fetch trending + popular ──────────────────
   static const _posterCount = 18;
 
+  /// The first screen's leftovers go (code batch 1, audit 4a and 7a item
+  /// 24, UX-22, VD-01, LR-019): the TRENDING ticker (its fallback names
+  /// were made up), the "ALSO CONSIDERED" naming note, "Remember me" (it
+  /// stored nothing) and the example address at a domain Hanj serves. An
+  /// error is said in plain words, never as code, and a reset request
+  /// doesn't say whether an address has an account (CW-07). True gives
+  /// back the screen as it was.
+  static const bool _tidyFront = true;
+
+  /// An error in words a person can act on: AuthService's own messages
+  /// (thrown as text) pass through; anything else gets one plain line.
+  static String _plain(Object e) => !_tidyFront
+      ? e.toString()
+      : e is String
+          ? e
+          : 'Sign-in didn’t finish. Check your connection and try again.';
+
   @override
   void initState() {
     super.initState();
@@ -79,7 +96,7 @@ class _LoginScreenState extends State<LoginScreen>
           await _authService.completeGoogleSignIn(event.user);
           // AuthWrapper's stream swaps to MainScreen on success.
         } catch (e) {
-          if (mounted) setState(() => _errorMessage = e.toString());
+          if (mounted) setState(() => _errorMessage = _plain(e));
         } finally {
           if (mounted) setState(() => _isLoading = false);
         }
@@ -145,7 +162,9 @@ class _LoginScreenState extends State<LoginScreen>
     final email    = _emailController.text.trim();
     final password = _passwordController.text;
     if (email.isEmpty || password.isEmpty) {
-      setState(() => _errorMessage = 'Please fill in all fields.');
+      setState(() => _errorMessage = _tidyFront
+          ? 'Enter your email and password.'
+          : 'Please fill in all fields.');
       return;
     }
     setState(() { _isLoading = true; _errorMessage = null; });
@@ -156,7 +175,7 @@ class _LoginScreenState extends State<LoginScreen>
         // Auth state stream in AuthWrapper will swap to MainScreen automatically.
       }
     } catch (e) {
-      if (mounted) setState(() => _errorMessage = e.toString());
+      if (mounted) setState(() => _errorMessage = _plain(e));
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -171,7 +190,7 @@ class _LoginScreenState extends State<LoginScreen>
         // Auth state stream in AuthWrapper will swap to MainScreen automatically.
       }
     } catch (e) {
-      if (mounted) setState(() => _errorMessage = e.toString());
+      if (mounted) setState(() => _errorMessage = _plain(e));
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -215,10 +234,12 @@ class _LoginScreenState extends State<LoginScreen>
                 try {
                   await _authService.sendPasswordResetEmail(ctrl.text);
                   messenger.showSnackBar(
-                    const SnackBar(content: Text('Reset email sent!')),
+                    SnackBar(content: Text(_tidyFront
+                        ? 'If that email has a Hanj account, a reset link is on its way.'
+                        : 'Reset email sent!')),
                   );
                 } catch (e) {
-                  if (mounted) setState(() => _errorMessage = e.toString());
+                  if (mounted) setState(() => _errorMessage = _plain(e));
                 }
               },
               child: const Text('Send', style: TextStyle(color: _coral)),
@@ -270,7 +291,7 @@ class _LoginScreenState extends State<LoginScreen>
                     const SizedBox(height: 12),
 
                     // Trending ticker
-                    _buildTrendingTicker(),
+                    if (!_tidyFront) _buildTrendingTicker(),
 
                     const Spacer(),
                     const Spacer(),
@@ -344,8 +365,9 @@ class _LoginScreenState extends State<LoginScreen>
                       ],
                     ),
 
-                    const SizedBox(height: 12),
+                    if (!_tidyFront) const SizedBox(height: 12),
 
+                    if (!_tidyFront)
                     Text(
                       'ALSO CONSIDERED: kiseki · nagare · sora · hikari',
                       style: TextStyle(
@@ -600,7 +622,7 @@ class _LoginScreenState extends State<LoginScreen>
             children: [
               _buildTextField(
                 controller: _emailController,
-                hint: 'akira@hanj.app',
+                hint: _tidyFront ? 'Email' : 'akira@hanj.app',
                 icon: Icons.mail_outline_rounded,
                 keyboardType: TextInputType.emailAddress,
               ),
@@ -628,6 +650,7 @@ class _LoginScreenState extends State<LoginScreen>
               // Remember me + Forgot
               Row(
                 children: [
+                  if (!_tidyFront) ...[
                   SizedBox(
                     width: 20,
                     height: 20,
@@ -646,6 +669,7 @@ class _LoginScreenState extends State<LoginScreen>
                       style: TextStyle(
                           color: Colors.white.withValues(alpha: 0.6),
                           fontSize: 13)),
+                  ],
                   const Spacer(),
                   GestureDetector(
                     onTap: _forgotPassword,

@@ -155,7 +155,9 @@ class AuthService extends ChangeNotifier {
       if (e.code == GoogleSignInExceptionCode.canceled) {
         return null; // user cancelled — don't throw
       }
-      throw 'Google sign-in failed: ${e.description ?? e.code.name}';
+      // The code stays in the log, not on screen (code batch 1, CW-05).
+      debugPrint('Google sign-in failed: ${e.description ?? e.code.name}');
+      throw 'Google sign-in didn’t finish. Try again.';
     } on FirebaseAuthException catch (e) {
       throw _handleError(e);
     } catch (e) {
