@@ -46,6 +46,18 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
   /// plain words, never Firebase's text. False gives back the screen's
   /// words as they were.
   static const bool _trueList = true;
+
+  /// With the Arcs sweep merged (code batch 2, Q180), the lists say what
+  /// the wipe now does (CW 5.6 version B): Arcs posts, replies, likes and
+  /// memberships are deleted, and what stays is named under "Kept".
+  /// Checked line by line against ArcsService.wipeUser. False gives back
+  /// version A; so does [_arcsWipe] off.
+  static const bool _versionB = true;
+
+  /// The password is checked exactly as typed (code batch 2, Q240, LR-007
+  /// item 4), so a password that starts or ends with a space can delete
+  /// its account. False gives back the trimmed check.
+  static const bool _untrimmed = true;
   final _passwordCtrl = TextEditingController();
 
   @override
@@ -66,14 +78,16 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
       final providers = user.providerData.map((p) => p.providerId).toList();
 
       if (providers.contains('password')) {
-        if (_passwordCtrl.text.trim().isEmpty) {
+        final password =
+            _untrimmed ? _passwordCtrl.text : _passwordCtrl.text.trim();
+        if (password.isEmpty) {
           _showSnackbar('Enter your password to confirm');
           setState(() => _busy = false);
           return;
         }
         final credential = EmailAuthProvider.credential(
           email:    user.email!,
-          password: _passwordCtrl.text.trim(),
+          password: password,
         );
         await user.reauthenticateWithCredential(credential);
       } else {
@@ -329,7 +343,11 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
 
               // ── What gets deleted ──────────────────────────────────
               Text(
-                _trueList ? 'Deleted now' : 'What will be deleted',
+                !_trueList
+                    ? 'What will be deleted'
+                    : _versionB && _arcsWipe
+                        ? 'Deleted'
+                        : 'Deleted now',
                 style: AppTheme.mono(
                     fontSize: 11,
                     color: AppTheme.textMuted,
@@ -350,6 +368,33 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
                     'stay, without your name'),
               ],
               _bullet('Your profile and account credentials'),
+              ] else if (_versionB && _arcsWipe) ...[
+                _bullet('Your list, ratings and progress'),
+                _bullet('Your favourites and shelves'),
+                _bullet('Your reminders and notification choices'),
+                _bullet('Your posts and replies in Arcs, your likes, and '
+                    'your place in each arc'),
+                _bullet('Your comments in episode discussions'),
+                _bullet('Your profile and your sign-in'),
+                const SizedBox(height: 20),
+                Text(
+                  'Kept',
+                  style: AppTheme.mono(
+                      fontSize: 11,
+                      color: AppTheme.textMuted,
+                      letterSpacing: 1.5),
+                ),
+                const SizedBox(height: 12),
+                // wipeUser deletes an arc you started only while nobody
+                // else is in it and nothing is posted in it. Otherwise it
+                // stays, its maker shown as "Deleted account" and its about
+                // cleared; its name stays.
+                _bullet('Arcs you started that others have joined. They '
+                    'stay open for them, with your name and the arc’s '
+                    'description removed.'),
+                _bullet('Votes you gave in episode discussions'),
+                _bullet('Reports you sent, so that Hanj can still act on '
+                    'them'),
               ] else ...[
                 _bullet('Your list, ratings and progress'),
                 _bullet('Your favourites and shelves'),
