@@ -1,6 +1,20 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    // ── Display names (code batch 2, LR-014) ──
+    // A name heads every post and reply in Arcs, so it has limits: at most
+    // 24 characters, and none of a few words that would make it speak for
+    // Hanj, as a word of its own ("Hanj Team" is refused, "Hanjiro" isn't).
+    // lib/core/display_name.dart runs the same test in the app; keep the
+    // two lists in step. Checked on the user document when the name
+    // changes, and on every name a new arc, post or reply carries.
+    function hanjNameOk(n) {
+      return n is string && n.size() <= 24
+        && !n.lower().matches(
+          '(.*[^a-z0-9])?(hanj|admin|administrator|moderator|mod|support|official|staff)([^a-z0-9].*)?');
+    }
+
     match /users/{userId} {
       // Owner-only (code batch 2, Q178, LR-008). This document holds
       // `email` and `fcmToken`, and it was readable by every signed-in user
@@ -15,11 +29,21 @@ service cloud.firestore {
       allow read: if request.auth != null && request.auth.uid == userId;
       // Owner can write their own doc, but the founderNumber is immutable
       // once set — it can never be changed or removed after assignment.
-      allow create: if request.auth != null && request.auth.uid == userId;
+      //
+      // The name: a new or changed displayName must pass hanjNameOk. A name
+      // saved before the limits keeps working until its owner changes it.
+      function nameKept() {
+        return !('displayName' in request.resource.data)
+          || (resource != null && 'displayName' in resource.data
+              && request.resource.data.displayName == resource.data.displayName)
+          || hanjNameOk(request.resource.data.displayName);
+      }
+      allow create: if request.auth != null && request.auth.uid == userId
+        && nameKept();
       allow update: if request.auth != null && request.auth.uid == userId && (
         !('founderNumber' in resource.data)
         || request.resource.data.founderNumber == resource.data.founderNumber
-      );
+      ) && nameKept();
       allow delete: if request.auth != null && request.auth.uid == userId;
       match /animeList/{animeId} {
         // Owner-only (code batch 2, Q178, LR-008). A watch list is personal
@@ -310,7 +334,7 @@ service cloud.firestore {
           && d.startsOn is timestamp
           && d.startsOn > request.time - duration.value(2, 'd')
           && d.startsOn < request.time + duration.value(31, 'd')
-          && d.creatorName is string && d.creatorName.size() <= 100;
+          && hanjNameOk(d.creatorName);
       }
 
       // Join: you add ONLY yourself; memberCount +1; nothing else changes.
@@ -448,8 +472,7 @@ service cloud.firestore {
                'authorId', 'authorName', 'likes', 'likeCount', 'replyCount',
                'createdAt'])
           && request.resource.data.authorId == request.auth.uid
-          && request.resource.data.authorName is string
-          && request.resource.data.authorName.size() <= 100
+          && hanjNameOk(request.resource.data.authorName)
           && request.resource.data.likes == []
           && request.resource.data.likeCount == 0
           && request.resource.data.replyCount == 0
@@ -512,8 +535,7 @@ service cloud.firestore {
             && request.resource.data.keys().hasOnly(['body', 'authorId',
                  'authorName', 'likes', 'likeCount', 'createdAt'])
             && request.resource.data.authorId == request.auth.uid
-            && request.resource.data.authorName is string
-            && request.resource.data.authorName.size() <= 100
+            && hanjNameOk(request.resource.data.authorName)
             && request.resource.data.likes == []
             && request.resource.data.likeCount == 0
             && request.resource.data.createdAt == request.time

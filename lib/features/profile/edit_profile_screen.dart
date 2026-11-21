@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../../core/display_name.dart';
 import '../../core/theme/app_theme.dart';
 import '../../services/anilist_service.dart';
 
@@ -171,6 +172,15 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     if (username.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Username cannot be empty')),
+      );
+      return;
+    }
+    // 24 at most, nothing kept for Hanj (code batch 2, LR-014). Checked
+    // before anything is saved, so the sign-in name and the record agree.
+    final problem = DisplayName.enforced ? DisplayName.problem(username) : null;
+    if (problem != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(problem)),
       );
       return;
     }

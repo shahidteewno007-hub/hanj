@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/display_name.dart';
 import '../../core/legal_links.dart';
 import '../../core/theme/app_theme.dart';
 import '../../services/auth_service.dart';
@@ -152,6 +153,9 @@ class _SignupScreenState extends State<SignupScreen> {
                     if (v.trim().length < 3) {
                       return 'At least 3 characters';
                     }
+                    // 24 at most, nothing kept for Hanj (code batch 2,
+                    // LR-014); the rules hold the same limits.
+                    if (DisplayName.enforced) return DisplayName.problem(v);
                     return null;
                   },
                 ),

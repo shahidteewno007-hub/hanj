@@ -1,6 +1,9 @@
 import 'dart:math' as math;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+
+import '../core/display_name.dart';
 
 // ─────────────────────────────────────────────────────────────
 // Arcs: watch-alongs (arcs redesign, 2026-11-14)
@@ -460,13 +463,28 @@ class ArcsService {
     return out;
   }
 
+  /// The name on a new arc, post or reply: the one on your record, else
+  /// your sign-in name (accounts from before names were saved at sign-up),
+  /// cut to the 24 characters the rules allow; "Anonymous" when there is
+  /// none, or it holds a word kept for Hanj (code batch 2, W-06, LR-014).
+  /// False gives back the record's name alone, uncut.
+  static const bool _nameFallback = true;
+
   Future<String> _myName(String uid) async {
+    String? signIn() => FirebaseAuth.instance.currentUser?.displayName;
     try {
       final d = await _db.collection('users').doc(uid).get();
       final name = d.data()?['displayName'] as String?;
+      if (_nameFallback) {
+        return DisplayName.usable(name) ??
+            DisplayName.usable(signIn()) ??
+            'Anonymous';
+      }
       return (name == null || name.trim().isEmpty) ? 'Anonymous' : name;
     } catch (_) {
-      return 'Anonymous';
+      return _nameFallback
+          ? DisplayName.usable(signIn()) ?? 'Anonymous'
+          : 'Anonymous';
     }
   }
 
