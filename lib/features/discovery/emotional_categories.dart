@@ -684,7 +684,7 @@ class _CategoryRowState extends State<_CategoryRow> {
   Future<(List<Anime>, int?)> _fetchPicked(String args) async {
     final (json, failStatus) = await _EmotionalCategoriesTabState._query({
       'query': 'query { Page(page: 1, perPage: 20) { media(type: ANIME, '
-          'isAdult: false, $args, sort: [${widget.category.sort}]) { id '
+          'isAdult: false, $args, sort: [${widget.category.sort}]) { id idMal '
           'title { romaji english } coverImage { large } averageScore '
           'episodes status seasonYear season format genres description '
           'trailer { id site } } } }',
@@ -702,6 +702,7 @@ class _CategoryRowState extends State<_CategoryRow> {
   }
 
   static Anime? _animeOf(Object? m) {
+    AnilistService.noteIdMal(m); // saved on the entry if added (code batch 1)
     if (m is! Map) return null;
     final title = m['title'] is Map ? m['title'] as Map : const {};
     final cover = m['coverImage'] is Map ? m['coverImage'] as Map : const {};

@@ -142,7 +142,7 @@ class _AnilistImportScreenState extends State<AnilistImportScreen> {
           entries {
             status score(format: POINT_10_DECIMAL) progress
             media {
-              id isAdult title { romaji english }
+              id idMal isAdult title { romaji english }
               coverImage { large }
               episodes averageScore genres
               format status seasonYear season
@@ -188,6 +188,7 @@ class _AnilistImportScreenState extends State<AnilistImportScreen> {
         final media = entry['media'];
         // Adult titles are left out (code batch 1); counted above.
         if (AnilistService.noteAdult(media)) continue;
+        AnilistService.noteIdMal(media); // saved on the entry (code batch 1)
         if (mounted) {
           setState(() => _currentAnime =
             media['title']['english'] ?? media['title']['romaji'] ?? '');
@@ -292,6 +293,7 @@ class _AnilistImportScreenState extends State<AnilistImportScreen> {
     }
 
     for (final (media, listStatus) in matched) {
+      AnilistService.noteIdMal(media); // saved on the entry (code batch 1)
       if (mounted) {
         setState(() => _currentAnime =
           media['title']['english'] ?? media['title']['romaji'] ?? '');

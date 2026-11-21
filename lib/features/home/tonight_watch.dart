@@ -464,7 +464,7 @@ class _TonightWatchSheetState extends State<TonightWatchSheet>
       for (var i = 0; i < _moods.length; i++)
         'm$i: Page(page: 1, perPage: 10) { media(type: ANIME, '
             'isAdult: false, genre: ${jsonEncode(_moods[i].genre)}, '
-            'sort: [${_moods[i].sort}]) { id title { romaji english } '
+            'sort: [${_moods[i].sort}]) { id idMal title { romaji english } '
             'coverImage { large color } averageScore episodes status '
             'seasonYear season format genres } }',
     ];
@@ -514,6 +514,7 @@ class _TonightWatchSheetState extends State<TonightWatchSheet>
   /// One show of a pool, built as searchAnime builds it, less the
   /// description and trailer the pool doesn't ask for.
   static Anime? _animeOf(Object? m) {
+    AnilistService.noteIdMal(m); // saved on the entry if added (code batch 1)
     if (m is! Map) return null;
     final title = m['title'] is Map ? m['title'] as Map : const {};
     final cover = m['coverImage'] is Map ? m['coverImage'] as Map : const {};
