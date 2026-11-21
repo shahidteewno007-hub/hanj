@@ -219,7 +219,9 @@ hit means no request.
 > goes through `lib/services/arcs_service.dart`. The old forum screens stay in
 > `arcs_screen.dart` behind `_printRoom`, and their writes are refused by the current rules.
 > `AUDIT.md` §5-D / S3-4 / R7 / R8 describe that old code. Counters now move only in the same
-> batch as the post or reply they name (`countedPost` / `countedReply`).
+> batch as the post or reply they name (`countedPost` / `countedReply`). Deleting an account
+> clears the user's Arcs too (`ArcsService.wipeUser`, best effort, after the comments), which
+> needs collection-group queries and so the indexes in `firestore.indexes.json`.
 
 - **Firestore** — `users/{uid}` is the hub, with subcollections `animeList`, `alerts`,
   `activity`, `companion_chat`, `companion_meta`. Top-level: `arcs` (+`posts`, +`replies`),
@@ -229,12 +231,23 @@ hit means no request.
   `FirebaseFirestore.instance` directly from their screens**, so there is no single place to
   change a collection name.
 - **`firestore.rules` is in this repo** and `firebase.json` declares it
-  (`"firestore": { "rules": "firestore.rules" }`). It covers users, `animeList`, cards,
+  (`"firestore": { "rules": "firestore.rules", "indexes": "firestore.indexes.json" }`).
+  `firestore.indexes.json` holds only three single-field collection-group indexes (posts by
+  `authorId` and `likes`, replies by `authorId`) for account deletion; deploy it with
+  `--only firestore:indexes` and answer **No** if the CLI offers to delete indexes that aren't
+  in the file (any made from console links). It covers users, `animeList`, cards,
   alerts, activity, `companion_chat`, followers/following, `meta/founders`, reviews,
   `episodeDiscussions`, arcs and reports. Read it before making a security claim.
+  Since code batch 2: a user's document, `animeList` and `activity` are **owner-only** (no
+  feature may read another user's; Soulmatch returns only with a public profile document),
+  `episodeDiscussions` takes no new comment or edit (`discussionsOpen()`), `reviews` is closed
+  (`reviewsOpen()`), display names hold 24 characters and no word kept for Hanj
+  (`hanjNameOk`, the same test as `lib/core/display_name.dart`), and `reports` takes an arc
+  or a person as well as a post.
   **Last known deploy: Shahid deployed this file on 2026-11-14** (the arcs redesign branch,
-  `cf0b58e`). Run from PowerShell, in the checkout whose rules should ship:
-  `& .\firestore-tests\node_modules\.bin\firebase.cmd deploy --only firestore:rules --project anime-tracker-275cc`.
+  `cf0b58e`). Code batch 2's rules and indexes ship in one deploy, before its merge. Run from
+  PowerShell, in the checkout whose rules should ship:
+  `& .\firestore-tests\node_modules\.bin\firebase.cmd deploy --only firestore:rules,firestore:indexes --project anime-tracker-275cc`.
   A later edit to the file isn't live until it is deployed again. `firebase firestore:rules get`
   doesn't exist in firebase-tools 15, so the console's Rules tab is the way to check what's
   live (`RECON-0907-REPORT.md` A5).

@@ -1,6 +1,10 @@
 import 'dart:math' as math;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
+
+import '../core/display_name.dart';
 
 // ─────────────────────────────────────────────────────────────
 // Arcs: watch-alongs (arcs redesign, 2026-11-14)
@@ -291,6 +295,43 @@ class ArcsFailure implements Exception {
   String toString() => message;
 }
 
+/// What account deletion's Arcs sweep found and removed ([ArcsService.wipeUser]).
+class ArcsWipe {
+  int posts = 0, postsRemoved = 0;
+  int replies = 0, repliesRemoved = 0;
+  int likes = 0, likesRemoved = 0;
+
+  /// Arcs the user was in or made, and how many were dealt with: deleted
+  /// (theirs, with no one else's posts or members) or left, and kept
+  /// without their name if they made it.
+  int arcs = 0, arcsDone = 0;
+
+  /// Lookups that failed (rules or index not deployed, offline), so what
+  /// they would have found is unknown.
+  final Set<String> unknown = {};
+
+  /// What stayed behind, in words, or null when nothing did.
+  String? leftover() {
+    String n(int c, String one, String many) => '$c ${c == 1 ? one : many}';
+    final left = <String>[
+      if (posts > postsRemoved) n(posts - postsRemoved, 'post', 'posts'),
+      if (replies > repliesRemoved)
+        n(replies - repliesRemoved, 'reply', 'replies'),
+      if (likes > likesRemoved) n(likes - likesRemoved, 'like', 'likes'),
+      if (arcs > arcsDone)
+        n(arcs - arcsDone, 'arc you\'re still in or named on',
+            'arcs you\'re still in or named on'),
+    ];
+    final out = [
+      if (left.isNotEmpty) 'Left in Arcs: ${left.join(', ')}.',
+      if (unknown.isNotEmpty)
+        'Your Arcs ${unknown.join(', ')} couldn\'t be checked, so some may '
+            'remain.',
+    ];
+    return out.isEmpty ? null : out.join(' ');
+  }
+}
+
 class ArcsService {
   ArcsService._();
   static final ArcsService instance = ArcsService._();
@@ -423,13 +464,28 @@ class ArcsService {
     return out;
   }
 
+  /// The name on a new arc, post or reply: the one on your record, else
+  /// your sign-in name (accounts from before names were saved at sign-up),
+  /// cut to the 24 characters the rules allow; "Anonymous" when there is
+  /// none, or it holds a word kept for Hanj (code batch 2, W-06, LR-014).
+  /// False gives back the record's name alone, uncut.
+  static const bool _nameFallback = true;
+
   Future<String> _myName(String uid) async {
+    String? signIn() => FirebaseAuth.instance.currentUser?.displayName;
     try {
       final d = await _db.collection('users').doc(uid).get();
       final name = d.data()?['displayName'] as String?;
+      if (_nameFallback) {
+        return DisplayName.usable(name) ??
+            DisplayName.usable(signIn()) ??
+            'Anonymous';
+      }
       return (name == null || name.trim().isEmpty) ? 'Anonymous' : name;
     } catch (_) {
-      return 'Anonymous';
+      return _nameFallback
+          ? DisplayName.usable(signIn()) ?? 'Anonymous'
+          : 'Anonymous';
     }
   }
 
@@ -633,18 +689,23 @@ class ArcsService {
     }
   }
 
-  /// Reports a post or reply by its path. Reports are create-only: nobody
-  /// reads them in the app; they're read in the Firebase console.
+  /// Reports a post, reply, arc or person by its path ([postPath],
+  /// [replyPath], [arcPath], [personPath]). [from] is where a person was
+  /// reported from (their post or reply), so the console shows what they
+  /// wrote. Reports are create-only: nobody reads them in the app; they're
+  /// read in the Firebase console.
   Future<void> report({
     required String uid,
     required String path,
     required String reason,
+    String? from,
   }) async {
     try {
       await _db.collection('reports').add({
         'reporter': uid,
         'path': path,
         'reason': reason,
+        'from': ?from,
         'createdAt': FieldValue.serverTimestamp(),
       });
     } catch (e) {
@@ -652,9 +713,217 @@ class ArcsService {
     }
   }
 
+  // ── The safety kit (code batch 2, audit 7a item 7, Q179, LR-006) ───────
+  //
+  // Both live on the reader's own user document, which only they can read:
+  // `arcsRulesAt`, when they agreed to the community rules, and `blocked`,
+  // the people whose posts and replies they don't see. No server work: a
+  // block hides words from one reader; it doesn't stop anyone posting.
+
+  /// People who agreed to the rules on this run, so the record is read once.
+  static final Set<String> _agreed = <String>{};
+
+  /// Whether [uid] has agreed to the community rules. A read that fails
+  /// counts as not yet, so the rules show again rather than never.
+  Future<bool> rulesAgreed(String uid) async {
+    if (_agreed.contains(uid)) return true;
+    try {
+      final d = await _db.collection('users').doc(uid).get();
+      if (d.data()?['arcsRulesAt'] != null) _agreed.add(uid);
+    } catch (_) {}
+    return _agreed.contains(uid);
+  }
+
+  /// Stores that [uid] agreed to the rules now. Not awaited (offline it
+  /// waits for the network); a refusal is logged, never thrown, so it
+  /// can't become a fatal report.
+  void agreeToRules(String uid) {
+    _agreed.add(uid);
+    _db
+        .collection('users')
+        .doc(uid)
+        .set({'arcsRulesAt': FieldValue.serverTimestamp()},
+            SetOptions(merge: true))
+        .then((_) {},
+            onError: (Object e) => debugPrint('Rules agreement not saved: $e'));
+  }
+
+  /// The people [uid] has blocked, as their record holds them. Empty when
+  /// the record can't be read.
+  Stream<Set<String>> blocked(String uid) => _db
+      .collection('users')
+      .doc(uid)
+      .snapshots()
+      .map((d) => <String>{
+            ...((d.data()?['blocked'] as List<dynamic>?) ?? const [])
+                .whereType<String>()
+          })
+      .handleError((Object _) {});
+
+  /// Blocks [other] for [uid], or unblocks them.
+  Future<void> setBlocked(String uid, String other,
+      {required bool block}) async {
+    try {
+      await _db.collection('users').doc(uid).set({
+        'blocked': block
+            ? FieldValue.arrayUnion([other])
+            : FieldValue.arrayRemove([other]),
+      }, SetOptions(merge: true));
+    } catch (e) {
+      throw _failure(e, block ? 'Couldn\'t block' : 'Couldn\'t undo');
+    }
+  }
+
+  // ── Account deletion ───────────────────────────────────────
+
+  static final RegExp _postPath = RegExp(r'^arcs/[^/]+/posts/[^/]+$');
+  static final RegExp _replyPath =
+      RegExp(r'^arcs/[^/]+/posts/[^/]+/replies/[^/]+$');
+
+  /// Removes what [uid] left in Arcs, before their account goes: their
+  /// replies, then their posts, then their likes, then their place in each
+  /// arc. Every count moves with the document it counts, as the rules
+  /// require. An arc they made goes too when nobody else has posted in it or
+  /// joined it; otherwise it stays for the others, its maker shown as
+  /// "Deleted account" and its about cleared.
+  ///
+  /// Best effort: never throws. Each write is caught on its own, so one
+  /// refusal doesn't stop the rest, and [ArcsWipe.leftover] says what
+  /// stayed. Lookups ask the server (collection-group queries; their indexes
+  /// are in firestore.indexes.json): a cached answer would quietly miss
+  /// whatever this device never loaded.
+  Future<ArcsWipe> wipeUser(String uid) async {
+    final out = ArcsWipe();
+    const server = GetOptions(source: Source.server);
+
+    Future<List<QueryDocumentSnapshot<Map<String, dynamic>>>> look(
+        String what, Query<Map<String, dynamic>> q, RegExp path) async {
+      try {
+        final s = await q.get(server);
+        return [for (final d in s.docs) if (path.hasMatch(d.reference.path)) d];
+      } catch (_) {
+        out.unknown.add(what);
+        return const [];
+      }
+    }
+
+    // 1. Replies first: each moves its post's count, their own posts' too.
+    final replies = await look(
+        'replies',
+        _db.collectionGroup('replies').where('authorId', isEqualTo: uid),
+        _replyPath);
+    out.replies = replies.length;
+    for (final d in replies) {
+      final post = d.reference.parent.parent!;
+      try {
+        await _db.runTransaction((tx) async {
+          final p = await tx.get(post);
+          tx.delete(d.reference);
+          // A reply under a deleted post has no count left to move.
+          if (p.exists) {
+            tx.update(post, {
+              'replyCount': FieldValue.increment(-1),
+              'countedReply': d.id,
+            });
+          }
+        });
+        out.repliesRemoved++;
+      } catch (_) {}
+    }
+
+    // 2. Posts. Other people's replies under them stay, out of sight, as
+    // when a post is deleted in the app.
+    final posts = await look(
+        'posts',
+        _db.collectionGroup('posts').where('authorId', isEqualTo: uid),
+        _postPath);
+    out.posts = posts.length;
+    for (final d in posts) {
+      final arc = d.reference.parent.parent!;
+      try {
+        await _db.runTransaction((tx) async {
+          final a = await tx.get(arc);
+          tx.delete(d.reference);
+          if (a.exists) {
+            tx.update(arc, {
+              'postCount': FieldValue.increment(-1),
+              'countedPost': d.id,
+            });
+          }
+        });
+        out.postsRemoved++;
+      } catch (_) {}
+    }
+
+    // 3. Likes on other people's posts.
+    final liked = await look(
+        'likes',
+        _db.collectionGroup('posts').where('likes', arrayContains: uid),
+        _postPath);
+    out.likes = liked.length;
+    for (final d in liked) {
+      try {
+        await _db.runTransaction((tx) async {
+          final snap = await tx.get(d.reference);
+          final likes = List<dynamic>.from(
+              snap.data()?['likes'] as List? ?? const []);
+          if (!likes.contains(uid)) return;
+          final count = (snap.data()?['likeCount'] as num?)?.toInt() ?? 0;
+          tx.update(d.reference, {
+            'likes': likes..removeWhere((e) => e == uid),
+            'likeCount': count - 1,
+          });
+        });
+        out.likesRemoved++;
+      } catch (_) {}
+    }
+
+    // 4. Arcs they're in, and arcs they made (they may have left those).
+    final arcs = <String, QueryDocumentSnapshot<Map<String, dynamic>>>{};
+    for (final q in [
+      _arcs.where('members', arrayContains: uid),
+      _arcs.where('createdBy', isEqualTo: uid),
+    ]) {
+      for (final d in await look('memberships', q, RegExp(r'^arcs/[^/]+$'))) {
+        arcs[d.id] = d;
+      }
+    }
+    out.arcs = arcs.length;
+    for (final d in arcs.values) {
+      try {
+        final ref = d.reference;
+        final data = d.data();
+        final made = data['createdBy'] == uid;
+        if (made) {
+          // Nothing anyone wrote and nobody else in it: it goes with them.
+          // (Read after step 2, so their own posts are already gone.)
+          final alone = ((data['members'] as List?) ?? const [])
+              .every((m) => m == uid);
+          final count = (data['postCount'] as num?)?.toInt() ?? 0;
+          final empty = (await _posts(d.id).limit(1).get(server)).docs.isEmpty;
+          if (empty && alone && count == 0) {
+            await ref.delete();
+            out.arcsDone++;
+            continue;
+          }
+        }
+        await setMember(d.id, uid, join: false);
+        if (made) {
+          await ref.update({'creatorName': 'Deleted account', 'description': ''});
+        }
+        out.arcsDone++;
+      } catch (_) {}
+    }
+    return out;
+  }
+
   static String postPath(String arcId, String postId) =>
       'arcs/$arcId/posts/$postId';
 
   static String replyPath(String arcId, String postId, String replyId) =>
       'arcs/$arcId/posts/$postId/replies/$replyId';
+
+  static String arcPath(String arcId) => 'arcs/$arcId';
+
+  static String personPath(String uid) => 'users/$uid';
 }

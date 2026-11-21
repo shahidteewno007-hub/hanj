@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
@@ -54,6 +56,27 @@ class _ArcPageScreenState extends State<ArcPageScreen> {
   final Set<String> _opened = <String>{};
   bool _joining = false;
 
+  /// People you've blocked: their posts aren't shown ([ArcSafety.block]).
+  Set<String> _blocked = const <String>{};
+  StreamSubscription<Set<String>>? _blockSub;
+
+  @override
+  void initState() {
+    super.initState();
+    final uid = _uid;
+    if (ArcSafety.block && uid != null) {
+      _blockSub = ArcsService.instance.blocked(uid).listen((b) {
+        if (mounted) setState(() => _blocked = b);
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _blockSub?.cancel();
+    super.dispose();
+  }
+
   void _readProgress(Arc arc) {
     final uid = _uid;
     final show = arc.show;
@@ -89,6 +112,7 @@ class _ArcPageScreenState extends State<ArcPageScreen> {
     final stop = _stop != null ? arc.stop(_stop!) : null;
     final i = arc.stopOn(now);
     final fallback = (i >= 0 && i < arc.stopCount) ? arc.stop(i).last : arc.from;
+    if (!await arcRulesFirst(context, uid) || !mounted) return;
     final posted = await showArcPostSheet(context,
         arc: arc, uid: uid, ep: stop?.last ?? fallback);
     if (posted == true && mounted) arcSay(context, 'Posted');
@@ -103,6 +127,20 @@ class _ArcPageScreenState extends State<ArcPageScreen> {
     try {
       await ArcsService.instance.deleteArc(arc.id);
       if (mounted) Navigator.pop(context);
+    } on ArcsFailure catch (e) {
+      if (mounted) arcSay(context, e.message);
+    }
+  }
+
+  Future<void> _reportArc(Arc arc) async {
+    final uid = _uid;
+    if (uid == null) return;
+    final reason = await arcReportReason(context, ArcReportKind.arc);
+    if (reason == null || !mounted) return;
+    try {
+      await ArcsService.instance.report(
+          uid: uid, path: ArcsService.arcPath(arc.id), reason: reason);
+      if (mounted) arcSay(context, 'Reported. Thank you.');
     } on ArcsFailure catch (e) {
       if (mounted) arcSay(context, e.message);
     }
@@ -166,7 +204,11 @@ class _ArcPageScreenState extends State<ArcPageScreen> {
               actions: [
                 // The maker can delete an arc while nothing's been posted
                 // (the rules' condition, so nothing is ever stranded).
-                if (_uid != null && arc.createdBy == _uid && arc.postCount == 0)
+                // Anyone else can report it ([ArcSafety.reportMore]).
+                if (_uid != null &&
+                    (arc.createdBy == _uid
+                        ? arc.postCount == 0
+                        : ArcSafety.reportMore))
                   PopupMenuButton<int>(
                     tooltip: 'More',
                     color: AppTheme.hankoSumi3,
@@ -175,12 +217,19 @@ class _ArcPageScreenState extends State<ArcPageScreen> {
                             BorderRadius.circular(AppTheme.hankoRadius)),
                     icon: const Icon(Icons.more_horiz_sharp,
                         color: AppTheme.hankoStone),
-                    onSelected: (_) => _deleteArc(arc),
+                    onSelected: (v) =>
+                        v == 1 ? _reportArc(arc) : _deleteArc(arc),
                     itemBuilder: (_) => [
-                      PopupMenuItem(
-                          value: 0,
-                          child: Text('Delete this arc',
-                              style: AppTheme.hankoSans())),
+                      if (arc.createdBy == _uid)
+                        PopupMenuItem(
+                            value: 0,
+                            child: Text('Delete this arc',
+                                style: AppTheme.hankoSans()))
+                      else
+                        PopupMenuItem(
+                            value: 1,
+                            child: Text('Report this arc',
+                                style: AppTheme.hankoSans())),
                     ],
                   ),
               ]),
@@ -195,7 +244,10 @@ class _ArcPageScreenState extends State<ArcPageScreen> {
 
   Widget _page(Arc arc, DateTime now, AsyncSnapshot<List<ArcPost>> ps) {
     final member = arc.hasMember(_uid);
-    final all = ps.data ?? const <ArcPost>[];
+    final all = [
+      for (final p in ps.data ?? const <ArcPost>[])
+        if (!_blocked.contains(p.authorId)) p,
+    ];
     final stop = _stop != null && _stop! < arc.stopCount ? arc.stop(_stop!) : null;
     final shown = stop == null
         ? all
@@ -804,8 +856,24 @@ class _ArcThreadScreenState extends State<ArcThreadScreen> {
   final FocusNode _focus = FocusNode();
   bool _sending = false;
 
+  /// People you've blocked: their replies aren't shown ([ArcSafety.block]).
+  Set<String> _blocked = const <String>{};
+  StreamSubscription<Set<String>>? _blockSub;
+
+  @override
+  void initState() {
+    super.initState();
+    final uid = _uid;
+    if (ArcSafety.block && uid != null) {
+      _blockSub = ArcsService.instance.blocked(uid).listen((b) {
+        if (mounted) setState(() => _blocked = b);
+      });
+    }
+  }
+
   @override
   void dispose() {
+    _blockSub?.cancel();
     _reply.dispose();
     _focus.dispose();
     super.dispose();
@@ -815,6 +883,11 @@ class _ArcThreadScreenState extends State<ArcThreadScreen> {
     final uid = _uid;
     final text = _reply.text.trim();
     if (uid == null || text.isEmpty || _sending) return;
+    // The rules once, before a first reply; the words stay in the field.
+    if (ArcSafety.rulesFirst) {
+      _focus.unfocus();
+      if (!await arcRulesFirst(context, uid) || !mounted) return;
+    }
     setState(() => _sending = true);
     try {
       await ArcsService.instance.addReply(
@@ -837,7 +910,8 @@ class _ArcThreadScreenState extends State<ArcThreadScreen> {
     }
   }
 
-  Future<void> _act(_ArcItemAction action, {String? replyId}) async {
+  Future<void> _act(_ArcItemAction action,
+      {String? replyId, String? authorId}) async {
     final uid = _uid;
     if (uid == null) return;
     // The reply field keeps focus while its keyboard is hidden, and the
@@ -873,6 +947,39 @@ class _ArcThreadScreenState extends State<ArcThreadScreen> {
             reason: action.name,
           );
           if (mounted) arcSay(context, 'Reported. Thank you');
+        case _ArcItemAction.report:
+          final path = replyId == null
+              ? ArcsService.postPath(arcId, postId)
+              : ArcsService.replyPath(arcId, postId, replyId);
+          final reason = await arcReportReason(context,
+              replyId == null ? ArcReportKind.post : ArcReportKind.reply);
+          if (reason == null) return;
+          await svc.report(uid: uid, path: path, reason: reason);
+          if (mounted) arcSay(context, 'Reported. Thank you.');
+        case _ArcItemAction.person:
+          if (authorId == null || authorId.isEmpty) return;
+          final reason = await arcReportReason(context, ArcReportKind.person);
+          if (reason == null) return;
+          await svc.report(
+            uid: uid,
+            path: ArcsService.personPath(authorId),
+            reason: reason,
+            from: replyId == null
+                ? ArcsService.postPath(arcId, postId)
+                : ArcsService.replyPath(arcId, postId, replyId),
+          );
+          if (mounted) arcSay(context, 'Reported. Thank you.');
+        case _ArcItemAction.block:
+          if (authorId == null || authorId.isEmpty || authorId == uid) return;
+          await svc.setBlocked(uid, authorId, block: true);
+          if (!mounted) return;
+          arcSay(context, 'Blocked. You won’t see their posts.',
+              action: 'Undo',
+              onAction: () => svc
+                  .setBlocked(uid, authorId, block: false)
+                  .catchError((Object _) {}));
+          // Their post is hidden now, so the thread goes back to the arc.
+          if (replyId == null) Navigator.pop(context);
       }
     } on ArcsFailure catch (e) {
       if (mounted) arcSay(context, e.message);
@@ -903,7 +1010,7 @@ class _ArcThreadScreenState extends State<ArcThreadScreen> {
                       _ArcItemMenu(
                         mine: post.authorId == _uid,
                         maker: maker,
-                        onSelect: (x) => _act(x),
+                        onSelect: (x) => _act(x, authorId: post.authorId),
                       ),
                   ]),
               body: Column(
@@ -1004,7 +1111,10 @@ class _ArcThreadScreenState extends State<ArcThreadScreen> {
             if (r.hasError) {
               return _line('Replies can\'t be read right now');
             }
-            final replies = r.data ?? const <ArcReply>[];
+            final replies = [
+              for (final x in r.data ?? const <ArcReply>[])
+                if (!_blocked.contains(x.authorId)) x,
+            ];
             if (replies.isEmpty) {
               return _line(r.hasData ? 'No replies yet' : '');
             }
@@ -1019,7 +1129,9 @@ class _ArcThreadScreenState extends State<ArcThreadScreen> {
                         : _ArcItemMenu(
                             mine: reply.authorId == _uid,
                             maker: maker,
-                            onSelect: (x) => _act(x, replyId: reply.id),
+                            reply: true,
+                            onSelect: (x) => _act(x,
+                                replyId: reply.id, authorId: reply.authorId),
                           ),
                   ),
               ],
@@ -1156,20 +1268,26 @@ class ArcReplyRow extends StatelessWidget {
   }
 }
 
-enum _ArcItemAction { delete, spoiler, spam, abuse }
+enum _ArcItemAction { delete, spoiler, spam, abuse, report, person, block }
 
 /// ⋯ on a post or reply: Delete for your own (or anything in your arc, if
-/// you made it), Report for everyone else's.
+/// you made it), Report for everyone else's. With the safety kit
+/// ([ArcSafety]), report this post or reply (a reason is asked next),
+/// report this person, and block this person.
 class _ArcItemMenu extends StatelessWidget {
   const _ArcItemMenu({
     required this.mine,
     required this.maker,
     required this.onSelect,
+    this.reply = false,
   });
 
   final bool mine;
   final bool maker;
   final ValueChanged<_ArcItemAction> onSelect;
+
+  /// A reply's menu, so its rows say "reply".
+  final bool reply;
 
   @override
   Widget build(BuildContext context) {
@@ -1187,11 +1305,17 @@ class _ArcItemMenu extends StatelessWidget {
       onSelected: onSelect,
       itemBuilder: (_) => [
         if (mine || maker) item(_ArcItemAction.delete, mine ? 'Delete' : 'Remove from the arc'),
-        if (!mine) ...[
+        if (!mine && ArcSafety.reportMore) ...[
+          item(_ArcItemAction.report,
+              reply ? 'Report this reply' : 'Report this post'),
+          item(_ArcItemAction.person, 'Report this person'),
+        ] else if (!mine) ...[
           item(_ArcItemAction.spoiler, 'Report an unmarked spoiler'),
           item(_ArcItemAction.spam, 'Report spam'),
           item(_ArcItemAction.abuse, 'Report abuse'),
         ],
+        if (!mine && ArcSafety.block)
+          item(_ArcItemAction.block, 'Block this person'),
       ],
     );
   }

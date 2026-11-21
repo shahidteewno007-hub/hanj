@@ -105,13 +105,12 @@ test('ALLOWS the owner to read their own animeList', async () => {
   assert.equal(snap.docs[0].data().title, 'One Piece');
 });
 
-test('ALLOWS a signed-in user to read another user animeList (soulmatch)', async () => {
-  // soulmatch_screen reads the friend's animeList directly to compare the two.
-  // If this ever flips to a denial, soulmatch breaks.
+test('DENIES a signed-in user reading another user animeList (code batch 2)', async () => {
+  // soulmatch_screen read the friend's animeList directly; Soulmatch is
+  // hidden (code batch 1) and lists are owner-only since code batch 2
+  // (Q178, LR-008). It returns reading lists their owners chose to share.
   const db = testEnv.authenticatedContext(OWNER).firestore();
-  const snap = await assertSucceeds(getDocs(collection(db, 'users', OTHER, 'animeList')));
-  assert.equal(snap.size, 1);
-  assert.equal(snap.docs[0].data().status, 'COMPLETED');
+  await assertFails(getDocs(collection(db, 'users', OTHER, 'animeList')));
 });
 
 test('ALLOWS the owner to read their own activity', async () => {
@@ -119,11 +118,11 @@ test('ALLOWS the owner to read their own activity', async () => {
   await assertSucceeds(getDocs(collection(db, 'users', OWNER, 'activity')));
 });
 
-test('ALLOWS a signed-in user to read another user activity (social feed)', async () => {
-  // FirestoreService.getUserActivity(uid) takes an arbitrary uid.
+test('DENIES a signed-in user reading another user activity (code batch 2)', async () => {
+  // The Friends tab (getFriendsActivity) read others' activity; it is
+  // hidden (code batch 1) and activity is owner-only since code batch 2.
   const db = testEnv.authenticatedContext(OTHER).firestore();
-  const snap = await assertSucceeds(getDocs(collection(db, 'users', OWNER, 'activity')));
-  assert.equal(snap.docs[0].data().animeTitle, 'One Piece');
+  await assertFails(getDocs(collection(db, 'users', OWNER, 'activity')));
 });
 
 // ── Writes: unchanged here, asserted so the read fix cannot loosen them ────

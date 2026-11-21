@@ -1,7 +1,9 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import '../core/display_name.dart';
 import 'notification_service.dart';
 
 class SignUpResult {
@@ -21,6 +23,25 @@ class SignUpResult {
 class AuthService extends ChangeNotifier {
   final _auth = FirebaseAuth.instance;
   bool _googleInitialized = false;
+
+  /// A new account's name goes on its record at sign-up, email and Google
+  /// alike (code batch 2, W-06), so Arcs signs its first post with it and
+  /// not "Anonymous". False gives back the sign-in name alone.
+  static const bool _nameOnRecord = true;
+
+  /// Writes [name] to users/{uid} as Arcs and Profile read it: trimmed, cut
+  /// to [DisplayName.max], skipped when empty or kept for Hanj. Not awaited
+  /// (an offline write waits for the network); a refusal is logged, never
+  /// thrown, so it can't become a fatal report.
+  void _saveName(User? user, String? name) {
+    final usable = DisplayName.usable(name);
+    if (!_nameOnRecord || user == null || usable == null) return;
+    FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .set({'displayName': usable}, SetOptions(merge: true))
+        .then((_) {}, onError: (Object e) => debugPrint('Name not saved: $e'));
+  }
 
   Stream<User?> get authStateChanges => _auth.authStateChanges();
   User? get currentUser => _auth.currentUser;
@@ -89,6 +110,7 @@ class AuthService extends ChangeNotifier {
       if (displayName != null && displayName.isNotEmpty) {
         await userCred.user?.updateDisplayName(displayName);
       }
+      _saveName(userCred.user, displayName);
     }
 
     NotificationService.instance.saveTokenForCurrentUser();
@@ -119,6 +141,7 @@ class AuthService extends ChangeNotifier {
         password: password,
       );
       await cred.user?.updateDisplayName(username.trim());
+      _saveName(cred.user, username);
 
       try {
         await cred.user?.sendEmailVerification();

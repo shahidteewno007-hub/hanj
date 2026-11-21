@@ -1609,6 +1609,22 @@ What the deletion still leaves behind:
 - `reviews` is untouched: no client writes it, and whether it holds any documents is
   unknown. R9 (Loki chat history) is unchanged too.
 
+**Deleting an account left its Arcs behind. Fixed (2026-11-14), rules + index + client,
+on `claude/arcs-account-delete-8dfccc`.** `_wipeUserData` now runs
+`ArcsService.wipeUser` after the comments: the user's replies (each with its post's
+`replyCount`), posts (each with its arc's `postCount`), likes, and memberships, all through
+the counted writes the arcs rules already check. An arc the user made goes when nobody else
+posted in it or joined it; otherwise it stays, its maker shown as "Deleted account" and its
+about cleared (a new rule allows exactly that). Unlike the comments it is best effort: a
+refused write doesn't stop the deletion, and a snackbar says what stayed. The lookups are
+collection-group queries, so they need `firestore.indexes.json` deployed and a
+`{path=**}/posts` / `{path=**}/replies` list rule (your own only). Also new: an author can
+delete their post under a missing arc, or reply under a missing post, which before stayed
+stranded as in R8. Tests: `firestore-tests/arcs-account-delete.test.js`. Still left: other
+people's replies under the user's deleted posts (out of sight, as with an in-app delete), the
+user's `reports` (create-only, uid only), and anything from accounts deleted before this
+build.
+
 **Google users could lose their data and keep their account. Fixed (2026-10-24), client
 only.** `_deleteAccount`
 ([delete_account_screen.dart:39-105](lib/features/auth/delete_account_screen.dart#L39-L105))

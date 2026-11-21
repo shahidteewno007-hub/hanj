@@ -76,24 +76,14 @@ test('ALLOWS the owner to read their own document', async () => {
   assert.equal(snap.data().displayName, 'Owner');
 });
 
-test('ALLOWS a signed-in user to read another user document — KNOWN RESIDUAL', async () => {
-  // Deliberate, and the reason is recorded in AUDIT.md 6d.
-  //
-  // soulmatch_screen resolves a friend code by scanning every user document
-  // and reading displayName, so tightening this to owner-only breaks a
-  // reachable feature. Firestore rules cannot project fields, so there is no
-  // rule that exposes displayName while hiding email and fcmToken.
-  //
-  // This test asserts the CURRENT accepted state, not a desirable one. When
-  // the public/private split lands, this expectation flips to assertFails and
-  // soulmatch reads the public profile document instead.
+test('DENIES a signed-in user reading another user document (code batch 2)', async () => {
+  // Was the KNOWN RESIDUAL (AUDIT.md 6d): soulmatch_screen scanned every
+  // user document, so any signed-in user could read anyone's email and
+  // push token. Soulmatch is hidden (code batch 1) and the document is
+  // owner-only since code batch 2 (Q178, LR-008); owner-only.test.js holds
+  // the rest.
   const db = testEnv.authenticatedContext(OTHER).firestore();
-  const snap = await assertSucceeds(getDoc(doc(db, 'users', OWNER)));
-
-  // Naming what is still exposed, so the cost of the residual is visible
-  // in the test output rather than buried in a report.
-  assert.equal(snap.data().email, 'owner@example.com');
-  assert.equal(snap.data().fcmToken, 'owner-device-token');
+  await assertFails(getDoc(doc(db, 'users', OWNER)));
 });
 
 // ── Writes: unchanged by 5a, asserted so the fix cannot loosen them ────────
